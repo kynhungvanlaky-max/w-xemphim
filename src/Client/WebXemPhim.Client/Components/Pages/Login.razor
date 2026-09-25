@@ -1,0 +1,156 @@
+@page "/login"
+@inject AuthState Auth
+@inject NavigationManager Nav
+@inject IWebHostEnvironment Environment
+@using WebXemPhim.Client.Components.Common
+
+<PageTitle>Đăng nhập - CinemaFlow</PageTitle>
+
+<main class="auth-shell">
+    <section class="auth-intro">
+        <CinemaLogo Size="CinemaLogo.CinemaLogoSize.Large" ShowTagline="true" />
+        <p class="auth-kicker">Thành viên CinemaFlow</p>
+        <h1>Trở lại với màn ảnh của bạn.</h1>
+        <p>Lưu phim, tiếp tục đúng đoạn đang xem và mở khóa thư viện 4K khi nâng cấp VIP.</p>
+    </section>
+    <section class="auth-panel" aria-labelledby="login-title">
+        <div>
+            <h2 id="login-title">Đăng nhập</h2>
+            <p>Chưa có tài khoản? <a href="@($"/register?returnUrl={Uri.EscapeDataString(AuthNavigation.ReturnPath(ReturnUrl))}")">Đăng ký miễn phí</a></p>
+        </div>
+
+        @if (mfaRequired)
+        {
+            <div class="auth-mfa-intro" role="status">
+                <CinemaIcon Name="CinemaIconName.Shield" Size="20" />
+                <div><strong>Xác thực hai lớp</strong><span>Mở ứng dụng xác thực và nhập mã 6 số. Bạn cũng có thể dùng một mã khôi phục.</span></div>
+            </div>
+            <EditForm Model="mfaModel" OnValidSubmit="VerifyMfa">
+                <DataAnnotationsValidator />
+                <div class="form-field">
+                    <label for="mfa-code">Mã xác thực</label>
+                    <InputText id="mfa-code" autocomplete="one-time-code" inputmode="numeric" @bind-Value="mfaModel.Code" placeholder="000000" maxlength="24" autofocus />
+                    <ValidationMessage For="() => mfaModel.Code" />
+                </div>
+                @if (!string.IsNullOrWhiteSpace(error)) { <p class="form-alert error" role="alert">@error</p> }
+                <button class="button primary wide" type="submit" disabled="@submitting">@(submitting ? "Đang kiểm tra..." : "Xác nhận đăng nhập")</button>
+                <button class="auth-back-button" type="button" @onclick="CancelMfa">Dùng tài khoản khác</button>
+            </EditForm>
+        }
+        else
+        {
+        <EditForm Model="model" OnValidSubmit="Submit">
+            <DataAnnotationsValidator />
+            <div class="form-field">
+                <label for="login-email">Email hoặc Tên đăng nhập</label>
+                <InputText id="login-email" type="text" autocomplete="username" @bind-Value="model.Email" placeholder="Email của bạn" maxlength="160" />
+                <ValidationMessage For="() => model.Email" />
+            </div>
+            <div class="form-field">
+                <div class="label-row"><label for="login-password">Mật khẩu</label><a href="/forgot-password">Quên mật khẩu?</a></div>
+                <InputText id="login-password" type="password" autocomplete="current-password" @bind-Value="model.Password" placeholder="Mật khẩu của bạn" maxlength="100" />
+                <ValidationMessage For="() => model.Password" />
+            </div>
+            @if (!string.IsNullOrWhiteSpace(error)) { <p class="form-alert error" role="alert">@error</p> }
+            <button class="button primary wide" type="submit" disabled="@submitting"><CinemaIcon Name="CinemaIconName.Login" Size="18" />@(submitting ? "Đang xác thực..." : "Đăng nhập")</button>
+        </EditForm>
+        @if (Environment.IsDevelopment())
+        {
+            <div class="auth-quick-card">
+                <div class="auth-quick-header">
+                    <CinemaIcon Name="CinemaIconName.Shield" Size="16" Class="text-danger" />
+                    <span>Tài khoản thử nghiệm (Bấm để điền ngay):</span>
+                </div>
+                <div class="auth-quick-buttons">
+                    <button type="button" class="quick-chip admin" @onclick='() => QuickFill("admin@cinemaflow.vn", "Password123!")'>
+                        <CinemaIcon Name="CinemaIconName.Shield" Size="14" />
+                        <strong>Admin</strong>: admin@cinemaflow.vn
+                    </button>
+                    <button type="button" class="quick-chip vip" @onclick='() => QuickFill("demo@cinemaflow.vn", "Password123!")'>
+                        <CinemaIcon Name="CinemaIconName.Crown" Size="14" />
+                        <strong>Khách VIP</strong>: demo@cinemaflow.vn
+                    </button>
+                </div>
+            </div>
+        }
+        }
+    </section>
+</main>
+
+@code {
+    [SupplyParameterFromQuery(Name = "returnUrl")] public string? ReturnUrl { get; set; }
+    private readonly LoginRequest model = new();
+    private readonly VerifyMfaLoginRequest mfaModel = new();
+    private bool submitting;
+    private bool mfaRequired;
+    private string? error;
+
+    private void QuickFill(string email, string password)
+    {
+        model.Email = email;
+        model.Password = password;
+        error = null;
+    }
+
+    private async Task Submit()
+    {
+        submitting = true;
+        error = null;
+        if (model.Email.Trim().Equals("admin", StringComparison.OrdinalIgnoreCase))
+        {
+            model.Email = "admin@cinemaflow.vn";
+        }
+        else if (model.Email.Trim().Equals("demo", StringComparison.OrdinalIgnoreCase))
+        {
+            model.Email = "demo@cinemaflow.vn";
+        }
+
+        var response = await Auth.LoginAsync(model);
+        submitting = false;
+        if (response?.Success == true && response.Data?.RequiresMfa == true)
+        {
+            mfaModel.ChallengeToken = response.Data.MfaChallengeToken;
+            mfaRequired = true;
+            error = null;
+        }
+        else if (response?.Success == true)
+        {
+            if (response.Data?.User?.IsAdmin == true)
+            {
+                Nav.NavigateTo(AuthNavigation.ReturnPath(ReturnUrl, "/admin"));
+            }
+            else
+            {
+                Nav.NavigateTo(AuthNavigation.ReturnPath(ReturnUrl));
+            }
+        }
+        else
+        {
+            error = response?.Message ?? "Không thể kết nối máy chủ hoặc thông tin đăng nhập không chính xác. Vui lòng thử lại.";
+        }
+    }
+
+    private async Task VerifyMfa()
+    {
+        submitting = true;
+        error = null;
+        var response = await Auth.VerifyMfaLoginAsync(mfaModel);
+        submitting = false;
+        if (response?.Success == true)
+        {
+            Nav.NavigateTo(response.Data?.User?.IsAdmin == true
+                ? AuthNavigation.ReturnPath(ReturnUrl, "/admin")
+                : AuthNavigation.ReturnPath(ReturnUrl));
+        }
+        else error = response?.Message ?? "Mã xác thực không chính xác hoặc đã hết hạn.";
+    }
+
+    private void CancelMfa()
+    {
+        mfaRequired = false;
+        mfaModel.ChallengeToken = string.Empty;
+        mfaModel.Code = string.Empty;
+        model.Password = string.Empty;
+        error = null;
+    }
+}

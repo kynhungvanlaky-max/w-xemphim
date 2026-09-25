@@ -1,0 +1,158 @@
+/* Final typography guardrails: loaded last so Vietnamese diacritics keep enough breathing room. */
+body .site-main :is(
+    .hero-title,
+    .detail-main-title,
+    .explore-heading,
+    .vip-headline,
+    .account-workspace-head h1,
+    .auth-intro h1,
+    .editorial-page-head h1,
+    .roulette-page header h1,
+    .roulette-visual h2,
+    .vip-banner h2,
+    .seo-heading h2,
+    .system-state-panel h1
+) {
+    line-height: 1.08;
+    letter-spacing: -.035em;
+    text-wrap: balance;
+}
+
+body .site-main .genre-index-card h2 {
+    line-height: 1.12;
+    letter-spacing: -.025em;
+    text-wrap: balance;
+}
+
+body .site-main :is(.home-spotlight h2, .home-discovery h2, .bento-main-heading, .section-title-arrow h2) {
+    line-height: 1.18;
+    text-wrap: balance;
+}
+
+body .site-main .movie-card .card-title {
+    min-height: 2.7em;
+    display: -webkit-box;
+    overflow: hidden;
+    line-height: 1.35;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+body .site-main :is(.update-card-title, .caption-title, .account-history-copy h2) {
+    line-height: 1.38;
+}
+
+body .site-main :is(.button, .btn-cinema, .btn-hero-watch, .btn-hero-watchlist, .btn-detail-play, .btn-detail-trailer, .btn-detail-watchlist) {
+    line-height: 1.25;
+}
+
+body .site-main .cast-info {
+    min-width: 0;
+}
+
+body .site-main .cast-info strong {
+    display: block;
+    line-height: 1.35;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+    body .nav-user-label { max-width: 96px; }
+    body .nav-user-label small { white-space: nowrap; }
+
+    body .site-main :is(
+        .hero-title,
+        .detail-main-title,
+        .vip-headline,
+        .auth-intro h1,
+        .editorial-page-head h1,
+        .roulette-page header h1,
+        .account-workspace-head h1
+    ) {
+        line-height: 1.1;
+        letter-spacing: -.03em;
+    }
+
+    body .site-main .hero-actions-group {
+        width: 100%;
+        display: grid;
+        grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr);
+        gap: .55rem;
+    }
+
+    body .site-main .btn-hero-watch,
+    body .site-main .btn-hero-watchlist {
+        width: 100%;
+        min-width: 0;
+        padding-inline: .65rem;
+        gap: .45rem;
+        font-size: .84rem;
+        white-space: nowrap;
+    }
+
+    body .site-main .detail-tabs-bar {
+        width: 100%;
+        max-width: 100%;
+        margin: 0 auto 1.5rem;
+        padding-inline: .75rem;
+        display: flex;
+        gap: .2rem;
+        overflow-x: auto;
+        box-sizing: border-box;
+        scrollbar-width: none;
+        overscroll-behavior-inline: contain;
+    }
+
+    body .site-main .detail-tabs-bar::-webkit-scrollbar { display: none; }
+
+    body .site-main .detail-tabs-bar .tab-item {
+        flex: 0 0 auto;
+        min-height: 52px;
+        padding: .8rem .85rem;
+        line-height: 1.25;
+        white-space: nowrap;
+    }
+
+    body .site-main .account-workspace-nav > a {
+        min-width: 166px;
+        min-height: 56px;
+        white-space: nowrap;
+    }
+
+    body .site-main .account-workspace-nav > a strong { white-space: nowrap; }
+
+    body .site-main .movie-card .card-title {
+        min-height: 4.05em;
+        -webkit-line-clamp: 3;
+    }
+
+    body .site-main .cast-cards-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .8rem;
+    }
+
+    body .site-main .cast-info { gap: .25rem; }
+
+    body .site-main .cast-info strong {
+        min-height: 2.7em;
+        display: -webkit-box;
+        overflow: hidden;
+        line-height: 1.35;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+    }
+}
+
+@media (max-width: 400px) {
+    body .site-main .detail-main-title { font-size: clamp(3rem, 14vw, 4.2rem); }
+    body .site-main .auth-intro h1 { font-size: 3.2rem; }
+    body .site-main .editorial-page-head h1 { font-size: clamp(3.25rem, 15vw, 4.2rem); }
+}

@@ -1,0 +1,122 @@
+@page "/not-found"
+@layout MainLayout
+@inject IMovieApiClient ApiClient
+@inject NavigationManager Nav
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Client.Components.Common
+@using WebXemPhim.Client.Components.Icons
+
+<PageTitle>404 - Không tìm thấy trang - CinemaFlow</PageTitle>
+
+<section class="cinema-404-page" aria-labelledby="error-404-title">
+    <div class="cinema-404-container">
+        <!-- Visual Projector Glow -->
+        <div class="projector-glow" aria-hidden="true"></div>
+
+        <div class="error-404-hero">
+            <div class="error-badge-pill">
+                <CinemaIcon Name="CinemaIconName.Film" Size="16" />
+                <span>404 · Suất Chiếu Gián Đoạn</span>
+            </div>
+
+            <h1 class="error-404-title" id="error-404-title">
+                Thước Phim Này <span class="highlight-text">Không Tồn Tại.</span>
+            </h1>
+
+            <p class="error-404-desc">
+                Đường dẫn bạn yêu cầu dường như đã bị cắt khỏi bản dựng cuối cùng hoặc chưa từng được phát hành. Hãy tìm kiếm bộ phim khác hoặc để chúng tôi gợi ý cho bạn.
+            </p>
+
+            <div class="error-action-buttons">
+                <a class="button primary btn-large" href="/">
+                    <CinemaIcon Name="CinemaIconName.Home" Size="18" />
+                    <span>Về Trang Chủ</span>
+                </a>
+                <a class="button secondary btn-large" href="/explore">
+                    <CinemaIcon Name="CinemaIconName.Compass" Size="18" />
+                    <span>Khám Phá Phim</span>
+                </a>
+                <a class="button secondary btn-large" href="/random">
+                    <CinemaIcon Name="CinemaIconName.Shuffle" Size="18" />
+                    <span>Chọn Phim Cho Tôi</span>
+                </a>
+            </div>
+
+            <!-- In-page Search Bar -->
+            <form class="error-search-form" @onsubmit="HandleSearch" @onsubmit:preventDefault>
+                <div class="error-search-wrap">
+                    <CinemaIcon Name="CinemaIconName.Search" Size="18" Class="error-search-icon" />
+                    <input type="text"
+                           placeholder="Nhập tên phim, diễn viên cần tìm..."
+                           @bind="searchTerm"
+                           aria-label="Tìm kiếm phim trên CinemaFlow" />
+                    <button type="submit" class="btn-error-search">
+                        Tìm phim
+                    </button>
+                </div>
+            </form>
+
+            <!-- Quick Jump Chips -->
+            <div class="quick-genre-chips" role="navigation" aria-label="Lối tắt phổ biến">
+                <span class="chips-label">Lối tắt:</span>
+                <a href="/explore?sortBy=trending" class="chip-link">Đang thịnh hành</a>
+                <a href="/genres" class="chip-link">Vũ trụ thể loại</a>
+                <a href="/random" class="chip-link">Vòng quay ngẫu nhiên</a>
+                <a href="/vip" class="chip-link highlight">Đặc quyền VIP</a>
+            </div>
+
+        </div>
+
+        <!-- Trending Suggestions Grid -->
+        @if (trendingMovies.Count > 0)
+        {
+            <div class="error-suggestions-block">
+                <div class="suggestions-header">
+                    <h2>Gợi ý tác phẩm đang được xem nhiều:</h2>
+                    <a href="/explore">Xem tất cả <CinemaIcon Name="CinemaIconName.ArrowRight" Size="14" /></a>
+                </div>
+
+                <div class="suggestions-grid">
+                    @foreach (var movie in trendingMovies)
+                    {
+                        <a class="suggestion-card" href="@($"/movie/{movie.Id}")">
+                            <div class="suggestion-poster-wrap">
+                                <img src="@movie.PosterUrl" alt="@movie.Title" loading="lazy" />
+                                <span class="suggestion-rating">★ @movie.Rating.ToString("0.0")</span>
+                            </div>
+                            <div class="suggestion-info">
+                                <strong>@movie.Title</strong>
+                                <small>@movie.ReleaseYear · @movie.Quality</small>
+                            </div>
+                        </a>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    private string searchTerm = string.Empty;
+    private List<MovieDto> trendingMovies = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            trendingMovies = (await ApiClient.GetTrendingAsync(4));
+        }
+        catch
+        {
+            trendingMovies = [];
+        }
+    }
+
+    private void HandleSearch()
+    {
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            Nav.NavigateTo($"/explore?query={Uri.EscapeDataString(searchTerm)}");
+        }
+    }
+}

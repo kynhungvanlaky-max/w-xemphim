@@ -1,0 +1,83 @@
+@namespace WebXemPhim.Client.Components.Common
+
+<a href="@Href" class="brand-logo @GetSizeClass() @Class" aria-label="@AriaLabel">
+    <svg class="brand-emblem" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+        <defs>
+            <!-- CinemaFlow Signature Crimson-Amber Film Gradient -->
+            <linearGradient id="@reelGradId" x1="6" y1="4" x2="42" y2="44" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#FF385C" />
+                <stop offset="50%" stop-color="#E50914" />
+                <stop offset="100%" stop-color="#FF8A00" />
+            </linearGradient>
+
+            <!-- Facet Amber Highlight -->
+            <linearGradient id="@prismGradId" x1="26" y1="16" x2="42" y2="32" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#FFA826" />
+                <stop offset="50%" stop-color="#FF3B53" />
+                <stop offset="100%" stop-color="#E50914" />
+            </linearGradient>
+        </defs>
+
+        <!-- 1. Outer Film Reel C Body -->
+        <path d="M 28 8 C 17 8 8 16 8 24 C 8 32 17 40 28 40 C 31 40 33 39 34 38 L 30 33 C 29 34 28 34.5 26.5 34.5 C 19.5 34.5 14 29.5 14 24 C 14 18.5 19.5 13.5 26.5 13.5 C 28 13.5 29 14 30 15 L 34 10 C 33 9 31 8 28 8 Z"
+              fill="url(#@reelGradId)" />
+
+        <!-- 2. Film Reel Frame Slots / Perforations -->
+        <path d="M 17 11.5 L 19 16.5" stroke="#090A0D" stroke-width="2.2" stroke-linecap="round" />
+        <path d="M 11 18 L 16 20" stroke="#090A0D" stroke-width="2.2" stroke-linecap="round" />
+        <path d="M 11 30 L 16 28" stroke="#090A0D" stroke-width="2.2" stroke-linecap="round" />
+        <path d="M 17 36.5 L 19 31.5" stroke="#090A0D" stroke-width="2.2" stroke-linecap="round" />
+
+        <!-- 3. Faceted Prism End-caps on C -->
+        <path d="M 28 8 L 34 10 L 30 15 L 26.5 13.5 Z" fill="#FFA826" opacity="0.92" />
+        <path d="M 28 40 L 34 38 L 30 33 L 26.5 34.5 Z" fill="#FF5268" opacity="0.92" />
+
+        <!-- 4. The Flow Play Prism (Forward Projector Beam) -->
+        <path d="M 26 15 L 39 24 L 26 24 Z" fill="url(#@prismGradId)" />
+        <path d="M 26 24 L 39 24 L 26 33 Z" fill="url(#@reelGradId)" />
+        <line x1="26" y1="24" x2="39" y2="24" stroke="#FFFFFF" stroke-width="1.2" stroke-opacity="0.9" stroke-linecap="round" />
+
+        <!-- Specular Highlight Dot -->
+        <circle cx="29" cy="24" r="1.8" fill="#FFFFFF" opacity="0.95" />
+    </svg>
+
+    @if (Size != CinemaLogoSize.MarkOnly)
+    {
+        <div class="brand-wordmark">
+            <span class="brand-text">
+                <span class="wordmark-cinema">CINEMA</span><span class="wordmark-flow">FLOW</span>
+            </span>
+            @if (ShowTagline)
+            {
+                <span class="wordmark-tagline">ORIGINAL CINEMA</span>
+            }
+        </div>
+    }
+</a>
+
+@code {
+    public enum CinemaLogoSize
+    {
+        Small,
+        Medium,
+        Large,
+        MarkOnly
+    }
+
+    [Parameter] public CinemaLogoSize Size { get; set; } = CinemaLogoSize.Medium;
+    [Parameter] public string Href { get; set; } = "/";
+    [Parameter] public string AriaLabel { get; set; } = "CinemaFlow - Trang chủ";
+    [Parameter] public bool ShowTagline { get; set; } = false;
+    [Parameter] public string? Class { get; set; }
+
+    private readonly string reelGradId = $"cf-reel-{Guid.NewGuid():N}";
+    private readonly string prismGradId = $"cf-prism-{Guid.NewGuid():N}";
+
+    private string GetSizeClass() => Size switch
+    {
+        CinemaLogoSize.Small => "brand-logo-sm",
+        CinemaLogoSize.Large => "brand-logo-lg",
+        CinemaLogoSize.MarkOnly => "brand-logo-mark-only",
+        _ => "brand-logo-md"
+    };
+}

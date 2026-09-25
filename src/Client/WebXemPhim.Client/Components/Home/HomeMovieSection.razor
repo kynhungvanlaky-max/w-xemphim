@@ -1,0 +1,46 @@
+<section class="home-movie-section" aria-label="@Title">
+    <div class="home-section-heading">
+        <div><h2>@Title</h2><p>@Subtitle</p></div>
+        <a href="@Link">Xem tất cả <CinemaIcon Name="CinemaIconName.ArrowRight" Size="16" /></a>
+    </div>
+    <div class="home-movie-rail @(Landscape ? "home-movie-rail-landscape" : "")" aria-busy="@Loading">
+        @if (Loading)
+        {
+            @for (var i = 0; i < 6; i++)
+            {
+                <div class="home-card-skeleton skeleton" aria-hidden="true"></div>
+            }
+        }
+        else
+        {
+            @foreach (var movie in Movies)
+            {
+                @if (Landscape)
+                {
+                    <a class="home-landscape-card" href="@($"/movie/{movie.Id}")">
+                        <img src="@(string.IsNullOrWhiteSpace(movie.BackdropUrl) ? movie.PosterUrl : movie.BackdropUrl)" alt="" loading="lazy" />
+                        <h3>@movie.Title</h3>
+                        <p>@movie.ReleaseYear <span>@movie.Quality</span> <span>@movie.Rating.ToString("0.0") / 10</span></p>
+                    </a>
+                }
+                else
+                {
+                    <MovieCard Movie="movie" />
+                }
+            }
+        }
+    </div>
+    @if (!Loading && Movies.Count == 0)
+    {
+        <p class="home-empty">Chưa có phim trong mục này. <a href="/explore">Khám phá kho phim</a></p>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string Subtitle { get; set; } = "";
+    [Parameter] public string Link { get; set; } = "/explore";
+    [Parameter] public IReadOnlyList<MovieDto> Movies { get; set; } = [];
+    [Parameter] public bool Landscape { get; set; }
+    [Parameter] public bool Loading { get; set; }
+}

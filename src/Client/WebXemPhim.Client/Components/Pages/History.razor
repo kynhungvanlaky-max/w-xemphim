@@ -1,0 +1,134 @@
+@page "/history"
+@inject AuthState Auth
+@inject IAccountApiClient Api
+@implements IDisposable
+
+<PageTitle>Lịch sử xem - CinemaFlow</PageTitle>
+
+<AccountWorkspace ActiveSection="history"
+                  Eyebrow="Nhật ký điện ảnh"
+                  Title="Lịch sử xem"
+                  Description="Quay lại đúng khoảnh khắc bạn đã dừng và theo dõi hành trình xem phim trên mọi thiết bị.">
+    <section class="account-history-panel" aria-labelledby="history-list-title">
+        @if (!Auth.IsInitialized || isLoading)
+        {
+            <div class="account-history-list" aria-label="Đang tải lịch sử xem" aria-busy="true">
+                @for (var i = 0; i < 4; i++)
+                {
+                    <div class="account-history-skeleton skeleton"></div>
+                }
+            </div>
+        }
+        else if (!Auth.IsAuthenticated)
+        {
+            <div class="account-inline-empty">
+                <CinemaIcon Name="CinemaIconName.Clock" Size="34" />
+                <h2>Lịch sử xem đang chờ bạn</h2>
+                <p>Đăng nhập để đồng bộ tiến độ và tiếp tục phim trên bất kỳ thiết bị nào.</p>
+                <a class="button primary" href="/login?returnUrl=/history">Đăng nhập</a>
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="account-inline-empty" role="alert">
+                <CinemaIcon Name="CinemaIconName.AlertCircle" Size="34" />
+                <h2>Chưa tải được lịch sử</h2>
+                <p>@errorMessage</p>
+                <button type="button" class="button secondary" @onclick="LoadHistoryAsync">Thử lại</button>
+            </div>
+        }
+        else if (items.Count == 0)
+        {
+            <div class="account-inline-empty">
+                <CinemaIcon Name="CinemaIconName.Play" Size="34" />
+                <h2>Chưa có phim đã xem</h2>
+                <p>Chọn một bộ phim, CinemaFlow sẽ lưu vị trí để bạn quay lại thật nhanh.</p>
+                <a class="button primary" href="/explore">Khám phá phim</a>
+            </div>
+        }
+        else
+        {
+            <div class="account-history-summary">
+                <div><strong id="history-list-title">@items.Count tác phẩm gần đây</strong><span>Dữ liệu được sắp theo lần xem mới nhất</span></div>
+                <a href="/watchlist">Mở tủ phim <CinemaIcon Name="CinemaIconName.ArrowRight" Size="15" /></a>
+            </div>
+            <div class="account-history-list">
+                @foreach (var item in items)
+                {
+                    <article class="account-history-item" @key="@($"{item.MovieId}-{item.EpisodeNumber}")">
+                        <a class="account-history-art" href="@WatchUrl(item)">
+                            <img src="@Artwork(item)" alt="Ảnh phim @item.MovieTitle" loading="lazy" />
+                            <span><CinemaIcon Name="CinemaIconName.Play" Size="18" Filled="true" /></span>
+                        </a>
+                        <div class="account-history-copy">
+                            <small>@item.EpisodeTitle · @RelativeTime(item.LastWatchedAt)</small>
+                            <h2><a href="@WatchUrl(item)">@item.MovieTitle</a></h2>
+                            <div class="account-history-progress" aria-label="Đã xem @item.ProgressPercent phần trăm">
+                                <span style="width:@(item.ProgressPercent)%"></span>
+                            </div>
+                            <p>Đã xem @item.ProgressPercent% · Còn khoảng @item.RemainingMinutes phút</p>
+                        </div>
+                        <a class="button secondary account-history-resume" href="@WatchUrl(item)">
+                            <CinemaIcon Name="CinemaIconName.Play" Size="16" Filled="true" />Xem tiếp
+                        </a>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</AccountWorkspace>
+
+@code {
+    private List<WatchProgressDto> items = [];
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override void OnInitialized() => Auth.OnChange += AuthChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Auth.InitializeAsync();
+        await LoadHistoryAsync();
+    }
+
+    private void AuthChanged() => _ = InvokeAsync(LoadHistoryAsync);
+
+    private async Task LoadHistoryAsync()
+    {
+        if (!Auth.IsInitialized) return;
+        isLoading = true;
+        errorMessage = null;
+        try
+        {
+            items = Auth.IsAuthenticated ? await Api.GetContinueWatchingAsync() : [];
+        }
+        catch
+        {
+            items = [];
+            errorMessage = "Không thể kết nối máy chủ. Tiến độ đã lưu của bạn không bị mất.";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string Artwork(WatchProgressDto item) =>
+        string.IsNullOrWhiteSpace(item.BackdropUrl) ? item.PosterUrl : item.BackdropUrl;
+
+    private static string WatchUrl(WatchProgressDto item) => $"/watch/{item.MovieId}?ep={item.EpisodeNumber}";
+
+    private static string RelativeTime(DateTimeOffset watchedAt)
+    {
+        var elapsed = DateTimeOffset.UtcNow - watchedAt.ToUniversalTime();
+        if (elapsed.TotalMinutes < 2) return "Vừa xem";
+        if (elapsed.TotalHours < 1) return $"{Math.Max(2, (int)elapsed.TotalMinutes)} phút trước";
+        if (elapsed.TotalDays < 1) return $"{Math.Max(1, (int)elapsed.TotalHours)} giờ trước";
+        if (elapsed.TotalDays < 7) return $"{Math.Max(1, (int)elapsed.TotalDays)} ngày trước";
+        return watchedAt.ToLocalTime().ToString("dd/MM/yyyy");
+    }
+
+    public void Dispose() => Auth.OnChange -= AuthChanged;
+}

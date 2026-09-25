@@ -1,0 +1,1905 @@
+/* ============================================================
+   ReviewPanel — CinemaFlow Obsidian Theme
+   ============================================================ */
+
+.reviews-section {
+    --r-surface: rgba(18, 22, 30, 0.82);
+    --r-surface-card: rgba(20, 24, 34, 0.75);
+    --r-line: rgba(255, 255, 255, 0.08);
+    --r-text: #f7f4ef;
+    --r-soft: #d8d4cb;
+    --r-muted: rgba(154, 161, 173, 0.8);
+    --r-crimson: #e50914;
+    --r-crimson-2: #b20710;
+    --r-amber: #f59e0b;
+    --r-amber-light: #fbbf24;
+    --r-pill-bg: rgba(255, 255, 255, 0.04);
+    --r-pill-text: rgba(255, 255, 255, 0.75);
+    --r-select-bg: rgba(18, 22, 30, 0.9);
+    --r-select-text: #ffffff;
+    --r-card-bg: rgba(18, 22, 32, 0.75);
+    --r-card-border: rgba(255, 255, 255, 0.08);
+
+    display: grid;
+    gap: clamp(1.4rem, 2.5vw, 2.2rem);
+    color: var(--r-text);
+    width: 100%;
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+
+/* The page-level cinema theme adds a legacy 5rem review offset. The review
+   lounge owns its own rhythm, so keep the section flush with the active tab. */
+.reviews-section {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+}
+
+/* ==========================================================================
+   1. COMMAND CENTER — 3 Card Row
+   ========================================================================== */
+.reviews-command-center {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(1rem, 1.6vw, 1.4rem);
+}
+
+.panel-frame {
+    position: relative;
+    border-radius: 18px;
+    border: 1px solid var(--r-line);
+    background: var(--r-surface);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(16px);
+    overflow: hidden;
+}
+
+/* --- Card 1: Đánh giá cộng đồng --- */
+.review-score-hero {
+    display: grid;
+    grid-template-columns: 1fr 140px;
+    padding: clamp(1.2rem, 2vw, 1.55rem);
+    background:
+        radial-gradient(circle at 85% 20%, rgba(245, 158, 11, 0.12), transparent 45%),
+        linear-gradient(135deg, rgba(22, 26, 36, 0.9), rgba(14, 17, 24, 0.95));
+}
+
+.review-score-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.review-kicker {
+    color: var(--r-text);
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.review-score-lockup {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+    margin: 0.1rem 0;
+}
+
+.review-score-lockup strong {
+    color: var(--r-amber);
+    font-size: clamp(2.8rem, 4.2vw, 3.8rem);
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    line-height: 0.95;
+    text-shadow: 0 0 20px rgba(245, 158, 11, 0.35);
+}
+
+.review-score-lockup span {
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 1.25rem;
+    font-weight: 800;
+}
+
+.review-score-stars {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 1.35rem;
+    line-height: 1;
+}
+
+.star-glyph.filled {
+    color: var(--r-amber);
+    text-shadow: 0 0 8px rgba(245, 158, 11, 0.65);
+}
+
+.star-glyph.empty {
+    color: rgba(255, 255, 255, 0.18);
+}
+
+.review-score-caption {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.65rem;
+    font-size: 0.85rem;
+}
+
+.review-score-caption strong {
+    color: var(--r-text);
+    font-weight: 700;
+}
+
+.caption-dot {
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.caption-positive {
+    color: #10b981;
+    font-weight: 750;
+}
+
+/* Film mark right half */
+.review-film-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background: radial-gradient(circle at 60% 30%, rgba(255, 255, 255, 0.1), transparent 60%);
+    border-left: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 0.5rem;
+}
+
+.review-film-mark::before {
+    content: "🎞️";
+    position: absolute;
+    top: 15%;
+    right: 10%;
+    font-size: 3.5rem;
+    opacity: 0.18;
+    filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.3));
+    pointer-events: none;
+}
+
+.film-mark-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.15rem;
+    z-index: 1;
+}
+
+.film-mark-text span {
+    color: var(--r-muted);
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    line-height: 1.45;
+}
+
+.film-mark-red-line {
+    width: 28px;
+    height: 2px;
+    background: var(--r-crimson);
+    margin-top: 0.45rem;
+    border-radius: 1px;
+}
+
+/* --- Card 2: Cảm xúc khán giả --- */
+.review-sentiment-panel {
+    padding: clamp(1.2rem, 2vw, 1.55rem);
+}
+
+.review-sentiment-panel h3 {
+    margin: 0 0 0.85rem;
+    color: var(--r-text);
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.sentiment-bars {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.sentiment-row {
+    display: grid;
+    grid-template-columns: 24px 80px 1fr 56px;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.sentiment-emoji-face {
+    font-size: 1.15rem;
+    line-height: 1;
+    display: grid;
+    place-items: center;
+}
+
+.sentiment-label {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.sentiment-track {
+    height: 8px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.sentiment-fill {
+    display: block;
+    height: 100%;
+    min-width: 0;
+    border-radius: inherit;
+    transition: width 0.35s ease;
+}
+
+.tier-great,
+.tier-good {
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.tier-mid,
+.tier-low,
+.tier-poor {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.sentiment-count {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.78rem;
+    font-weight: 650;
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* --- Card 3: Viết cảm nhận --- */
+.review-action-panel {
+    padding: clamp(1.2rem, 2vw, 1.55rem);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    background:
+        radial-gradient(circle at 90% 80%, rgba(229, 9, 20, 0.14), transparent 50%),
+        linear-gradient(135deg, rgba(22, 26, 36, 0.9), rgba(14, 17, 24, 0.95));
+}
+
+.action-panel-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    z-index: 1;
+}
+
+.action-panel-title {
+    margin: 0;
+    color: var(--r-text);
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.action-panel-desc {
+    margin: 0;
+    color: var(--r-muted);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    max-width: 32ch;
+}
+
+.action-stars-empty {
+    display: flex;
+    gap: 0.35rem;
+    font-size: 1.55rem;
+    color: var(--r-amber);
+    margin: 0.3rem 0;
+    user-select: none;
+    letter-spacing: 0.1em;
+}
+
+.btn-guest-login-cinema {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    width: 100%;
+    min-height: 42px;
+    border-radius: 999px;
+    padding: 0.65rem 1.2rem;
+    font: inherit;
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: #ffffff;
+    text-decoration: none;
+    background: linear-gradient(135deg, var(--r-crimson), var(--r-crimson-2));
+    box-shadow: 0 10px 24px rgba(229, 9, 20, 0.32);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    cursor: pointer;
+    transition: transform 0.18s, box-shadow 0.18s;
+}
+
+.btn-guest-login-cinema:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 32px rgba(229, 9, 20, 0.45);
+}
+
+.action-guest-subtext {
+    color: var(--r-muted);
+    font-size: 0.74rem;
+    text-align: center;
+    margin-top: 0.2rem;
+}
+
+.action-panel-watermark {
+    position: absolute;
+    right: -10px;
+    bottom: -15px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    opacity: 0.12;
+    pointer-events: none;
+    user-select: none;
+}
+
+.clapper-icon-art {
+    font-size: 3.8rem;
+    transform: rotate(15deg);
+}
+
+.clapper-text-slogan {
+    display: flex;
+    flex-direction: column;
+    text-align: right;
+    font-size: 0.58rem;
+    font-weight: 850;
+    letter-spacing: 0.2em;
+    line-height: 1.35;
+    color: var(--r-muted);
+}
+
+/* ==========================================================================
+   2. COMPOSER — Review Form (Logged In)
+   ========================================================================== */
+.reviews-composer-card {
+    padding: clamp(1.4rem, 2.8vw, 2rem);
+    background: linear-gradient(180deg, rgba(22, 26, 36, 0.88) 0%, rgba(13, 16, 23, 0.96) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(16px);
+    position: relative;
+    overflow: hidden;
+}
+
+.reviews-composer-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(229, 9, 20, 0.6), rgba(245, 158, 11, 0.7), transparent);
+    pointer-events: none;
+}
+
+.composer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.075);
+}
+
+.composer-user-info {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+}
+
+.composer-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 1.05rem;
+    font-weight: 850;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg, var(--r-crimson), var(--r-crimson-2));
+    box-shadow: 0 8px 20px rgba(229, 9, 20, 0.35);
+    flex-shrink: 0;
+}
+
+.composer-user-meta {
+    display: grid;
+    gap: 0.15rem;
+}
+
+.composer-name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.composer-name-row strong {
+    color: var(--r-text);
+    font-size: 0.95rem;
+    font-weight: 800;
+}
+
+.composer-tag-vip {
+    padding: 0.2rem 0.45rem;
+    color: #1b1205;
+    background: linear-gradient(135deg, var(--r-amber), #ffe0a3);
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 850;
+    line-height: 1;
+}
+
+.composer-user-meta > span {
+    color: var(--r-muted);
+    font-size: 0.78rem;
+}
+
+.composer-mode-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.48rem 0.85rem;
+    color: var(--r-soft);
+    border: 1px solid var(--r-line);
+    background: rgba(255, 255, 255, 0.045);
+    border-radius: 999px;
+    font-size: 0.76rem;
+    font-weight: 750;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* --- Rating Hub --- */
+.cinema-rating-composer-body,
+.cinema-rating-hub {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.rating-hub-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.85rem;
+}
+
+.rating-prompt-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--r-text);
+    font-size: 0.95rem;
+    font-weight: 750;
+}
+
+.rating-spark-icon {
+    color: var(--r-amber);
+    font-size: 1.15rem;
+}
+
+.score-sentiment-pill,
+.rating-hero-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 0.95rem;
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(245, 158, 11, 0.08));
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: var(--r-amber-light);
+    font-size: 0.82rem;
+    box-shadow: 0 4px 16px rgba(245, 158, 11, 0.12);
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.score-sentiment-pill .pill-label {
+    font-weight: 850;
+}
+
+.score-sentiment-pill .sentiment-score-badge,
+.score-digit {
+    color: #fde68a;
+    font-weight: 700;
+}
+
+/* --- Stars Ribbon: individual star boxes like the mockup --- */
+.cinema-stars-ribbon-container {
+    background: rgba(8, 10, 15, 0.52);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    padding: 1.15rem 1.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.cinema-stars-ribbon,
+.cinema-stars-track {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 0.35rem;
+    width: 100%;
+}
+
+.cinema-star-item,
+.cinema-star-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 0.55rem 0.25rem;
+    cursor: pointer;
+    border-radius: 10px;
+    transition: transform 0.18s ease, background 0.18s, border-color 0.18s, box-shadow 0.18s;
+    outline: none;
+    min-height: 58px;
+}
+
+.star-icon-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.2);
+    transition: color 0.18s, transform 0.18s, filter 0.18s;
+}
+
+.star-number {
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.35);
+    transition: color 0.18s;
+}
+
+.cinema-star-item:hover,
+.cinema-star-btn:hover {
+    transform: translateY(-3px);
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.2);
+}
+
+.cinema-star-item:hover .star-icon-wrap,
+.cinema-star-btn:hover .star-icon-wrap {
+    transform: scale(1.22);
+}
+
+/* Active (filled up to hover/selected) */
+.cinema-star-item.active,
+.cinema-star-btn.active {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+.cinema-star-item.active .star-icon-wrap,
+.cinema-star-btn.active .star-icon-wrap {
+    color: var(--r-amber);
+    filter: drop-shadow(0 0 9px rgba(245, 158, 11, 0.65));
+}
+
+.cinema-star-item.active .star-number,
+.cinema-star-btn.active .star-number {
+    color: #ffd58b;
+    font-weight: 850;
+}
+
+/* Selected (the exact chosen score) */
+.cinema-star-item.selected,
+.cinema-star-btn.selected {
+    background: linear-gradient(180deg, rgba(245, 158, 11, 0.28) 0%, rgba(245, 158, 11, 0.14) 100%);
+    border-color: var(--r-amber);
+    box-shadow: 0 4px 16px rgba(245, 158, 11, 0.25),
+                inset 0 1px 0 rgba(245, 158, 11, 0.2);
+}
+
+.cinema-star-item.selected .star-icon-wrap,
+.cinema-star-btn.selected .star-icon-wrap {
+    color: var(--r-amber-light);
+    filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.85));
+}
+
+.cinema-star-item.selected .star-number,
+.cinema-star-btn.selected .star-number {
+    color: #fff;
+    font-weight: 900;
+}
+
+.rating-track-hint {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--r-muted);
+    font-size: 0.74rem;
+    font-weight: 600;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    padding-top: 0.6rem;
+}
+
+.rating-track-hint .hint-low { color: #e57373; }
+.rating-track-hint .hint-high { color: #81c784; }
+
+/* --- Comment Field --- */
+.composer-comment-field {
+    margin-top: 0.2rem;
+}
+
+.comment-field-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    margin-bottom: 0.65rem;
+}
+
+.field-label {
+    display: block;
+    color: var(--r-soft);
+    font-size: 0.85rem;
+    font-weight: 800;
+}
+
+.quick-tags-wrap {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+.quick-tags-label {
+    font-size: 0.76rem;
+    color: var(--r-muted);
+    font-weight: 650;
+}
+
+.quick-chip {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+    color: var(--r-soft);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 0.38rem 0.75rem;
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.18s;
+}
+
+.quick-chip:hover {
+    transform: translateY(-1px);
+    color: #fff;
+    border-color: rgba(229, 9, 20, 0.5);
+    background: rgba(229, 9, 20, 0.14);
+}
+
+.textarea-shell {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 16px;
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.textarea-shell:focus-within {
+    border-color: rgba(229, 9, 20, 0.45);
+    box-shadow: 0 0 0 4px rgba(229, 9, 20, 0.08);
+}
+
+.textarea-shell ::deep textarea,
+.textarea-shell textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 1rem 1.2rem;
+    box-sizing: border-box;
+    color: var(--r-text);
+    background: transparent;
+    border: 0;
+    outline: 0;
+    resize: vertical;
+    font: inherit;
+    font-size: 0.92rem;
+    line-height: 1.6;
+}
+
+.textarea-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.8rem;
+    padding: 0.65rem 1rem;
+    color: var(--r-muted);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.02);
+    font-size: 0.74rem;
+}
+
+/* --- Action Buttons Row --- */
+.composer-actions-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.composer-btns-left {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.btn-submit-review {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 42px;
+    border-radius: 999px;
+    padding: 0.65rem 1.4rem;
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 850;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: linear-gradient(135deg, var(--r-crimson), var(--r-crimson-2));
+    box-shadow: 0 12px 28px rgba(229, 9, 20, 0.28);
+    cursor: pointer;
+    transition: transform 0.18s, box-shadow 0.18s;
+}
+
+.btn-submit-review:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 36px rgba(229, 9, 20, 0.4);
+}
+
+.btn-delete-review {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 42px;
+    border-radius: 999px;
+    padding: 0.65rem 1.1rem;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 750;
+    color: #ff9aa3;
+    border: 1px solid rgba(229, 9, 20, 0.3);
+    background: rgba(229, 9, 20, 0.08);
+    cursor: pointer;
+    transition: all 0.18s;
+}
+
+.btn-delete-review:hover:not(:disabled) {
+    background: rgba(229, 9, 20, 0.16);
+    border-color: rgba(229, 9, 20, 0.5);
+}
+
+.composer-status-toast {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.82rem;
+    font-weight: 750;
+    padding: 0.45rem 0.85rem;
+    border-radius: 999px;
+}
+
+.composer-status-toast.success {
+    color: #81c784;
+    background: rgba(129, 199, 132, 0.12);
+}
+
+.composer-status-toast.error {
+    color: #ff8a80;
+    background: rgba(255, 138, 128, 0.12);
+}
+
+/* ==========================================================================
+   3. TWO COLUMN LAYOUT — Reviews Feed + Sidebar Quote
+   ========================================================================== */
+.reviews-two-cols-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 260px;
+    gap: clamp(1.8rem, 3.2vw, 3.5rem);
+    align-items: start;
+    margin-top: 0.8rem;
+}
+
+/* --- Left Column: Feed --- */
+.reviews-feed-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+    min-width: 0;
+}
+
+.reviews-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding-bottom: 0.6rem;
+}
+
+.toolbar-title-wrap {
+    flex-shrink: 0;
+}
+
+.toolbar-heading {
+    margin: 0;
+    font-size: clamp(1.4rem, 2.2vw, 1.85rem);
+    font-weight: 850;
+    color: var(--r-text);
+    letter-spacing: -0.025em;
+}
+
+.toolbar-controls {
+    display: flex;
+    align-items: center;
+    gap: 1.2rem;
+    flex-wrap: wrap;
+}
+
+.toolbar-filter-pills {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+}
+
+.filter-pill-cinema {
+    background: var(--r-pill-bg, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--r-line);
+    border-radius: 999px;
+    padding: 0.52rem 1.15rem;
+    color: var(--r-pill-text, rgba(255, 255, 255, 0.75));
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 750;
+    cursor: pointer;
+    transition: all 0.18s;
+}
+
+.filter-pill-cinema:hover {
+    color: var(--r-text);
+    border-color: var(--r-crimson);
+}
+
+.filter-pill-cinema.active {
+    background: var(--r-crimson);
+    border-color: var(--r-crimson);
+    color: #ffffff;
+    box-shadow: 0 6px 18px rgba(229, 9, 20, 0.35);
+}
+
+.toolbar-sort-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--r-muted);
+    font-size: 0.85rem;
+    font-weight: 650;
+}
+
+.sort-select-cinema {
+    background: var(--r-select-bg, rgba(18, 22, 30, 0.9));
+    border: 1px solid var(--r-line);
+    color: var(--r-select-text, #ffffff);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 750;
+    padding: 0.42rem 0.85rem;
+    border-radius: 8px;
+    outline: none;
+    cursor: pointer;
+}
+
+.sort-label {
+    white-space: nowrap;
+}
+
+/* --- Review Card --- */
+.reviews-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+}
+
+.review-card-cinema {
+    display: flex;
+    align-items: flex-start;
+    gap: clamp(1rem, 2vw, 1.6rem);
+    padding: clamp(1.15rem, 2vw, 1.45rem) clamp(1.2rem, 2.2vw, 1.8rem);
+    background: var(--r-card-bg, rgba(18, 22, 32, 0.75));
+    border: 1px solid var(--r-card-border, rgba(255, 255, 255, 0.08));
+    border-radius: 18px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(12px);
+    transition: border-color 0.2s, transform 0.2s;
+}
+
+.review-card-cinema:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+    transform: translateY(-2px);
+}
+
+.review-card-cinema.is-own {
+    border-color: rgba(245, 158, 11, 0.18);
+    background: rgba(245, 158, 11, 0.03);
+}
+
+/* Teardrop score badge */
+.teardrop-score-badge {
+    width: 62px;
+    height: 62px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border: 2px solid var(--r-amber);
+    border-radius: 50% 50% 50% 6px;
+    background: radial-gradient(circle, rgba(245, 158, 11, 0.14) 0%, rgba(245, 158, 11, 0.04) 100%);
+    box-shadow: 0 0 16px rgba(245, 158, 11, 0.2),
+                inset 0 0 8px rgba(245, 158, 11, 0.15);
+    margin-top: 0.2rem;
+}
+
+.teardrop-score-badge strong {
+    color: var(--r-amber);
+    font-size: 1.4rem;
+    font-weight: 850;
+    letter-spacing: -0.02em;
+    line-height: 1;
+}
+
+.review-card-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+
+.review-card-topbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.8rem;
+}
+
+.reviewer-meta-group {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    min-width: 0;
+}
+
+.reviewer-avatar-img {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    background: #151821;
+    flex-shrink: 0;
+}
+
+.reviewer-names {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.name-badge-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.reviewer-display-name {
+    color: var(--r-text);
+    font-size: 0.96rem;
+    font-weight: 800;
+}
+
+.badge-own-review {
+    padding: 0.18rem 0.5rem;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 750;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.review-time-ago {
+    color: var(--r-muted);
+    font-size: 0.78rem;
+}
+
+.btn-more-options {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 1.15rem;
+    cursor: pointer;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    line-height: 1;
+    transition: color 0.18s;
+    flex-shrink: 0;
+}
+
+.btn-more-options:hover {
+    color: #ffffff;
+}
+
+.review-comment-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+
+.review-text-paragraph {
+    margin: 0;
+    color: var(--r-soft);
+    font-size: 0.94rem;
+    line-height: 1.6;
+}
+
+.review-recommend-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    width: fit-content;
+    padding: 0.36rem 0.85rem;
+    border-radius: 999px;
+    background: rgba(245, 158, 11, 0.09);
+    border: 1px solid rgba(245, 158, 11, 0.26);
+    color: #ffd58b;
+    font-size: 0.78rem;
+    font-weight: 750;
+}
+
+.recommend-thumb {
+    font-size: 0.85rem;
+}
+
+/* --- Right Column: Sidebar Quote --- */
+.reviews-sidebar-quote {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 3.5rem;
+    padding: 1rem 0;
+    user-select: none;
+    position: sticky;
+    top: 2rem;
+}
+
+.sidebar-quote-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.quote-double-symbol {
+    font-family: Georgia, serif;
+    font-size: 2.5rem;
+    line-height: 0.8;
+    color: var(--r-line);
+}
+
+.quote-cinema-text {
+    margin: 0;
+    color: var(--r-soft);
+    font-size: 0.78rem;
+    font-weight: 750;
+    letter-spacing: 0.18em;
+    line-height: 1.85;
+    text-transform: uppercase;
+}
+
+.quote-accent-bar {
+    width: 32px;
+    height: 2px;
+    background: var(--r-crimson);
+    border-radius: 1px;
+    margin-top: 0.4rem;
+}
+
+.sidebar-cinema-bottom-brand {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    position: relative;
+    padding-top: 2rem;
+}
+
+.cinema-seats-art {
+    height: 60px;
+    background: radial-gradient(circle at 50% 100%, rgba(229, 9, 20, 0.25), transparent 70%);
+    border-radius: 12px;
+    margin-bottom: 0.5rem;
+    opacity: 0.8;
+}
+
+.brand-sub-title {
+    color: var(--r-muted);
+    font-size: 0.72rem;
+    font-weight: 850;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.brand-sub-desc {
+    margin: 0;
+    color: var(--r-muted);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    line-height: 1.5;
+    text-transform: uppercase;
+}
+
+/* ==========================================================================
+   4. EMPTY STATE
+   ========================================================================== */
+.reviews-empty-state {
+    padding: 3rem 1.5rem;
+    text-align: center;
+    border-radius: 18px;
+    border: 1px dashed rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.empty-icon-circle {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.reviews-empty-state h4 {
+    margin: 0.8rem 0 0.4rem;
+    font-size: 1.15rem;
+    color: #fff;
+}
+
+.reviews-empty-state p {
+    margin: 0;
+    color: var(--r-muted);
+    font-size: 0.88rem;
+}
+
+.btn-reset-filter {
+    margin-top: 1rem;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    color: #fff;
+    padding: 0.5rem 1.2rem;
+    border-radius: 999px;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 750;
+    cursor: pointer;
+    transition: all 0.18s;
+}
+
+.btn-reset-filter:hover {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+/* Blazor ValidationMessage styling */
+::deep .validation-message {
+    color: #ff8a80;
+    font-size: 0.78rem;
+    margin-top: 0.3rem;
+    font-weight: 600;
+}
+
+/* ==========================================================================
+   5. REVIEW UX — trạng thái tải, biểu đồ thật, avatar chữ cái, menu của bạn
+   ========================================================================== */
+.reviews-skeleton {
+    display: grid;
+    gap: 1rem;
+}
+
+.reviews-loading-note {
+    color: var(--r-muted);
+    font-size: 0.86rem;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+}
+
+.reviews-skeleton-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(1rem, 1.6vw, 1.4rem);
+}
+
+.review-skeleton-card {
+    display: grid;
+    align-content: start;
+    gap: 0.85rem;
+    min-height: 190px;
+    padding: clamp(1.2rem, 2vw, 1.55rem);
+}
+
+.skeleton-bar {
+    height: 12px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05));
+    background-size: 220% 100%;
+    animation: reviewSkeletonSweep 1.5s ease-in-out infinite;
+}
+
+.skeleton-bar.short { width: 32%; }
+.skeleton-bar.tall { width: 58%; height: 38px; border-radius: 10px; }
+.skeleton-bar.wide { width: 78%; }
+
+@keyframes reviewSkeletonSweep {
+    from { background-position: 120% 0; }
+    to { background-position: -120% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .skeleton-bar { animation: none; }
+}
+
+.reviews-load-error {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 1.25rem 1.4rem;
+    border-radius: 18px;
+    border: 1px solid rgba(229, 9, 20, 0.35);
+    background: linear-gradient(135deg, rgba(38, 16, 20, 0.9), rgba(18, 20, 26, 0.92));
+    color: var(--r-text);
+}
+
+.reviews-load-error h3 { margin: 0; font-size: 1.05rem; }
+.reviews-load-error p { margin: 0.25rem 0 0; color: var(--r-muted); font-size: 0.85rem; }
+
+.load-error-copy { flex: 1; min-width: 200px; }
+
+.btn-retry-reviews {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.55rem 1.1rem;
+    border-radius: 999px;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 750;
+    transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.btn-retry-reviews:hover {
+    background: rgba(255, 255, 255, 0.13);
+    transform: translateY(-1px);
+}
+
+.review-score-lockup.is-empty strong {
+    color: rgba(255, 255, 255, 0.42);
+    text-shadow: none;
+}
+
+.review-score-caption.is-empty { color: var(--r-muted); }
+.review-score-caption.is-empty strong { color: rgba(255, 255, 255, 0.82); }
+
+.review-distribution {
+    margin-top: 0.9rem;
+    display: grid;
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+    gap: 0.28rem;
+    align-items: end;
+}
+
+.dist-column {
+    display: grid;
+    gap: 0.25rem;
+    justify-items: center;
+    align-content: end;
+    padding: 0.2rem 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    color: var(--r-muted);
+    font: inherit;
+    transition: transform 0.16s ease;
+}
+
+.dist-column:hover { transform: translateY(-2px); }
+
+.dist-bar {
+    display: flex;
+    align-items: flex-end;
+    width: 100%;
+    height: 42px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+}
+
+.dist-bar-fill {
+    display: block;
+    width: 100%;
+    border-radius: 4px;
+    background: linear-gradient(180deg, var(--r-amber-light), var(--r-amber));
+    transition: height 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dist-label {
+    font-size: 0.62rem;
+    font-weight: 750;
+    letter-spacing: 0.02em;
+}
+
+.dist-column.is-active .dist-bar {
+    background: rgba(245, 158, 11, 0.18);
+    box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.55);
+}
+
+.dist-column.is-active .dist-label { color: var(--r-amber-light); }
+
+.dist-column:focus-visible {
+    outline: 2px solid rgba(245, 158, 11, 0.7);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+.sentiment-row.is-interactive {
+    width: 100%;
+    border: 0;
+    background: none;
+    padding: 0.3rem 0.4rem;
+    border-radius: 10px;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    transition: background 0.18s ease;
+}
+
+.sentiment-row.is-interactive:hover { background: rgba(255, 255, 255, 0.05); }
+
+.sentiment-row.is-interactive.is-active {
+    background: rgba(245, 158, 11, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.4);
+}
+
+.sentiment-row.is-interactive.is-active .sentiment-label { color: #fff; }
+
+.sentiment-row.is-interactive:focus-visible {
+    outline: 2px solid rgba(245, 158, 11, 0.65);
+    outline-offset: 1px;
+}
+
+.sentiment-fill.tier-mid { background: linear-gradient(90deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.18)); }
+.sentiment-fill.tier-low { background: linear-gradient(90deg, rgba(229, 9, 20, 0.75), rgba(229, 9, 20, 0.38)); }
+.sentiment-fill.tier-poor { background: linear-gradient(90deg, #b20710, #e50914); }
+
+.sentiment-empty-note,
+.sentiment-hint {
+    margin: 0.85rem 0 0;
+    color: var(--r-muted);
+    font-size: 0.78rem;
+    line-height: 1.55;
+}
+
+.toolbar-count-note {
+    margin: 0.45rem 0 0;
+    color: var(--r-muted);
+    font-size: 0.8rem;
+}
+
+.active-filter-chip {
+    margin-top: 0.6rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    cursor: pointer;
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    background: rgba(245, 158, 11, 0.12);
+    color: var(--r-amber-light);
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 750;
+}
+
+.active-filter-chip:hover { background: rgba(245, 158, 11, 0.2); }
+.chip-clear { font-size: 0.72rem; opacity: 0.85; }
+
+.action-star { font-size: 1.35rem; line-height: 1; }
+.action-star.is-empty { color: rgba(255, 255, 255, 0.22); }
+.action-star.is-filled { color: var(--r-amber); text-shadow: 0 0 10px rgba(245, 158, 11, 0.5); }
+
+.action-own-score { margin: 0.7rem 0 0; color: var(--r-soft); font-size: 0.84rem; }
+.action-own-score strong { color: var(--r-amber-light); }
+
+.reviewer-avatar-img.reviewer-avatar-initials {
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg, hsl(var(--avatar-hue, 12) 62% 42%), hsl(calc(var(--avatar-hue, 12) + 26) 58% 20%));
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 850;
+    letter-spacing: 0.03em;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.review-tier-label {
+    padding: 0.14rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--r-soft);
+    white-space: nowrap;
+}
+
+.review-tier-label.is-positive {
+    border-color: rgba(245, 158, 11, 0.42);
+    background: rgba(245, 158, 11, 0.12);
+    color: var(--r-amber-light);
+}
+
+.review-time-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+.review-edited-chip {
+    font-size: 0.66rem;
+    font-weight: 700;
+    color: var(--r-muted);
+    border-left: 1px solid rgba(255, 255, 255, 0.14);
+    padding-left: 0.45rem;
+}
+
+.review-menu-wrap { position: relative; }
+
+.review-menu {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    right: 0;
+    z-index: 6;
+    min-width: 214px;
+    display: grid;
+    gap: 0.15rem;
+    padding: 0.4rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(16, 19, 26, 0.98);
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.5);
+}
+
+.review-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem 0.65rem;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--r-soft);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.review-menu-item:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.review-menu-item.danger { color: #ff8b93; }
+.review-menu-item.danger:hover { background: rgba(229, 9, 20, 0.16); }
+
+.review-confirm-row,
+.composer-confirm-row {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+    padding: 0.5rem 0.65rem;
+    border-radius: 10px;
+    background: rgba(229, 9, 20, 0.12);
+    border: 1px solid rgba(229, 9, 20, 0.35);
+    color: #ffd7da;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.btn-confirm-delete,
+.btn-cancel-delete {
+    padding: 0.32rem 0.7rem;
+    border-radius: 999px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 800;
+    border: 1px solid transparent;
+}
+
+.btn-confirm-delete {
+    background: var(--r-crimson);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.16);
+}
+
+.btn-confirm-delete:hover { background: #ff2b36; }
+.btn-confirm-delete:disabled { opacity: 0.6; cursor: progress; }
+
+.btn-cancel-delete {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.16);
+}
+
+.btn-cancel-delete:hover { background: rgba(255, 255, 255, 0.15); }
+
+.reviews-load-more {
+    margin-top: 1.35rem;
+    display: grid;
+    justify-items: center;
+    gap: 0.5rem;
+}
+
+.btn-load-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.35rem;
+    border-radius: 999px;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 780;
+    transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.btn-load-more:hover { background: rgba(255, 255, 255, 0.12); transform: translateY(-1px); }
+
+.load-more-note { color: var(--r-muted); font-size: 0.76rem; }
+
+.comment-counter.is-near-limit { color: #ffb4a2; font-weight: 800; }
+
+@media (max-width: 1080px) {
+    .reviews-skeleton-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+    .review-distribution { gap: 0.18rem; }
+    .dist-label { font-size: 0.56rem; }
+    .review-menu { left: 0; right: auto; }
+}
+
+/* ==========================================================================
+   6. INTERACTIVE ENHANCEMENTS & SEARCH
+   ========================================================================== */
+.active-chips-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.45rem;
+}
+
+.search-chip {
+    border-color: rgba(229, 9, 20, 0.45);
+    background: rgba(229, 9, 20, 0.12);
+    color: #ff9aa3;
+}
+
+.toolbar-search-box {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.42rem 0.85rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--r-line);
+    border-radius: 999px;
+    color: var(--r-muted);
+    transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
+}
+
+.toolbar-search-box:focus-within {
+    border-color: var(--r-amber);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--r-amber);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
+}
+
+.search-reviews-input {
+    background: transparent;
+    border: none;
+    outline: none;
+    font: inherit;
+    font-size: 0.82rem;
+    color: var(--r-text);
+    width: 170px;
+}
+
+.search-reviews-input::placeholder {
+    color: var(--r-muted);
+}
+
+.btn-clear-search {
+    background: transparent;
+    border: none;
+    color: var(--r-muted);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0 0.2rem;
+    line-height: 1;
+    transition: color 0.15s;
+}
+
+.btn-clear-search:hover {
+    color: #ffffff;
+}
+
+.btn-toggle-expand {
+    background: none;
+    border: none;
+    color: var(--r-amber-light);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 750;
+    cursor: pointer;
+    padding: 0 0.3rem;
+    margin-left: 0.2rem;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    transition: color 0.15s;
+}
+
+.btn-toggle-expand:hover {
+    color: #ffffff;
+}
+
+.review-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 0.4rem;
+    padding-top: 0.65rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.review-card-tags {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.review-consider-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    width: fit-content;
+    padding: 0.36rem 0.85rem;
+    border-radius: 999px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.28);
+    color: #fca5a5;
+    font-size: 0.78rem;
+    font-weight: 750;
+}
+
+.consider-icon {
+    font-size: 0.82rem;
+}
+
+.btn-helpful {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.36rem 0.85rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    color: var(--r-muted);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 750;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+.btn-helpful:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--r-text);
+    border-color: rgba(255, 255, 255, 0.18);
+    transform: translateY(-1px);
+}
+
+.btn-helpful.is-voted {
+    background: rgba(245, 158, 11, 0.14);
+    border-color: rgba(245, 158, 11, 0.45);
+    color: var(--r-amber-light);
+    box-shadow: 0 2px 10px rgba(245, 158, 11, 0.15);
+}
+
+.helpful-count {
+    font-size: 0.76rem;
+    font-weight: 800;
+}
+
+/* ==========================================================================
+   7. RESPONSIVE ARCHITECTURE
+   ========================================================================== */
+@media (min-width: 1081px) {
+    .reviews-section {
+        display: flex;
+        flex-direction: column;
+        gap: clamp(1.6rem, 2.8vw, 2.4rem);
+        width: 100%;
+    }
+
+    .reviews-command-center {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: clamp(1.1rem, 1.8vw, 1.5rem);
+        align-items: stretch;
+        width: 100%;
+    }
+
+    .review-score-hero,
+    .review-sentiment-panel,
+    .review-action-panel {
+        height: 100%;
+    }
+
+    .reviews-two-cols-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 280px;
+        gap: clamp(1.8rem, 3.2vw, 3rem);
+        align-items: start;
+        width: 100%;
+    }
+
+    .reviews-sidebar-quote {
+        position: sticky;
+        top: 90px;
+        display: flex;
+    }
+}
+
+@media (max-width: 1080px) {
+    .reviews-section {
+        display: block;
+    }
+
+    .reviews-command-center {
+        grid-template-columns: 1fr;
+        gap: 1.25rem;
+    }
+
+    .review-score-hero,
+    .review-sentiment-panel,
+    .review-action-panel {
+        border-radius: 16px;
+    }
+
+    .reviews-two-cols-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .reviews-sidebar-quote {
+        display: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .cinema-stars-ribbon-container {
+        padding: 0.95rem 0.8rem;
+    }
+    .cinema-stars-ribbon,
+    .cinema-stars-track {
+        display: flex;
+        overflow-x: auto;
+        padding-bottom: 0.35rem;
+        scrollbar-width: thin;
+        scroll-snap-type: x proximity;
+        gap: 0.2rem;
+    }
+    .cinema-star-item,
+    .cinema-star-btn {
+        flex: 0 0 52px;
+        scroll-snap-align: start;
+    }
+    .quick-tags-wrap {
+        justify-content: flex-start;
+    }
+    .reviews-toolbar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    .toolbar-controls {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+    }
+    .toolbar-search-box {
+        width: 100%;
+    }
+    .search-reviews-input {
+        width: 100%;
+    }
+    .toolbar-sort-wrap {
+        width: 100%;
+        justify-content: space-between;
+    }
+    .review-card-cinema {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .review-score-hero {
+        grid-template-columns: 1fr;
+    }
+    .review-film-mark {
+        display: none;
+    }
+    .composer-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .comment-field-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .review-distribution { gap: 0.18rem; }
+    .dist-label { font-size: 0.56rem; }
+    .review-menu { left: 0; right: auto; }
+}

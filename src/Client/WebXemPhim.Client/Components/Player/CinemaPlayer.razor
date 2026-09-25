@@ -1,0 +1,306 @@
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Client.Components.Icons
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="player-container" @ref="containerRef" tabindex="0">
+    <!-- Ambient Backlight: Ánh sáng hào quang rạp chiếu tương phản -->
+
+    <div class="player-video-wrapper">
+        <video @ref="videoRef"
+               class="player-video"
+               autoplay="@AutoPlay"
+               src="@ActiveStreamUrl"
+               @onended="OnEnded"
+               @onerror="() => mediaFailed = true"
+               @onloadedmetadata="MetadataLoaded"
+               aria-label="@CurrentEpisodeTitle"
+               poster="@PosterUrl"
+               playsinline
+               preload="metadata">
+            Trình duyệt của bạn không hỗ trợ phát video HTML5.
+        </video>
+
+        <!-- Simple Cinema Buffering Spinner -->
+        <div class="cp-buffering-spinner" aria-label="Đang tải..." role="status" aria-hidden="true">
+            <div class="cp-spinner-ring"></div>
+        </div>
+
+        <!-- Center Action Indicators (Play, Pause, Rewind 10s, Forward 10s) -->
+        <div class="cp-center-pulse" aria-hidden="true">
+            <div class="cp-pulse-action cp-action-play">
+                <div class="cp-center-badge">
+                    <svg class="pulse-svg pulse-icon-play" viewBox="0 0 24 24" width="30" height="30" fill="currentColor">
+                        <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z" />
+                    </svg>
+                </div>
+            </div>
+            <div class="cp-pulse-action cp-action-pause">
+                <div class="cp-center-badge">
+                    <svg class="pulse-svg pulse-icon-pause" viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
+                        <rect x="5.5" y="4" width="4.5" height="16" rx="1.5" />
+                        <rect x="14" y="4" width="4.5" height="16" rx="1.5" />
+                    </svg>
+                </div>
+            </div>
+            <div class="cp-pulse-action cp-action-rewind">
+                <div class="cp-pill-badge">
+                    <svg class="pulse-svg pulse-icon-rewind" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 4v6h6" />
+                        <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                    </svg>
+                    <span class="cp-seek-tag">-10s</span>
+                </div>
+            </div>
+            <div class="cp-pulse-action cp-action-forward">
+                <div class="cp-pill-badge">
+                    <span class="cp-seek-tag">+10s</span>
+                    <svg class="pulse-svg pulse-icon-forward" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M23 4v6h-6" />
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Custom Cinema Controls Bar -->
+        <div class="cinema-controls" aria-label="Bảng điều khiển video">
+            <!-- Progress scrubber bar -->
+            <div class="cp-progress-container">
+                <div class="cp-progress-track" role="slider" tabindex="0" aria-label="Vị trí phát" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div class="cp-progress-buffered"></div>
+                    <div class="cp-progress-played"></div>
+                    <div class="cp-progress-handle"></div>
+                    <div class="cp-progress-tooltip">00:00</div>
+                </div>
+            </div>
+
+            <!-- Bottom Toolbar Controls -->
+            <div class="cp-toolbar">
+                <div class="cp-toolbar-left">
+                    <!-- Play / Pause Button -->
+                    <button type="button" class="cp-control-btn cp-play-btn" title="Phát / Tạm dừng (Phím cách)">
+                        <svg class="cp-play-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                            <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z" />
+                        </svg>
+                        <svg class="cp-pause-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" style="display: none;">
+                            <rect x="5.5" y="4" width="4.5" height="16" rx="2" />
+                            <rect x="14" y="4" width="4.5" height="16" rx="2" />
+                        </svg>
+                    </button>
+
+                    <!-- Tua lùi 10s -->
+                    <button type="button" class="cp-control-btn cp-rewind-btn" title="Lùi 10 giây (←)">
+                        <CinemaIcon Name="CinemaIconName.Rewind10" Size="19" />
+                    </button>
+
+                    <!-- Tua tới 10s -->
+                    <button type="button" class="cp-control-btn cp-forward-btn" title="Tới 10 giây (→)">
+                        <CinemaIcon Name="CinemaIconName.Forward10" Size="19" />
+                    </button>
+
+                    <!-- Âm lượng -->
+                    <div class="cp-volume-group">
+                        <button type="button" class="cp-control-btn cp-volume-btn" title="Tắt / Bật tiếng (M)">
+                            <CinemaIcon Name="CinemaIconName.Volume" Size="18" Class="cp-vol-icon" />
+                            <CinemaIcon Name="CinemaIconName.VolumeMute" Size="18" Class="cp-mute-icon" style="display: none;" />
+                        </button>
+                        <input type="range" class="cp-volume-slider" min="0" max="1" step="0.05" value="1" title="Âm lượng" />
+                    </div>
+
+                    <!-- Thời gian phát -->
+                    <div class="cp-time-display">00:00 / 00:00</div>
+                </div>
+
+                <div class="cp-toolbar-right">
+                    <!-- Đổi chất lượng video ngay trong trình phát -->
+                    <div class="cp-quality-selector @(isQualityMenuOpen ? "open" : "")">
+                        <button type="button" 
+                                class="cp-quality-btn" 
+                                title="Đổi chất lượng video (Hiện tại: @QualityLabel)"
+                                aria-label="Đổi chất lượng video"
+                                aria-haspopup="true"
+                                aria-expanded="@isQualityMenuOpen"
+                                @onclick="ToggleQualityMenu"
+                                @onclick:stopPropagation="true">
+                            <span class="cp-q-chip">@GetShortBadge(QualityLabel)</span>
+                            <span class="cp-q-text">@QualityLabel</span>
+                            <svg class="cp-q-arrow @(isQualityMenuOpen ? "rotated" : "")" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                                <path d="m6 9 6 6 6-6" />
+                            </svg>
+                        </button>
+
+                        @if (isQualityMenuOpen && AvailableQualities != null && AvailableQualities.Count > 0)
+                        {
+                            <div class="cp-quality-dropdown" @onclick:stopPropagation="true" role="menu" aria-label="Danh sách chất lượng">
+                                <div class="cp-qd-header">
+                                    <CinemaIcon Name="CinemaIconName.Settings" Size="13" />
+                                    <span>Chọn chất lượng</span>
+                                </div>
+                                <div class="cp-qd-options">
+                                    @foreach (var q in AvailableQualities)
+                                    {
+                                        var isSelected = string.Equals(q, QualityLabel, StringComparison.OrdinalIgnoreCase);
+                                        var badge = GetShortBadge(q);
+                                        <button type="button" 
+                                                class="cp-qd-option @(isSelected ? "selected" : "")"
+                                                role="menuitem"
+                                                @onclick="() => ChooseQuality(q)">
+                                            <span class="cp-qd-badge res-@badge.ToLowerInvariant()">@badge</span>
+                                            <span class="cp-qd-name">@q</span>
+                                            @if (isSelected)
+                                            {
+                                                <CinemaIcon Name="CinemaIconName.Check" Size="13" Class="cp-qd-check" />
+                                            }
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Picture in Picture -->
+                    <button type="button" class="cp-control-btn cp-pip-btn" title="Thu nhỏ hình trong hình (PiP)">
+                        <CinemaIcon Name="CinemaIconName.Eye" Size="18" />
+                    </button>
+
+                    <!-- Toàn màn hình -->
+                    <button type="button" class="cp-control-btn cp-fullscreen-btn" title="Toàn màn hình (F)">
+                        <CinemaIcon Name="CinemaIconName.Maximize" Size="18" />
+                    </button>
+                </div>
+            </div>
+        </div>
+        @if (mediaFailed)
+        {
+            <div class="cp-error" role="status"><strong>Không thể phát video</strong><span>Thử nguồn phát khác hoặc kiểm tra kết nối mạng.</span><button type="button" @onclick="Retry">Thử lại</button></div>
+        }
+    </div>
+</div>
+
+<EpisodeDrawer IsOpen="isDrawerOpen"
+               IsOpenChanged="val => isDrawerOpen = val"
+               Episodes="Episodes"
+               CurrentEpisodeNumber="CurrentEpisodeNumber"
+               OnSelectEpisode="HandleEpisodeSelect" />
+
+@code {
+    [Parameter]
+    public string ActiveStreamUrl { get; set; } = string.Empty;
+
+    [Parameter]
+    public string PosterUrl { get; set; } = string.Empty;
+
+    [Parameter]
+    public string CurrentEpisodeTitle { get; set; } = "Tập 1";
+    [Parameter] public string QualityLabel { get; set; } = string.Empty;
+    [Parameter] public EventCallback OnEnded { get; set; }
+    [Parameter] public bool AutoPlay { get; set; }
+    [Parameter] public double ResumeSeconds { get; set; }
+
+    [Parameter]
+    public int CurrentEpisodeNumber { get; set; } = 1;
+
+    [Parameter]
+    public List<StreamSourceDto>? Streams { get; set; }
+
+    [Parameter]
+    public List<EpisodeDto>? Episodes { get; set; }
+
+    [Parameter]
+    public EventCallback<EpisodeDto> OnEpisodeChanged { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<string>? AvailableQualities { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnQualityChanged { get; set; }
+
+    private ElementReference containerRef;
+    private ElementReference videoRef;
+    private bool isDrawerOpen = false;
+    private bool mediaFailed;
+    private bool isQualityMenuOpen;
+
+    private void ToggleQualityMenu()
+    {
+        isQualityMenuOpen = !isQualityMenuOpen;
+    }
+
+    private async Task ChooseQuality(string q)
+    {
+        isQualityMenuOpen = false;
+        if (!string.Equals(q, QualityLabel, StringComparison.OrdinalIgnoreCase))
+        {
+            await OnQualityChanged.InvokeAsync(q);
+        }
+    }
+
+    private static string GetShortBadge(string q)
+    {
+        if (string.IsNullOrEmpty(q)) return "HD";
+        if (q.Contains("4K", StringComparison.OrdinalIgnoreCase)) return "4K";
+        if (q.Contains("60fps", StringComparison.OrdinalIgnoreCase)) return "60FPS";
+        if (q.Contains("1080p", StringComparison.OrdinalIgnoreCase) || q.Contains("FHD", StringComparison.OrdinalIgnoreCase)) return "FHD";
+        if (q.Contains("720p", StringComparison.OrdinalIgnoreCase) || q.Contains("HD", StringComparison.OrdinalIgnoreCase)) return "HD";
+        if (q.Contains("480p", StringComparison.OrdinalIgnoreCase)) return "SD";
+        return "HD";
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (string.IsNullOrEmpty(ActiveStreamUrl) && Streams != null && Streams.Count > 0)
+        {
+            ActiveStreamUrl = Streams[0].StreamUrl;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("CinemaPlayer.init", containerRef, videoRef);
+            }
+            catch
+            {
+                // Fallback for SSR or non-JS environments
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("CinemaPlayer.dispose", containerRef); }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
+        catch (JSException) { }
+    }
+    private async Task Retry() { mediaFailed = false; await JS.InvokeVoidAsync("CinemaPlayer.reload", videoRef); }
+    private async Task MetadataLoaded()
+    {
+        mediaFailed = false;
+        if (ResumeSeconds > 0) await JS.InvokeVoidAsync("CinemaPlayer.seekTo", videoRef, ResumeSeconds);
+    }
+    public async Task<MediaCursor> GetCursorAsync()
+    {
+        try { return await JS.InvokeAsync<MediaCursor>("CinemaPlayer.cursor", videoRef); }
+        catch (JSException) { return new(); }
+        catch (InvalidOperationException) { return new(); }
+    }
+
+    public void OpenDrawer() => isDrawerOpen = true;
+
+    private async Task HandleEpisodeSelect(EpisodeDto ep)
+    {
+        CurrentEpisodeNumber = ep.EpisodeNumber;
+        CurrentEpisodeTitle = ep.Title;
+        if (ep.Streams.Count > 0)
+        {
+            ActiveStreamUrl = ep.Streams[0].StreamUrl;
+            Streams = ep.Streams;
+        }
+        await OnEpisodeChanged.InvokeAsync(ep);
+    }
+}

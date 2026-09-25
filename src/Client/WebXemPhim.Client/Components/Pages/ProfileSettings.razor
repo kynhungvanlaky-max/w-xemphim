@@ -1,0 +1,565 @@
+@page "/profile/settings"
+@inject AuthState Auth
+@inject ThemeState Theme
+@inject IAccountApiClient Api
+@implements IDisposable
+
+<PageTitle>Cài đặt hồ sơ - CinemaFlow</PageTitle>
+
+<AccountWorkspace ActiveSection="profile" ShowHeader="false">
+    <div class="settings-cinema-hero">
+        <div class="settings-hero-overlay"></div>
+        <div class="settings-hero-caption-left">
+            <span class="settings-hero-kicker">PHIM KẾT NỐI NHỮNG CON NGƯỜI</span>
+            <p class="settings-hero-sub">NHỮNG CÂU CHUYỆN LỚN BẮT ĐẦU TỪ NHỮNG TRẢI NGHIỆM THẬT</p>
+        </div>
+        <div class="settings-hero-caption-right">
+            <span class="settings-hero-quote">ĐIỆN ẢNH VẪN LUÔN Ở ĐÂY CHO CHÚNG TA</span>
+            <span class="settings-hero-bar"></span>
+        </div>
+    </div>
+
+    <div class="settings-page-intro">
+        <h1 class="settings-title">Cài đặt trải nghiệm</h1>
+        <p class="settings-subtitle">Tùy chỉnh cách bạn xem phim trên CinemaFlow.</p>
+    </div>
+
+    <section class="settings-content-body">
+        @if (!Auth.IsInitialized || isLoading)
+        {
+            <div class="settings-loading" aria-label="Đang tải cài đặt...">
+                <div class="skeleton" style="height: 160px; border-radius: 12px; margin-bottom: 24px;"></div>
+                <div class="skeleton" style="height: 160px; border-radius: 12px; margin-bottom: 24px;"></div>
+                <div class="skeleton" style="height: 160px; border-radius: 12px;"></div>
+            </div>
+        }
+        else if (!Auth.IsAuthenticated)
+        {
+            <div class="form-alert error" role="alert">
+                Vui lòng <a href="/login?returnUrl=/profile/settings" class="settings-login-link">đăng nhập</a> để tùy chỉnh và lưu cấu hình tài khoản của bạn.
+            </div>
+        }
+        else
+        {
+            <!-- 1. PHÁT VIDEO -->
+            <div class="settings-bento-card">
+                <div class="settings-bento-header">
+                    <h2>Phát video</h2>
+                    <p>Tùy chọn phát video phù hợp với thiết bị và kết nối của bạn.</p>
+                </div>
+
+                <div class="settings-bento-row">
+                    <div class="settings-bento-row-info">
+                        <span class="settings-bento-label">Chất lượng mặc định</span>
+                        <span class="settings-bento-desc">Chọn chất lượng video ưu tiên khi phát.</span>
+                    </div>
+                    <div class="settings-bento-control">
+                        <CinemaDropdown @bind-Value="quality"
+                                        Options="qualityOptions"
+                                        AriaLabel="Chất lượng mặc định" />
+                    </div>
+                </div>
+
+                <div class="settings-bento-row">
+                    <div class="settings-bento-row-info">
+                        <span class="settings-bento-label">Giao diện hiển thị</span>
+                        <span class="settings-bento-desc">Chuyển đổi giữa chế độ Tối (Obsidian) và Sáng (Pure White).</span>
+                    </div>
+                    <div class="settings-bento-control">
+                        <CinemaDropdown Value="@Theme.CurrentTheme"
+                                        ValueChanged="OnThemeChanged"
+                                        Options="themeOptions"
+                                        AriaLabel="Giao diện hiển thị" />
+                    </div>
+                </div>
+
+                <div class="settings-bento-row">
+                    <div class="settings-bento-row-info">
+                        <span class="settings-bento-label">Tự động chuyển tập</span>
+                        <span class="settings-bento-desc">Tự động phát tập tiếp theo khi kết thúc.</span>
+                    </div>
+                    <div class="settings-bento-control">
+                        <label class="cinema-switch" title="Bật/Tắt tự động chuyển tập">
+                            <input type="checkbox" @bind="autoplay" />
+                            <span class="switch-track">
+                                <span class="switch-thumb"></span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. NGÔN NGỮ VÀ THÔNG BÁO -->
+            <div class="settings-bento-card">
+                <div class="settings-bento-header">
+                    <h2>Ngôn ngữ và thông báo</h2>
+                    <p>Thiết lập ngôn ngữ hiển thị và nhận thông báo về nội dung mới.</p>
+                </div>
+
+                <div class="settings-bento-row">
+                    <div class="settings-bento-row-info">
+                        <span class="settings-bento-label">Ngôn ngữ hiển thị</span>
+                        <span class="settings-bento-desc">Chọn ngôn ngữ bạn muốn sử dụng trên CinemaFlow.</span>
+                    </div>
+                    <div class="settings-bento-control">
+                        <CinemaDropdown @bind-Value="language"
+                                        Options="languageOptions"
+                                        AriaLabel="Ngôn ngữ hiển thị" />
+                    </div>
+                </div>
+
+                <div class="settings-bento-row">
+                    <div class="settings-bento-row-info">
+                        <span class="settings-bento-label">Thông báo tập mới</span>
+                        <span class="settings-bento-desc">Nhận thông báo khi có tập phim mới từ những bộ bạn đang theo dõi.</span>
+                    </div>
+                    <div class="settings-bento-control">
+                        <label class="cinema-switch" title="Bật/Tắt thông báo tập mới">
+                            <input type="checkbox" @bind="notifications" />
+                            <span class="switch-track">
+                                <span class="switch-thumb"></span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. THÔNG TIN HIỂN THỊ -->
+            <div class="settings-bento-card">
+                <div class="settings-bento-header">
+                    <h2>Thông tin hiển thị</h2>
+                    <p>Cập nhật họ tên và thông tin hiển thị tài khoản của bạn.</p>
+                </div>
+
+                <div class="settings-bento-row">
+                    <div class="settings-bento-row-info">
+                        <label for="input-fullname" class="settings-bento-label">Họ và tên</label>
+                        <span class="settings-bento-desc">Tên hiển thị công khai trên hồ sơ và bình luận.</span>
+                    </div>
+                    <div class="settings-bento-control">
+                        <input id="input-fullname" type="text" class="settings-input" @bind="fullName" placeholder="Nhập họ và tên của bạn" maxlength="80" />
+                    </div>
+                </div>
+
+                <div class="settings-bento-row">
+                    <div class="settings-bento-row-info">
+                        <span class="settings-bento-label">Địa chỉ email</span>
+                        <span class="settings-bento-desc">Email đăng nhập và nhận thông tin dịch vụ.</span>
+                    </div>
+                    <div class="settings-bento-control">
+                        <div class="settings-static-display">
+                            <span class="user-email-text">@Auth.User?.Email</span>
+                            <span class="@(Auth.User?.IsVip == true ? "badge-vip-pill" : "badge-free-pill")">
+                                @(Auth.User?.IsVip == true ? "Thành viên VIP" : "Thành viên miễn phí")
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. BẢO VỆ TÀI KHOẢN (MFA) -->
+            <div class="settings-bento-card">
+                <div class="settings-bento-header">
+                    <div class="settings-bento-header-row">
+                        <h2>Bảo vệ tài khoản</h2>
+                        <span class="settings-mfa-pill @(mfaStatus?.Enabled == true ? "enabled" : "")">
+                            <CinemaIcon Name="@(mfaStatus?.Enabled == true ? CinemaIconName.Check : CinemaIconName.Shield)" Size="14" />
+                            @(mfaStatus?.Enabled == true ? "Đang bảo vệ" : "Chưa bật")
+                        </span>
+                    </div>
+                    <p>Xác thực hai lớp chặn đăng nhập chỉ bằng mật khẩu. Bảo vệ an toàn tuyệt đối cho tài khoản của bạn.</p>
+                </div>
+
+                <div class="settings-security-content">
+                    @if (mfaStatus?.Enabled == true)
+                    {
+                        <div class="settings-security-field">
+                            <label>Mật khẩu hiện tại</label>
+                            <input class="settings-input" type="password" autocomplete="current-password" @bind="securityPassword" maxlength="100" />
+                        </div>
+                        <div class="settings-security-field">
+                            <label>Mã xác thực hoặc mã khôi phục</label>
+                            <input class="settings-input" type="text" autocomplete="one-time-code" @bind="mfaCode" maxlength="24" />
+                        </div>
+                        <div>
+                            <button type="button" class="button secondary" disabled="@securityBusy" @onclick="DisableMfa">Tắt xác thực hai lớp</button>
+                        </div>
+                    }
+                    else if (mfaSetup is null)
+                    {
+                        <div class="settings-security-field">
+                            <label>Mật khẩu hiện tại</label>
+                            <input class="settings-input" type="password" autocomplete="current-password" @bind="securityPassword" maxlength="100" />
+                        </div>
+                        <div class="settings-explainer">
+                            <strong>Ứng dụng tương thích</strong>
+                            <span>Google Authenticator, Microsoft Authenticator, 1Password hoặc trình quản lý mật khẩu hỗ trợ TOTP.</span>
+                        </div>
+                        <div>
+                            <button type="button" class="button primary" disabled="@securityBusy" @onclick="BeginMfa">Thiết lập xác thực hai lớp</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="settings-mfa-manual">
+                            <span class="settings-mfa-label">Khóa thiết lập thủ công:</span>
+                            <code>@mfaSetup.ManualKey</code>
+                            <small class="settings-mfa-hint">Nhập khóa này vào ứng dụng xác thực. Không chia sẻ khóa cho người khác.</small>
+                        </div>
+                        <div class="settings-security-field">
+                            <label>Mã 6 số từ ứng dụng</label>
+                            <input class="settings-input" type="text" inputmode="numeric" autocomplete="one-time-code" @bind="mfaCode" maxlength="6" placeholder="000000" />
+                        </div>
+                        <div>
+                            <button type="button" class="button primary" disabled="@securityBusy" @onclick="EnableMfa">Xác nhận và kích hoạt</button>
+                        </div>
+                    }
+
+                    @if (recoveryCodes.Count > 0)
+                    {
+                        <div class="recovery-code-panel" role="status">
+                            <strong>Lưu các mã khôi phục ngay bây giờ</strong>
+                            <p>Mỗi mã chỉ dùng một lần. Danh sách này sẽ không hiển thị lại.</p>
+                            <div>
+                                @foreach (var recoveryCode in recoveryCodes)
+                                {
+                                    <code>@recoveryCode</code>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(securityMessage))
+                    {
+                        <p class="form-alert @(securityError ? "error" : "success")" role="status">@securityMessage</p>
+                    }
+                </div>
+            </div>
+
+            <!-- 5. ĐỔI MẬT KHẨU -->
+            <div class="settings-bento-card">
+                <div class="settings-bento-header">
+                    <div class="settings-bento-header-row">
+                        <h2>Đổi mật khẩu</h2>
+                        <span class="settings-mfa-pill">
+                            <CinemaIcon Name="CinemaIconName.Shield" Size="14" />
+                            <span>Bảo mật</span>
+                        </span>
+                    </div>
+                    <p>Khuyến nghị mật khẩu từ 8 ký tự trở lên, gồm chữ hoa, chữ thường và chữ số.</p>
+                </div>
+
+                <div class="settings-security-content">
+                    <div class="settings-security-field">
+                        <label for="change-pwd-current">Mật khẩu hiện tại</label>
+                        <input id="change-pwd-current" class="settings-input" type="password" autocomplete="current-password" @bind="changePwdCurrent" maxlength="100" placeholder="Nhập mật khẩu hiện tại" />
+                    </div>
+                    <div class="settings-security-field">
+                        <label for="change-pwd-new">Mật khẩu mới</label>
+                        <input id="change-pwd-new" class="settings-input" type="password" autocomplete="new-password" @bind="changePwdNew" maxlength="100" placeholder="Tối thiểu 8 ký tự, có hoa, thường & số" />
+                    </div>
+                    <div class="settings-security-field">
+                        <label for="change-pwd-confirm">Xác nhận mật khẩu mới</label>
+                        <input id="change-pwd-confirm" class="settings-input" type="password" autocomplete="new-password" @bind="changePwdConfirm" maxlength="100" placeholder="Nhập lại mật khẩu mới" />
+                    </div>
+                    <div>
+                        <button type="button" class="button primary" disabled="@changePwdBusy" @onclick="ChangePassword">
+                            <span>@(changePwdBusy ? "Đang xử lý..." : "Cập nhật mật khẩu")</span>
+                        </button>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(changePwdMessage))
+                    {
+                        <p class="form-alert @(changePwdError ? "error" : "success")" role="status">@changePwdMessage</p>
+                    }
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="form-alert error" role="alert">@errorMessage</div>
+            }
+
+            <div class="settings-actions-bar">
+                <button type="button" class="settings-btn-save" disabled="@isSaving" @onclick="Save">
+                    <CinemaIcon Name="CinemaIconName.Check" Size="18" />
+                    <span>@(isSaving ? "Đang lưu..." : "Lưu thay đổi")</span>
+                </button>
+                @if (saved)
+                {
+                    <span class="settings-saved-badge" role="status">
+                        <CinemaIcon Name="CinemaIconName.Check" Size="16" />
+                        <span>Đã lưu cài đặt.</span>
+                    </span>
+                }
+            </div>
+        }
+    </section>
+</AccountWorkspace>
+
+@code {
+    private string quality = "4K khi có thể";
+    private string language = "vi";
+    private bool autoplay = true;
+    private bool notifications = true;
+    private string fullName = string.Empty;
+
+    private readonly List<CinemaDropdownOption> qualityOptions =
+    [
+        new() { Value = "4K khi có thể", Label = "4K khi có thể", Subtitle = "Ưu tiên độ phân giải cao nhất, sắc nét", Badge = "2160p", Icon = CinemaIconName.Film },
+        new() { Value = "Full HD", Label = "Full HD", Subtitle = "Tiết kiệm băng thông, ổn định và mượt mà", Badge = "1080p", Icon = CinemaIconName.Play },
+        new() { Value = "Tự động", Label = "Tự động", Subtitle = "Tự động tối ưu theo tốc độ kết nối mạng", Badge = "Auto", Icon = CinemaIconName.Sparkles }
+    ];
+
+    private readonly List<CinemaDropdownOption> themeOptions =
+    [
+        new() { Value = "dark", Label = "Chế độ Tối (Obsidian)", Subtitle = "Chuẩn phòng chiếu phim, bảo vệ mắt", Badge = "Mặc định", Icon = CinemaIconName.Moon },
+        new() { Value = "light", Label = "Chế độ Sáng (Pure White)", Subtitle = "Trắng tinh khôi, độ tương phản cao ban ngày", Badge = "Sáng", Icon = CinemaIconName.Sun }
+    ];
+
+    private readonly List<CinemaDropdownOption> languageOptions =
+    [
+        new() { Value = "vi", Label = "Tiếng Việt", Subtitle = "Giao diện và phụ đề tiếng Việt chuẩn", Badge = "VN", Icon = CinemaIconName.Compass },
+        new() { Value = "en", Label = "English", Subtitle = "English user interface and subtitles", Badge = "EN", Icon = CinemaIconName.Compass }
+    ];
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private bool saved = false;
+    private string? errorMessage;
+    private MfaStatusDto? mfaStatus;
+    private MfaSetupDto? mfaSetup;
+    private readonly List<string> recoveryCodes = [];
+    private string securityPassword = string.Empty;
+    private string mfaCode = string.Empty;
+    private string? securityMessage;
+    private bool securityError;
+    private bool securityBusy;
+
+    private string changePwdCurrent = string.Empty;
+    private string changePwdNew = string.Empty;
+    private string changePwdConfirm = string.Empty;
+    private string? changePwdMessage;
+    private bool changePwdError;
+    private bool changePwdBusy;
+
+    private async Task ChangePassword()
+    {
+        changePwdMessage = null;
+        changePwdError = false;
+
+        if (string.IsNullOrWhiteSpace(changePwdCurrent))
+        {
+            changePwdMessage = "Vui lòng nhập mật khẩu hiện tại.";
+            changePwdError = true;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(changePwdNew) || changePwdNew.Length < 8)
+        {
+            changePwdMessage = "Mật khẩu mới cần từ 8 đến 100 ký tự.";
+            changePwdError = true;
+            return;
+        }
+
+        if (changePwdNew != changePwdConfirm)
+        {
+            changePwdMessage = "Mật khẩu xác nhận không khớp.";
+            changePwdError = true;
+            return;
+        }
+
+        if (changePwdNew == changePwdCurrent)
+        {
+            changePwdMessage = "Mật khẩu mới phải khác mật khẩu hiện tại.";
+            changePwdError = true;
+            return;
+        }
+
+        changePwdBusy = true;
+        try
+        {
+            var req = new ChangePasswordRequest
+            {
+                CurrentPassword = changePwdCurrent,
+                NewPassword = changePwdNew,
+                ConfirmPassword = changePwdConfirm
+            };
+            var res = await Api.ChangePasswordAsync(req);
+            if (res?.Success == true)
+            {
+                changePwdMessage = "Đổi mật khẩu thành công! Các phiên đăng nhập trên thiết bị khác đã được đăng xuất an toàn.";
+                changePwdError = false;
+                changePwdCurrent = string.Empty;
+                changePwdNew = string.Empty;
+                changePwdConfirm = string.Empty;
+            }
+            else
+            {
+                changePwdMessage = res?.Message ?? "Mật khẩu hiện tại không chính xác hoặc không đủ điều kiện.";
+                changePwdError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            changePwdMessage = "Lỗi kết nối: " + ex.Message;
+            changePwdError = true;
+        }
+        finally
+        {
+            changePwdBusy = false;
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Auth.OnChange += StateHasChanged;
+        Theme.OnChange += StateHasChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Theme.InitializeAsync();
+            await Auth.InitializeAsync();
+            if (Auth.IsAuthenticated)
+            {
+                await LoadSettingsAsync();
+            }
+            else
+            {
+                isLoading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task LoadSettingsAsync()
+    {
+        isLoading = true;
+        try
+        {
+            var settings = await Api.GetSettingsAsync();
+            if (settings is not null)
+            {
+                quality = settings.DefaultQuality;
+                autoplay = settings.AutoplayNext;
+                notifications = settings.NotifyNewEpisodes;
+                fullName = !string.IsNullOrWhiteSpace(settings.FullName) ? settings.FullName : (Auth.User?.FullName ?? "");
+            }
+            else if (Auth.User is not null)
+            {
+                fullName = Auth.User.FullName;
+            }
+            mfaStatus = await Api.GetMfaStatusAsync();
+        }
+        catch
+        {
+            errorMessage = "Không thể tải cài đặt từ máy chủ.";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task BeginMfa()
+    {
+        securityBusy = true; ClearSecurityMessage();
+        var response = await Api.BeginMfaSetupAsync(new BeginMfaSetupRequest { CurrentPassword = securityPassword });
+        securityBusy = false;
+        if (response?.Success == true && response.Data is not null)
+        {
+            mfaSetup = response.Data; securityPassword = string.Empty;
+            securityMessage = "Khóa đã được tạo. Hãy xác nhận mã từ ứng dụng.";
+        }
+        else { securityError = true; securityMessage = response?.Message ?? "Không thể bắt đầu thiết lập MFA."; }
+    }
+
+    private async Task EnableMfa()
+    {
+        securityBusy = true; ClearSecurityMessage();
+        var response = await Api.EnableMfaAsync(new EnableMfaRequest { Code = mfaCode.Trim() });
+        securityBusy = false;
+        if (response?.Success == true && response.Data is not null)
+        {
+            recoveryCodes.AddRange(response.Data.RecoveryCodes); mfaCode = string.Empty; mfaSetup = null;
+            mfaStatus = new MfaStatusDto { Enabled = true }; securityMessage = "Xác thực hai lớp đã được bật.";
+            await Auth.RefreshAsync();
+        }
+        else { securityError = true; securityMessage = response?.Message ?? "Mã xác thực không chính xác."; }
+    }
+
+    private async Task DisableMfa()
+    {
+        securityBusy = true; ClearSecurityMessage();
+        var response = await Api.DisableMfaAsync(new DisableMfaRequest { CurrentPassword = securityPassword, Code = mfaCode.Trim() });
+        securityBusy = false;
+        if (response?.Success == true)
+        {
+            securityPassword = string.Empty; mfaCode = string.Empty; recoveryCodes.Clear();
+            mfaStatus = new MfaStatusDto(); securityMessage = "Xác thực hai lớp đã được tắt.";
+            await Auth.RefreshAsync();
+        }
+        else { securityError = true; securityMessage = response?.Message ?? "Không thể tắt MFA."; }
+    }
+
+    private void ClearSecurityMessage() { securityMessage = null; securityError = false; recoveryCodes.Clear(); }
+
+    private async Task Save()
+    {
+        if (!Auth.IsAuthenticated) return;
+        isSaving = true;
+        saved = false;
+        errorMessage = null;
+
+        try
+        {
+            var dto = new UserSettingsDto
+            {
+                DefaultQuality = quality,
+                AutoplayNext = autoplay,
+                NotifyNewEpisodes = notifications,
+                FullName = fullName
+            };
+
+            var res = await Api.UpdateSettingsAsync(dto);
+            if (res?.Success == true)
+            {
+                saved = true;
+                await Auth.RefreshAsync();
+            }
+            else
+            {
+                errorMessage = res?.Message ?? "Không thể lưu cài đặt. Vui lòng thử lại.";
+            }
+        }
+        catch
+        {
+            errorMessage = "Có lỗi xảy ra khi kết nối máy chủ.";
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnThemeChanged(string selected)
+    {
+        await Theme.SetThemeAsync(selected);
+    }
+
+    private async Task OnThemeSelectionChanged(ChangeEventArgs e)
+    {
+        var selected = e.Value?.ToString() ?? "dark";
+        await Theme.SetThemeAsync(selected);
+    }
+
+    public void Dispose()
+    {
+        Auth.OnChange -= StateHasChanged;
+        Theme.OnChange -= StateHasChanged;
+    }
+}

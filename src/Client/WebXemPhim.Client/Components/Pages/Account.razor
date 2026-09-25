@@ -1,0 +1,207 @@
+@page "/account"
+@page "/profile"
+@inject AuthState Auth
+@inject IAccountApiClient Api
+@implements IDisposable
+
+<PageTitle>Tổng quan tài khoản - CinemaFlow</PageTitle>
+
+<AccountWorkspace ActiveSection="overview" ShowHeader="false">
+    @if (!Auth.IsInitialized)
+    {
+        <section class="account-overview-skeleton" role="status" aria-label="Đang xác thực tài khoản"><div></div><div></div><div></div></section>
+    }
+    else if (!Auth.IsAuthenticated)
+    {
+        <section class="account-overview-guest">
+            <div class="account-guest-copy">
+                <span class="account-eyebrow">Không gian của riêng bạn</span>
+                <h1>Mọi bộ phim<br />đều có đường về.</h1>
+                <p>Đăng nhập để tiếp tục đúng khoảnh khắc bạn dừng lại, lưu phim yêu thích và quản lý quyền lợi thành viên.</p>
+                <div class="account-guest-actions">
+                    <a class="button primary" href="/login?returnUrl=/account"><CinemaIcon Name="CinemaIconName.Login" Size="18" />Đăng nhập</a>
+                    <a class="account-text-link" href="/register">Tạo tài khoản <CinemaIcon Name="CinemaIconName.ArrowRight" Size="15" /></a>
+                </div>
+            </div>
+            <div class="account-guest-benefits" aria-label="Quyền lợi tài khoản">
+                <span><CinemaIcon Name="CinemaIconName.Play" Size="19" /><strong>Xem tiếp liền mạch</strong></span>
+                <span><CinemaIcon Name="CinemaIconName.Bookmark" Size="19" /><strong>Tủ phim cá nhân</strong></span>
+                <span><CinemaIcon Name="CinemaIconName.Crown" Size="19" /><strong>Quản lý gói VIP</strong></span>
+            </div>
+        </section>
+    }
+    else
+    {
+        <div class="account-overview-page">
+            <header class="account-overview-hero">
+                <div class="account-overview-shade"></div>
+                <div class="account-overview-heading"><span class="account-eyebrow">Không gian của bạn</span><h1>Tổng quan tài khoản</h1></div>
+                <div class="account-overview-identity">
+                    <div class="account-overview-avatar">
+                        <img src="/images/generated/catalog/user-avatar.png" alt="Ảnh đại diện của @Auth.User!.FullName" />
+                        @if (Auth.User.IsVip)
+                        {
+                            <span title="Thành viên VIP"><CinemaIcon Name="CinemaIconName.Crown" Size="17" Filled="true" /></span>
+                        }
+                    </div>
+                    <div>
+                        <h2>@Auth.User.FullName</h2>
+                        <p>@Auth.User.Email</p>
+                        <span class="account-session-state"><i></i>Đã đăng nhập</span>
+                    </div>
+                </div>
+                <div class="account-hero-actions">
+                    <a class="account-hero-edit" href="/profile/settings"><CinemaIcon Name="CinemaIconName.Edit" Size="16" />Chỉnh sửa hồ sơ</a>
+                </div>
+                <div class="account-overview-metrics" aria-label="Tóm tắt tài khoản">
+                    <a href="/history"><CinemaIcon Name="CinemaIconName.Film" Size="24" /><span><strong>@(isLoading || loadFailed ? "…" : continueWatching.Count.ToString())</strong><small>Phim đang xem</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
+                    <a href="/account#payments"><CinemaIcon Name="CinemaIconName.Film" Size="24" /><span><strong>@(isLoading || loadFailed ? "…" : history.Count.ToString())</strong><small>Giao dịch</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
+                    <a href="/notifications"><CinemaIcon Name="CinemaIconName.Bell" Size="24" /><span><strong>@(isLoading || loadFailed ? "…" : UnreadCount.ToString())</strong><small>Thông báo mới</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
+                </div>
+            </header>
+
+            @if (Auth.IsAdmin)
+            {
+                <a class="account-admin-callout" href="/admin"><CinemaIcon Name="CinemaIconName.Shield" Size="20" /><span><strong>Mở trung tâm vận hành</strong><small>Quản lý phim, khán giả và hệ thống CinemaFlow</small></span><CinemaIcon Name="CinemaIconName.ArrowRight" Size="17" /></a>
+            }
+
+            @if (loadFailed)
+            {
+                <div class="account-load-alert" role="alert"><CinemaIcon Name="CinemaIconName.AlertCircle" Size="19" /><span>Một số dữ liệu chưa tải được.</span><button type="button" @onclick="LoadProfile">Thử lại</button></div>
+            }
+
+            <section class="account-health" aria-labelledby="account-health-title">
+                <h2 id="account-health-title">Tình trạng tài khoản</h2>
+                <div class="account-health-rows">
+                    <div class="account-health-row"><CinemaIcon Name="CinemaIconName.Check" Size="22" /><span><strong>Đã đăng nhập</strong><small>Phiên truy cập của bạn đang hoạt động.</small></span></div>
+                    <a class="account-health-row" href="/profile/settings"><CinemaIcon Name="CinemaIconName.User" Size="22" /><span><strong>Hồ sơ cá nhân</strong><small>Kiểm tra và cập nhật thông tin.</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
+                    <a class="account-health-row" href="/profile/settings"><CinemaIcon Name="CinemaIconName.Shield" Size="22" /><span><strong>Xác thực hai bước</strong><small>@(Auth.User.MfaEnabled ? "Đã bật bảo vệ hai bước." : "Chưa bật. Thêm một lớp bảo vệ.")</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
+                </div>
+            </section>
+
+            <div class="account-control-grid">
+                <section class="account-payment-panel" id="payments">
+                    <header class="account-panel-head"><div><h2>Thanh toán gần đây</h2><p>Giao dịch và lịch sử nâng cấp tài khoản.</p></div><a href="/vip">Quản lý gói</a></header>
+                    @if (isLoading)
+                    {
+                        <div class="account-list-skeleton"><i></i><i></i><i></i></div>
+                    }
+                    else if (history.Count == 0)
+                    {
+                        <div class="account-overview-empty small"><CinemaIcon Name="CinemaIconName.Clock" Size="22" /><span><strong>Chưa có giao dịch</strong><small>Thanh toán của bạn sẽ xuất hiện tại đây.</small></span></div>
+                    }
+                    else
+                    {
+                        <div class="account-payment-list">
+                            @foreach (var payment in history.Take(4))
+                            {
+                                <div class="account-payment-row">
+                                    <span class="account-payment-icon"><CinemaIcon Name="CinemaIconName.Crown" Size="17" /></span>
+                                    <div><strong>@payment.PlanName</strong><small>@payment.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy · HH:mm")</small></div>
+                                    <div><strong>@payment.Amount.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("vi-VN"))đ</strong><small>@(payment.Status switch { WebXemPhim.Shared.Enums.PaymentStatus.Completed => "Hoàn tất", WebXemPhim.Shared.Enums.PaymentStatus.Pending => "Chờ thanh toán", _ => "Thất bại" })</small></div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </section>
+
+                <section class="account-quick-panel">
+                    <header class="account-panel-head"><div><h2>Trung tâm tài khoản</h2><p>Mọi cài đặt quan trọng ở đúng một nơi.</p></div></header>
+                    <nav aria-label="Lối tắt tài khoản">
+                        <a href="/profile/settings"><span><CinemaIcon Name="CinemaIconName.Settings" Size="19" /></span><div><strong>Hồ sơ và bảo mật</strong><small>Thông tin cá nhân, mật khẩu</small></div><CinemaIcon Name="CinemaIconName.ArrowRight" Size="15" /></a>
+                        <a href="/notifications"><span><CinemaIcon Name="CinemaIconName.Bell" Size="19" /></span><div><strong>Thông báo</strong><small>@(UnreadCount > 0 ? $"{UnreadCount} thông báo chưa đọc" : "Bạn đã xem hết")</small></div><CinemaIcon Name="CinemaIconName.ArrowRight" Size="15" /></a>
+                        <a href="/watchlist"><span><CinemaIcon Name="CinemaIconName.Bookmark" Size="19" /></span><div><strong>Tủ phim của tôi</strong><small>Những tựa phim đã lưu</small></div><CinemaIcon Name="CinemaIconName.ArrowRight" Size="15" /></a>
+                    </nav>
+                </section>
+            </div>
+
+            <section class="account-continue-compact" aria-labelledby="continue-title">
+                <header class="account-panel-head"><div><h2 id="continue-title">Tiếp tục xem</h2><p>Quay lại đúng khoảnh khắc bạn đã dừng.</p></div><a href="/history">Xem lịch sử <CinemaIcon Name="CinemaIconName.ArrowRight" Size="14" /></a></header>
+                @if (isLoading)
+                {
+                    <div class="account-continue-skeleton compact"><i></i><i></i><i></i></div>
+                }
+                else if (continueWatching.Count == 0)
+                {
+                    <div class="account-overview-empty compact"><CinemaIcon Name="CinemaIconName.Film" Size="23" /><span><strong>Chưa có phim đang xem dở</strong><small>Chọn một câu chuyện mới cho tối nay.</small></span><a href="/explore">Khám phá phim</a></div>
+                }
+                else
+                {
+                    <div class="account-continue-row">
+                        @foreach (var item in continueWatching.Take(3))
+                        {
+                            <a href="@($"/watch/{item.MovieId}?ep={item.EpisodeNumber}")" class="account-continue-item" @key="item.MovieId">
+                                <span class="account-continue-thumb"><img src="@(string.IsNullOrWhiteSpace(item.BackdropUrl) ? item.PosterUrl : item.BackdropUrl)" alt="" /><i><CinemaIcon Name="CinemaIconName.Play" Size="15" Filled="true" /></i></span>
+                                <span class="account-continue-info"><strong>@item.MovieTitle</strong><small>@item.EpisodeTitle</small><em>Còn @item.RemainingMinutes phút</em></span>
+                                <span class="account-mini-progress" style="--watch-progress:@(item.ProgressPercent)%"><i></i></span>
+                            </a>
+                        }
+                    </div>
+                }
+            </section>
+        </div>
+    }
+</AccountWorkspace>
+
+@code {
+    private List<PaymentDto> history = [];
+    private List<WatchProgressDto> continueWatching = [];
+    private List<NotificationDto> notifications = [];
+    private bool isLoading;
+    private bool loadFailed;
+
+    private int UnreadCount => notifications.Count(item => !item.IsRead);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        Auth.OnChange += AuthChanged;
+        await Auth.InitializeAsync();
+        await LoadProfile();
+    }
+
+    private void AuthChanged() => _ = InvokeAsync(LoadProfile);
+
+    private async Task LoadProfile()
+    {
+        if (!Auth.IsAuthenticated)
+        {
+            history = [];
+            continueWatching = [];
+            notifications = [];
+            isLoading = false;
+            loadFailed = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        isLoading = true;
+        loadFailed = false;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var historyTask = Api.GetPaymentHistoryAsync();
+            var progressTask = Api.GetContinueWatchingAsync();
+            var notificationsTask = Api.GetNotificationsAsync();
+            await Task.WhenAll(historyTask, progressTask, notificationsTask);
+            history = await historyTask;
+            continueWatching = (await progressTask).OrderByDescending(item => item.LastWatchedAt).ToList();
+            notifications = await notificationsTask;
+        }
+        catch
+        {
+            history = [];
+            continueWatching = [];
+            notifications = [];
+            loadFailed = true;
+        }
+        finally
+        {
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose() => Auth.OnChange -= AuthChanged;
+}

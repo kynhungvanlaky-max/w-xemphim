@@ -1,0 +1,97 @@
+@namespace WebXemPhim.Client.Components.Common
+@using WebXemPhim.Client.Components.Icons
+
+@if (TotalItems > 0)
+{
+    <div class="table-pagination-footer">
+        <span class="pagination-info">
+            Hiển thị <strong>@StartIndex</strong> - <strong>@EndIndex</strong> trên tổng số <strong>@TotalItems</strong> mục
+        </span>
+
+        @if (TotalPages > 1)
+        {
+            <div class="pagination-pages" role="navigation" aria-label="Phân trang">
+                <button type="button"
+                        class="page-nav-btn"
+                        disabled="@(CurrentPage <= 1)"
+                        title="Trang trước"
+                        @onclick="() => ChangePage(CurrentPage - 1)">
+                    <CinemaIcon Name="CinemaIconName.ChevronDown" Size="14" style="transform: rotate(90deg);" />
+                </button>
+
+                @foreach (var p in GetPageNumbers())
+                {
+                    if (p == -1)
+                    {
+                        <span class="page-dots">…</span>
+                    }
+                    else
+                    {
+                        <button type="button"
+                                class="page-num @(p == CurrentPage ? "active" : "")"
+                                @onclick="() => ChangePage(p)">
+                            @p
+                        </button>
+                    }
+                }
+
+                <button type="button"
+                        class="page-nav-btn"
+                        disabled="@(CurrentPage >= TotalPages)"
+                        title="Trang tiếp"
+                        @onclick="() => ChangePage(CurrentPage + 1)">
+                    <CinemaIcon Name="CinemaIconName.ChevronDown" Size="14" style="transform: rotate(-90deg);" />
+                </button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public int CurrentPage { get; set; } = 1;
+    [Parameter] public int PageSize { get; set; } = 10;
+    [Parameter] public int TotalItems { get; set; } = 0;
+    [Parameter] public EventCallback<int> OnPageChanged { get; set; }
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)TotalItems / Math.Max(1, PageSize)));
+    private int StartIndex => TotalItems == 0 ? 0 : (CurrentPage - 1) * PageSize + 1;
+    private int EndIndex => Math.Min(CurrentPage * PageSize, TotalItems);
+
+    private async Task ChangePage(int targetPage)
+    {
+        if (targetPage < 1 || targetPage > TotalPages || targetPage == CurrentPage)
+            return;
+
+        await OnPageChanged.InvokeAsync(targetPage);
+    }
+
+    private IEnumerable<int> GetPageNumbers()
+    {
+        var pages = new List<int>();
+        var total = TotalPages;
+
+        if (total <= 7)
+        {
+            for (int i = 1; i <= total; i++) pages.Add(i);
+            return pages;
+        }
+
+        pages.Add(1);
+
+        int left = Math.Max(2, CurrentPage - 1);
+        int right = Math.Min(total - 1, CurrentPage + 1);
+
+        if (left > 2) pages.Add(-1); // dots
+
+        for (int i = left; i <= right; i++)
+        {
+            pages.Add(i);
+        }
+
+        if (right < total - 1) pages.Add(-1); // dots
+
+        pages.Add(total);
+
+        return pages;
+    }
+}

@@ -1,0 +1,7 @@
+/* Watch reference palette; respects light and dark themes */
+[data-theme="dark"] .site-main:has(.watch-v2) {
+    background: #0b0d10;
+}
+[data-theme="light"] .site-main:has(.watch-v2) {
+    background: #ffffff;
+}

@@ -1,0 +1,173 @@
+@page "/watchlist"
+@inject IMovieApiClient ApiClient
+@inject AuthState Auth
+@inject WatchlistState WatchlistSvc
+@implements IDisposable
+
+<PageTitle>Tủ phim - CinemaFlow</PageTitle>
+<main class="personal-library">
+    <header class="library-heading">
+        <h1>Tủ phim của bạn</h1><p>Những câu chuyện bạn muốn giữ lại.</p>
+        <div class="library-identity" aria-live="polite">
+            @if (!Auth.IsInitialized) { <span>Đang xác thực tài khoản...</span> }
+            else if (Auth.IsAuthenticated)
+            {
+                <span><CinemaIcon Name="CinemaIconName.User" Size="17" />@Auth.User!.FullName</span>
+                <span class="@(Auth.User.IsVip ? "library-vip-status" : "")">@(Auth.User.IsVip ? "VIP đang hoạt động" : "Thành viên miễn phí")</span>
+                @if (Auth.User.IsVip) { <span>Hết hạn @Auth.User.VipExpiresAt?.ToLocalTime().ToString("dd/MM/yyyy")</span> }
+            }
+            else { <span><CinemaIcon Name="CinemaIconName.User" Size="17" />Chưa đăng nhập</span><span>Đăng nhập để lưu phim riêng của bạn</span> }
+        </div>
+    </header>
+    <nav class="library-route-tabs" aria-label="Thư viện cá nhân">
+        <a href="/watchlist" class="active" aria-current="page">Đã lưu <span>@items.Count</span></a>
+        <a href="/history">Lịch sử xem</a>
+    </nav>
+    @if (isLoading)
+    {
+        <section class="library-loading" aria-label="Đang tải thư viện" aria-busy="true">@for (var i=0;i<4;i++) { <div class="skeleton"></div> }</section>
+    }
+    else if (!string.IsNullOrEmpty(loadError))
+    {
+        <section class="library-no-results" role="alert"><h2>Chưa tải được thư viện.</h2><p>@loadError</p><button class="button secondary" @onclick="Load">Thử lại</button></section>
+    }
+    else if (!Auth.IsAuthenticated)
+    {
+        <section class="library-welcome">
+            <img src="/images/generated/redesign-2026/library-theater.png" alt="Rạp chiếu với ghế đỏ và ánh máy chiếu ấm" width="1672" height="941" />
+            <div><h2>Giữ lại một bộ phim hay.</h2><p>Đăng nhập để bắt đầu thư viện của bạn.</p><div class="library-cta-row"><a class="button primary" href="@LoginPath">Đăng nhập</a><a class="button secondary" href="@RegisterPath">Đăng ký</a></div></div>
+        </section>
+    }
+    else if (items.Count == 0)
+    {
+        <section class="library-welcome">
+            <img src="/images/generated/redesign-2026/library-theater.png" alt="Một rạp chiếu đang chờ câu chuyện tiếp theo" width="1672" height="941" />
+            <div><h2>Bắt đầu bộ sưu tập của bạn.</h2><p>Nhấn lưu ở trang phim để tìm lại tác phẩm yêu thích tại đây.</p><a class="button primary" href="/explore">Khám phá phim</a></div>
+        </section>
+    }
+    else
+    {
+        <section class="library-collection" aria-labelledby="saved-title">
+            <header class="library-toolbar"><h2 id="saved-title">Đã lưu <small>@items.Count tác phẩm</small></h2><div class="library-controls"><label><span class="sr-only">Tìm trong tủ phim</span><input placeholder="Tìm trong tủ phim" @bind="search" @bind:event="oninput" /></label><label><span class="sr-only">Sắp xếp phim đã lưu</span><select @bind="sort"><option value="newest">Mới lưu nhất</option><option value="title">Tên phim A-Z</option><option value="rating">Đánh giá cao</option></select></label></div></header>
+            @if (!string.IsNullOrEmpty(message)) { <p class="library-feedback" role="status">@message</p> }
+            @if (FilteredItems.Count == 0) { <div class="library-no-results"><h3>Không tìm thấy phim phù hợp.</h3><button class="button secondary" @onclick="()=>search=string.Empty">Xóa từ khóa</button></div> }
+            else
+            {
+                <div class="library-film-grid">
+                @foreach (var item in FilteredItems)
+                {
+                    <article class="library-film" @key="item.MovieId">
+                        <div class="library-film-poster-wrap">
+                            <a class="library-film-poster" href="@($"/movie/{item.MovieId}")" aria-label="Xem chi tiết @item.MovieTitle">
+                                <img src="@item.PosterUrl" alt="Poster @item.MovieTitle" loading="lazy" width="200" height="300" />
+                            </a>
+
+                            <div class="poster-gradient-overlay">
+                                <a class="poster-play-btn" href="@($"/watch/{item.MovieId}")" title="Xem ngay @item.MovieTitle" aria-label="Xem phim ngay">
+                                    <CinemaIcon Name="CinemaIconName.Play" Size="18" Filled="true" />
+                                </a>
+                            </div>
+
+                            <div class="poster-top-badges">
+                                @if (item.Rating > 0)
+                                {
+                                    <span class="poster-rating-badge">
+                                        <CinemaIcon Name="CinemaIconName.Star" Size="12" Filled="true" />
+                                        <span>@item.Rating.ToString("0.0")</span>
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span></span>
+                                }
+
+                                <button type="button"
+                                        class="library-btn-remove"
+                                        aria-label="Bỏ lưu @item.MovieTitle"
+                                        title="Bỏ lưu khỏi tủ phim"
+                                        disabled="@(removing == item.MovieId)"
+                                        @onclick="() => RemoveItem(item.MovieId)">
+                                    @if (removing == item.MovieId)
+                                    {
+                                        <span class="btn-spinner" aria-hidden="true"></span>
+                                    }
+                                    else
+                                    {
+                                        <CinemaIcon Name="CinemaIconName.Trash" Size="14" />
+                                    }
+                                </button>
+                            </div>
+
+                            @if (item.ProgressPercent > 0)
+                            {
+                                <div class="poster-progress-track" title="Đã xem @(item.ProgressPercent)%">
+                                    <div class="poster-progress-bar" style="width: @(item.ProgressPercent)%"></div>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="library-film-info">
+                            <h3 class="library-film-title">
+                                <a href="@($"/movie/{item.MovieId}")" title="@item.MovieTitle">@item.MovieTitle</a>
+                            </h3>
+                            <div class="library-film-meta">
+                                <span>@item.ReleaseYear</span>
+                                @if (!string.IsNullOrWhiteSpace(item.LastWatchedEpisode))
+                                {
+                                    <span class="meta-dot">•</span>
+                                    <span class="meta-episode">@item.LastWatchedEpisode</span>
+                                }
+                            </div>
+                        </div>
+                    </article>
+                }
+                </div>
+            }
+        </section>
+    }
+    <aside class="library-vip-strip"><CinemaIcon Name="CinemaIconName.Crown" Size="30" /><div><h2>@(Auth.User?.IsVip == true ? "CinemaFlow VIP của bạn" : "Một chỗ ngồi hạng nhất.")</h2><p>@(Auth.User?.IsVip == true ? "Theo dõi thời hạn và quản lý gói trong tài khoản." : "Khám phá các gói và quyền lợi dành cho thành viên VIP.")</p></div><a href="/vip">@(Auth.User?.IsVip == true ? "Quản lý VIP" : "Xem gói VIP")<CinemaIcon Name="CinemaIconName.ArrowRight" Size="17" /></a></aside>
+</main>
+
+@code {
+    private List<WatchlistItemDto> items = [];
+    private bool isLoading = true;
+    private int? removing;
+    private string search = string.Empty;
+    private string sort = "newest";
+    private string? message;
+    private string? loadError;
+    private const string LoginPath = "/login?returnUrl=/watchlist";
+    private const string RegisterPath = "/register?returnUrl=/watchlist";
+    private List<WatchlistItemDto> FilteredItems
+    {
+        get
+        {
+            var result = items.Where(i=>i.MovieTitle.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase));
+            return (sort switch { "title"=>result.OrderBy(i=>i.MovieTitle), "rating"=>result.OrderByDescending(i=>i.Rating), _=>result.OrderByDescending(i=>i.AddedAt) }).ToList();
+        }
+    }
+    protected override void OnInitialized() => Auth.OnChange += AuthChanged;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Auth.InitializeAsync(); await Load();
+    }
+    private void AuthChanged() => _ = InvokeAsync(Load);
+    private async Task Load()
+    {
+        if (!Auth.IsInitialized) return;
+        loadError = null;
+        try { items = Auth.IsAuthenticated ? await ApiClient.GetWatchlistAsync() : []; }
+        catch (Exception) { loadError="Kiểm tra kết nối và thử lại. Phim đã lưu của bạn vẫn được giữ nguyên."; }
+        isLoading = false; StateHasChanged();
+    }
+    private async Task RemoveItem(int id)
+    {
+        removing=id;
+        var success = await ApiClient.RemoveFromWatchlistAsync(id);
+        if (success) { items.RemoveAll(x=>x.MovieId==id); await WatchlistSvc.InitializeAsync(); }
+        message=success ? "Đã bỏ lưu phim." : "Chưa thể bỏ lưu. Vui lòng thử lại.";
+        removing=null;
+    }
+    public void Dispose() => Auth.OnChange -= AuthChanged;
+}

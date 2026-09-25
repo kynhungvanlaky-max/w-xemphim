@@ -1,0 +1,910 @@
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Shared.Requests
+@using WebXemPhim.Client.Components.Icons
+@inject IAccountApiClient Api
+@inject AuthState Auth
+
+<section class="reviews-section" aria-labelledby="reviews-title" aria-busy="@(loading ? "true" : "false")">
+    <!-- 0. Trạng thái tải / lỗi: tuyệt đối không dựng số liệu giả khi chưa có dữ liệu thật -->
+    @if (loading)
+    {
+        <div class="reviews-skeleton" role="status" aria-live="polite">
+            <span class="reviews-loading-note">Đang tải đánh giá của khán giả...</span>
+            <div class="reviews-skeleton-grid">
+                @for (var card = 0; card < 3; card++)
+                {
+                    <div class="review-skeleton-card panel-frame" aria-hidden="true">
+                        <span class="skeleton-bar short"></span>
+                        <span class="skeleton-bar tall"></span>
+                        <span class="skeleton-bar"></span>
+                        <span class="skeleton-bar wide"></span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    else if (loadFailed)
+    {
+        <div class="reviews-load-error">
+            <CinemaIcon Name="CinemaIconName.AlertCircle" Size="26" />
+            <div class="load-error-copy">
+                <h3>Chưa tải được đánh giá</h3>
+                <p>Kết nối tới máy chủ đang gián đoạn. Bạn thử lại giúp CinemaFlow nhé.</p>
+            </div>
+            <button type="button" class="btn-retry-reviews" @onclick="Load">
+                <CinemaIcon Name="CinemaIconName.Refresh" Size="15" />
+                <span>Thử lại</span>
+            </button>
+        </div>
+    }
+    else
+    {
+    <!-- 1. Hàng 3 Cards Command Center chuẩn mẫu -->
+    <div class="reviews-command-center">
+        <!-- Card 1: Đánh giá cộng đồng -->
+        <div class="review-score-hero panel-frame">
+            <div class="review-score-copy">
+                <span class="review-kicker">Đánh giá phim</span>
+                <div class="review-score-lockup @(TotalCount == 0 ? "is-empty" : "")">
+                    <strong>@(TotalCount > 0 ? AverageScore.ToString("0.0") : "--")</strong>
+                    <span>/10</span>
+                </div>
+                @{
+                    var filledStars = ReviewInsights.FilledStars(AverageScore);
+                }
+                <div class="review-score-stars" aria-label="@(TotalCount > 0 ? $"Điểm trung bình {AverageScore.ToString("0.0")} trên 10" : "Chưa có điểm trung bình")">
+                    @for (var s = 1; s <= 5; s++)
+                    {
+                        <span class="star-glyph @(s <= filledStars ? "filled" : "empty")" aria-hidden="true">★</span>
+                    }
+                </div>
+                @if (TotalCount > 0)
+                {
+                    <p class="review-score-caption">
+                        <strong>@TotalCount lượt đánh giá</strong>
+                        <span class="caption-dot">•</span>
+                        <span class="caption-positive">@ReviewInsights.Percent(ReviewInsights.CountInRange(Reviews, 7, 10), TotalCount)% tích cực</span>
+                    </p>
+                    <div class="review-distribution" aria-label="Phân bố điểm số">
+                        @{
+                            var peak = ReviewInsights.PeakCount(Reviews);
+                        }
+                        @for (var score = 1; score <= 10; score++)
+                        {
+                            var value = score;
+                            var count = ReviewInsights.CountInRange(Reviews, value, value);
+                            var percent = ReviewInsights.Percent(count, TotalCount);
+                            var barHeight = count == 0 ? 6 : 18 + (int)Math.Round(count * 82.0 / Math.Max(1, peak));
+                            var isOn = activeFilter == ReviewFilter.Score(value);
+                            <button type="button"
+                                    class="dist-column @(isOn ? "is-active" : "")"
+                                    aria-pressed="@isOn"
+                                    aria-label="@($"{value} điểm: {count} lượt ({percent}%)")"
+                                    title="@($"{value} điểm • {count} lượt • {percent}%")"
+                                    @onclick="() => ToggleScoreFilter(value)">
+                                <span class="dist-bar" aria-hidden="true">
+                                    <span class="dist-bar-fill" style="height: @(barHeight)%"></span>
+                                </span>
+                                <span class="dist-label" aria-hidden="true">@value</span>
+                            </button>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="review-score-caption is-empty">
+                        <strong>Chưa có lượt đánh giá nào</strong>
+                        <span class="caption-dot">•</span>
+                        <span>bộ phim này đang chờ cảm nhận đầu tiên</span>
+                    </p>
+                }
+            </div>
+            <div class="review-film-mark" aria-hidden="true">
+                <div class="film-mark-text">
+                    <span>NHỮNG</span>
+                    <span>BỘ PHIM HAY</span>
+                    <span>LUÔN SỐNG MÃI</span>
+                    <div class="film-mark-red-line"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 2: Cảm xúc khán giả -->
+        <div class="review-sentiment-panel panel-frame" aria-label="Cảm xúc khán giả">
+            <h3>Cảm xúc khán giả</h3>
+            <div class="sentiment-bars">
+                @foreach (var tier in SentimentTiers)
+                {
+                    var count = ReviewInsights.CountInRange(Reviews, tier.Min, tier.Max);
+                    var percent = ReviewInsights.Percent(count, TotalCount);
+                    var isActive = activeFilter == ReviewFilter.Tier(tier.Min, tier.Max);
+                    <button type="button"
+                            class="sentiment-row is-interactive @(isActive ? "is-active" : "")"
+                            aria-pressed="@isActive"
+                            title="@($"{tier.Label}: {percent}% trong {TotalCount} lượt đánh giá")"
+                            @onclick="() => ToggleFilter(ReviewFilter.Tier(tier.Min, tier.Max))">
+                        <span class="sentiment-emoji-face" aria-hidden="true">@tier.Emoji</span>
+                        <span class="sentiment-label">@tier.Label</span>
+                        <span class="sentiment-track" aria-hidden="true">
+                            <span class="sentiment-fill @tier.ClassName" style="width: @(percent)%"></span>
+                        </span>
+                        <span class="sentiment-count">@percent% (@count)</span>
+                    </button>
+                }
+            </div>
+            @if (TotalCount == 0)
+            {
+                <p class="sentiment-empty-note">Chưa có lượt chấm điểm nào, biểu đồ sẽ hiện ngay khi khán giả đánh giá bộ phim.</p>
+            }
+            else
+            {
+                <p class="sentiment-hint">Chạm vào một mức cảm xúc để xem đúng những đánh giá đó.</p>
+            }
+        </div>
+
+        <!-- Card 3: Viết cảm nhận của bạn -->
+        <div class="review-action-panel panel-frame" aria-label="Viết cảm nhận của bạn">
+            <div class="action-panel-body">
+                <h3 class="action-panel-title">Viết cảm nhận của bạn</h3>
+                <p class="action-panel-desc">Chia sẻ cảm xúc, giúp cộng đồng có thêm góc nhìn hay về bộ phim này nhé!</p>
+                <div class="action-stars-empty" aria-hidden="true">
+                    @{
+                        var ownStars = ReviewInsights.FilledStars(ownReview?.Rating ?? 0);
+                    }
+                    @for (var s = 1; s <= 5; s++)
+                    {
+                        <span class="action-star @(s <= ownStars ? "is-filled" : "is-empty")">★</span>
+                    }
+                </div>
+                @if (ownReview is not null)
+                {
+                    <p class="action-own-score">Bạn đã chấm <strong>@ownReview.Rating/10</strong> · @ReviewInsights.EmotiveLabel(ownReview.Rating)</p>
+                }
+                @if (Auth.IsAuthenticated)
+                {
+                    <a href="#review-composer" class="btn-guest-login-cinema">
+                        <CinemaIcon Name="CinemaIconName.Edit" Size="18" />
+                        <span>@(ownReview is not null ? "Chỉnh sửa đánh giá" : "Viết đánh giá ngay")</span>
+                    </a>
+                    <span class="action-guest-subtext">@(ownReview is not null ? "Cảm nhận của bạn đang hiển thị công khai" : "Đã đăng nhập: " + Auth.User?.FullName)</span>
+                }
+                else
+                {
+                    <a href="@($"/login?returnUrl=/movie/{MovieId}")" class="btn-guest-login-cinema">
+                        <CinemaIcon Name="CinemaIconName.Login" Size="18" />
+                        <span>Đăng nhập</span>
+                    </a>
+                    <span class="action-guest-subtext">Đăng nhập để đánh giá và bình luận</span>
+                }
+            </div>
+            <div class="action-panel-watermark" aria-hidden="true">
+                <div class="clapper-icon-art">🎬</div>
+                <div class="clapper-text-slogan">
+                    <span>GOOD</span>
+                    <span>STORIES</span>
+                    <span>BRING US</span>
+                    <span>CLOSER</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Khung soạn thảo (Composer) khi đã đăng nhập -->
+    @if (Auth.IsAuthenticated)
+    {
+        <div class="reviews-composer-card" id="review-composer">
+            <header class="composer-header">
+                <div class="composer-user-info">
+                    <div class="composer-avatar" aria-hidden="true">
+                        @(Auth.User?.FullName?.FirstOrDefault() ?? 'N')
+                    </div>
+                    <div class="composer-user-meta">
+                        <div class="composer-name-row">
+                            <strong>@(string.IsNullOrWhiteSpace(Auth.User?.FullName) ? "Khán giả điện ảnh" : Auth.User?.FullName)</strong>
+                            @if (Auth.User?.IsVip == true)
+                            {
+                                <span class="composer-tag-vip">VIP</span>
+                            }
+                        </div>
+                        <span>@(ownReview is not null ? "Bạn đang chỉnh sửa cảm nhận đã đăng" : "Viết cảm nhận sau khi xem")</span>
+                    </div>
+                </div>
+                <div class="composer-mode-badge">
+                    <CinemaIcon Name="CinemaIconName.Edit" Size="14" />
+                    <span>@(ownReview is not null ? "Cập nhật đánh giá" : "Viết cảm nhận")</span>
+                </div>
+            </header>
+
+            <EditForm Model="form" OnValidSubmit="Save" class="composer-form">
+                <DataAnnotationsValidator />
+
+                <div class="cinema-rating-composer-body cinema-rating-hub">
+                    @{
+                        var currentScore = hoverScore > 0 ? hoverScore : form.Rating;
+                    }
+                    <div class="rating-hub-header">
+                        <div class="rating-prompt-title">
+                            <span class="rating-spark-icon" aria-hidden="true">★</span>
+                            <span>Điểm số bạn dành cho tác phẩm:</span>
+                        </div>
+                        <div class="score-sentiment-pill rating-hero-stat" aria-live="polite">
+                            <CinemaIcon Name="CinemaIconName.Star" Size="14" Filled="true" />
+                            <strong class="pill-label">@ReviewInsights.EmotiveLabel(currentScore)</strong>
+                            <span class="sentiment-score-badge score-digit">(@currentScore/10)</span>
+                        </div>
+                    </div>
+
+                    <div class="cinema-stars-ribbon-container">
+                        <div class="cinema-stars-ribbon cinema-stars-track" role="radiogroup" aria-label="Chấm điểm từ 1 đến 10" @onkeydown="OnStarsKeyDown">
+                            @for (var val = 1; val <= 10; val++)
+                            {
+                                var score = val;
+                                var isActive = (currentScore >= score);
+                                var isSelected = (form.Rating == score);
+                                <button type="button"
+                                        class="cinema-star-item cinema-star-btn @(isActive ? "active" : "") @(isSelected ? "selected" : "")"
+                                        aria-label="@score điểm - @ReviewInsights.EmotiveLabel(score)"
+                                        title="@($"{score}/10 - {ReviewInsights.EmotiveLabel(score)}")"
+                                        aria-checked="@isSelected"
+                                        role="radio"
+                                        @onmouseenter="() => hoverScore = score"
+                                        @onmouseleave="() => hoverScore = 0"
+                                        @onclick="() => form.Rating = score">
+                                    <span class="star-icon-wrap">
+                                        <CinemaIcon Name="CinemaIconName.Star" Size="28" Filled="@isActive" />
+                                    </span>
+                                    <span class="star-number">@score</span>
+                                </button>
+                            }
+                        </div>
+                        <div class="rating-track-hint">
+                            <span class="hint-low">1: Thất vọng</span>
+                            <span class="hint-high">10: Tuyệt phẩm</span>
+                        </div>
+                        <ValidationMessage For="() => form.Rating" />
+                    </div>
+
+                    <div class="composer-comment-field">
+                        <div class="comment-field-header">
+                            <label for="review-comment" class="field-label">Cảm nhận của bạn</label>
+                            <div class="quick-tags-wrap" aria-label="Gợi ý cảm nhận nhanh">
+                                <span class="quick-tags-label">Gợi ý nhanh:</span>
+                                <button type="button" class="quick-chip" @onclick='() => AddQuickTag("Kịch bản cuốn hút.")'>+ Kịch bản</button>
+                                <button type="button" class="quick-chip" @onclick='() => AddQuickTag("Diễn xuất thuyết phục.")'>+ Diễn xuất</button>
+                                <button type="button" class="quick-chip" @onclick='() => AddQuickTag("Kỹ xảo mãn nhãn.")'>+ Kỹ xảo</button>
+                                <button type="button" class="quick-chip" @onclick='() => AddQuickTag("Âm nhạc giàu cảm xúc.")'>+ Âm nhạc</button>
+                                <button type="button" class="quick-chip" @onclick='() => AddQuickTag("Rất đáng xem.")'>+ Khuyên xem</button>
+                            </div>
+                        </div>
+
+                        <div class="textarea-shell">
+                            <InputTextArea id="review-comment"
+                                           placeholder="Viết vài dòng về điều khiến bạn nhớ nhất sau khi xem phim (cốt truyện, diễn xuất, kỹ xảo, cảm xúc)..."
+                                           @bind-Value="form.Comment"
+                                           maxlength="800" />
+                            <div class="textarea-footer">
+                                <span>Giữ bình luận văn minh và tôn trọng người xem khác</span>
+                                <span class="comment-counter @(CommentLength > 700 ? "is-near-limit" : "")">@CommentLength / 800</span>
+                            </div>
+                        </div>
+                        <ValidationMessage For="() => form.Comment" />
+                    </div>
+
+                    <div class="composer-actions-row">
+                        <div class="composer-btns-left">
+                            <button type="submit" class="btn-submit-review" disabled="@saving">
+                                <CinemaIcon Name="CinemaIconName.Check" Size="16" />
+                                <span>@(saving ? "Đang lưu..." : ownReview is not null ? "Cập nhật đánh giá" : "Đăng đánh giá ngay")</span>
+                            </button>
+
+                            @if (ownReview is not null && confirmDeletePlace == "composer")
+                            {
+                                <span class="composer-confirm-row" role="group" aria-label="Xác nhận xóa đánh giá">
+                                    <span>Xóa đánh giá của bạn?</span>
+                                    <button type="button" class="btn-confirm-delete" disabled="@deleting" @onclick="ConfirmDelete">@(deleting ? "Đang xóa..." : "Xóa ngay")</button>
+                                    <button type="button" class="btn-cancel-delete" @onclick="CancelDelete">Hủy</button>
+                                </span>
+                            }
+                            else if (ownReview is not null)
+                            {
+                                <button type="button" class="btn-delete-review" disabled="@(saving || deleting)" @onclick="AskDeleteFromComposer">
+                                    <CinemaIcon Name="CinemaIconName.Trash" Size="15" />
+                                    <span>Xóa đánh giá</span>
+                                </button>
+                            }
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(statusMessage))
+                        {
+                            <div class="composer-status-toast @(isSuccessStatus ? "success" : "error")" role="status">
+                                <CinemaIcon Name="@(isSuccessStatus ? CinemaIconName.Check : CinemaIconName.AlertCircle)" Size="14" />
+                                <span>@statusMessage</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </EditForm>
+        </div>
+    }
+
+    <!-- 3. Bố Cục 2 Cột: Bình luận khán giả & Quote Sidebar -->
+    <div class="reviews-two-cols-layout">
+        <!-- Cột Trái: Feed bình luận -->
+        <div class="reviews-feed-column">
+            <!-- Toolbar lọc và sắp xếp -->
+            <div class="reviews-toolbar">
+                <div class="toolbar-title-wrap">
+                    <h2 id="reviews-title" class="toolbar-heading">Bình luận nổi bật</h2>
+                    <p class="toolbar-count-note">
+                        @if (TotalCount == 0)
+                        {
+                            <span>Chưa có đánh giá nào cho bộ phim này</span>
+                        }
+                        else if (activeFilter.IsAll && string.IsNullOrWhiteSpace(searchQuery))
+                        {
+                            <span>@TotalCount đánh giá từ khán giả</span>
+                        }
+                        else
+                        {
+                            <span>@ArrangedReviews.Count / @TotalCount đánh giá khớp bộ lọc</span>
+                        }
+                    </p>
+                    @if (!activeFilter.IsAll || !string.IsNullOrWhiteSpace(searchQuery))
+                    {
+                        <div class="active-chips-bar" role="group" aria-label="Bộ lọc đang áp dụng">
+                            @if (!activeFilter.IsAll)
+                            {
+                                <button type="button" class="active-filter-chip" @onclick="ClearActiveFilterOnly" aria-label="Bỏ bộ lọc đang chọn">
+                                    <span>Lọc: @activeFilter.Label</span>
+                                    <span class="chip-clear" aria-hidden="true">✕</span>
+                                </button>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(searchQuery))
+                            {
+                                <button type="button" class="active-filter-chip search-chip" @onclick="ClearSearch" aria-label="Bỏ từ khóa tìm kiếm">
+                                    <span>Từ khóa: "@searchQuery"</span>
+                                    <span class="chip-clear" aria-hidden="true">✕</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div class="toolbar-controls">
+                    <div class="toolbar-filter-pills" role="group" aria-label="Bộ lọc đánh giá">
+                        <button type="button"
+                                class="filter-pill-cinema @(activeFilter.IsAll ? "active" : "")"
+                                aria-pressed="@activeFilter.IsAll"
+                                @onclick="() => SetFilter(ReviewFilter.All)">
+                            Tất cả (@TotalCount)
+                        </button>
+                        <button type="button"
+                                class="filter-pill-cinema @(activeFilter == PositiveFilter ? "active" : "")"
+                                aria-pressed="@(activeFilter == PositiveFilter)"
+                                @onclick="() => ToggleFilter(PositiveFilter)">
+                            😊 Tích cực 7+ (@ReviewInsights.CountInRange(Reviews, 7, 10))
+                        </button>
+                        <button type="button"
+                                class="filter-pill-cinema @(activeFilter == CriticalFilter ? "active" : "")"
+                                aria-pressed="@(activeFilter == CriticalFilter)"
+                                @onclick="() => ToggleFilter(CriticalFilter)">
+                            😐 Dưới 7 điểm (@ReviewInsights.CountInRange(Reviews, 1, 6))
+                        </button>
+                    </div>
+
+                    <div class="toolbar-search-box">
+                        <CinemaIcon Name="CinemaIconName.Search" Size="14" />
+                        <input type="search"
+                               class="search-reviews-input"
+                               placeholder="Tìm trong đánh giá..."
+                               value="@searchQuery"
+                               @oninput="OnSearchInput"
+                               aria-label="Tìm kiếm trong đánh giá" />
+                        @if (!string.IsNullOrWhiteSpace(searchQuery))
+                        {
+                            <button type="button" class="btn-clear-search" @onclick="ClearSearch" aria-label="Xóa tìm kiếm">✕</button>
+                        }
+                    </div>
+
+                    <div class="toolbar-sort-wrap">
+                        <span class="sort-label">Sắp xếp:</span>
+                        <select class="sort-select-cinema" aria-label="Sắp xếp đánh giá" @bind="sortBy" @bind:after="ResetPaging">
+                            <option value="newest">Mới nhất</option>
+                            <option value="highest">Điểm cao nhất</option>
+                            <option value="lowest">Điểm thấp nhất</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            @{
+                var arranged = ArrangedReviews;
+                var visibleReviews = arranged.Take(visibleCount).ToList();
+            }
+            @if (visibleReviews.Count > 0)
+            {
+                <div class="reviews-list">
+                    @foreach (var review in visibleReviews)
+                    {
+                        var isOwn = (review.UserId == Auth.User?.Id);
+                        var isRecommended = (review.Rating >= 8);
+                        var isMenuOpen = (openMenuReviewId == review.Id);
+                        var isHelpful = userHelpfulVotes.Contains(review.Id);
+                        var commentText = ReviewInsights.CommentText(review);
+                        var isLong = commentText.Length > 200;
+                        var isExpanded = expandedReviewIds.Contains(review.Id);
+                        var displayText = (isLong && !isExpanded) ? commentText[..200] + "..." : commentText;
+
+                        <article class="review-card-cinema @(isOwn ? "is-own" : "")" @key="review.Id">
+                            <!-- Teardrop Score Badge bo cong giọt nước viền vàng hổ phách -->
+                            <div class="teardrop-score-badge" aria-label="Đánh giá @review.Rating trên 10">
+                                <strong>@review.Rating.ToString("0.0")</strong>
+                            </div>
+
+                            <div class="review-card-content">
+                                <header class="review-card-topbar">
+                                    <div class="reviewer-meta-group">
+                                        <span class="reviewer-avatar-img reviewer-avatar-initials"
+                                              style="@("--avatar-hue: " + ReviewInsights.AvatarHue(review.UserId))"
+                                              aria-hidden="true">@ReviewInsights.AvatarInitials(review)</span>
+                                        <div class="reviewer-names">
+                                            <span class="name-badge-row">
+                                                <strong class="reviewer-display-name">@review.UserName</strong>
+                                                @if (isOwn)
+                                                {
+                                                    <span class="badge-own-review">Của bạn</span>
+                                                }
+                                                <span class="review-tier-label @(isRecommended ? "is-positive" : "is-neutral")">@ReviewInsights.EmotiveLabel(review.Rating)</span>
+                                            </span>
+                                            <span class="review-time-row">
+                                                <time class="review-time-ago"
+                                                      datetime="@review.UpdatedAt.ToString("O")"
+                                                      title="@review.UpdatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")">
+                                                    @ReviewInsights.TimeAgo(DateTime.UtcNow, review.UpdatedAt)
+                                                </time>
+                                                @if (ReviewInsights.WasEdited(review))
+                                                {
+                                                    <span class="review-edited-chip" title="@($"Cập nhật lúc {review.UpdatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")}")">đã chỉnh sửa</span>
+                                                }
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    @if (isOwn)
+                                    {
+                                        <div class="review-menu-wrap">
+                                            <button type="button"
+                                                    class="btn-more-options"
+                                                    aria-haspopup="true"
+                                                    aria-expanded="@isMenuOpen"
+                                                    aria-label="Tùy chọn cho đánh giá của bạn"
+                                                    title="Tùy chọn"
+                                                    @onclick="() => ToggleMenu(review.Id)">
+                                                <span aria-hidden="true">•••</span>
+                                            </button>
+                                            @if (isMenuOpen)
+                                            {
+                                                <div class="review-menu" role="menu">
+                                                    <a class="review-menu-item" role="menuitem" href="#review-composer" @onclick="CloseMenu">Chỉnh sửa đánh giá</a>
+                                                    @if (confirmDeletePlace == "card")
+                                                    {
+                                                        <span class="review-confirm-row" role="group" aria-label="Xác nhận xóa đánh giá">
+                                                            <span>Xóa đánh giá này?</span>
+                                                            <button type="button" class="btn-confirm-delete" disabled="@deleting" @onclick="ConfirmDelete">@(deleting ? "Đang xóa..." : "Xóa")</button>
+                                                            <button type="button" class="btn-cancel-delete" @onclick="CancelDelete">Hủy</button>
+                                                        </span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button type="button" class="review-menu-item danger" role="menuitem" @onclick="AskDeleteFromCard">Xóa đánh giá của tôi</button>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </header>
+
+                                <div class="review-comment-body">
+                                    <p class="review-text-paragraph">
+                                        @displayText
+                                        @if (isLong)
+                                        {
+                                            <button type="button" class="btn-toggle-expand" @onclick="() => ToggleExpand(review.Id)">
+                                                @(isExpanded ? "Thu gọn" : "Xem thêm")
+                                            </button>
+                                        }
+                                    </p>
+
+                                    <div class="review-card-footer">
+                                        <div class="review-card-tags">
+                                            @if (isRecommended)
+                                            {
+                                                <div class="review-recommend-pill">
+                                                    <span class="recommend-thumb" aria-hidden="true">👍</span>
+                                                    <span>Khuyên xem</span>
+                                                </div>
+                                            }
+                                            else if (review.Rating <= 4)
+                                            {
+                                                <div class="review-consider-pill">
+                                                    <span class="consider-icon" aria-hidden="true">⚠️</span>
+                                                    <span>Cân nhắc</span>
+                                                </div>
+                                            }
+                                        </div>
+
+                                        <button type="button"
+                                                class="btn-helpful @(isHelpful ? "is-voted" : "")"
+                                                aria-pressed="@isHelpful"
+                                                title="@(isHelpful ? "Bỏ đánh dấu hữu ích" : "Đánh giá này hữu ích với bạn")"
+                                                @onclick="() => ToggleHelpful(review.Id)">
+                                            <svg class="cinema-icon" width="13" height="13" viewBox="0 0 24 24" fill="@(isHelpful ? "currentColor" : "none")" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
+                                            </svg>
+                                            <span>Hữu ích</span>
+                                            @if (helpfulCounts.TryGetValue(review.Id, out var hCount) && hCount > 0)
+                                            {
+                                                <span class="helpful-count">(@hCount)</span>
+                                            }
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </article>
+                    }
+                </div>
+
+                <div class="reviews-load-more">
+                    @if (arranged.Count > visibleReviews.Count)
+                    {
+                        <button type="button" class="btn-load-more" @onclick="ShowMore">
+                            <span>Xem thêm @(Math.Min(ReviewInsights.PageSize, arranged.Count - visibleReviews.Count)) đánh giá</span>
+                            <CinemaIcon Name="CinemaIconName.ChevronDown" Size="15" />
+                        </button>
+                        <span class="load-more-note">Đang hiển thị @visibleReviews.Count trong @arranged.Count đánh giá</span>
+                    }
+                    else
+                    {
+                        <span class="load-more-note">Bạn đã xem hết @arranged.Count đánh giá</span>
+                    }
+                </div>
+            }
+            else if (TotalCount == 0)
+            {
+                <div class="reviews-empty-state">
+                    <div class="empty-icon-circle">
+                        <CinemaIcon Name="CinemaIconName.Star" Size="32" />
+                    </div>
+                    <h4>Chưa có đánh giá nào</h4>
+                    <p>Hãy là người đầu tiên chia sẻ cảm nhận về bộ phim này.</p>
+                    @if (Auth.IsAuthenticated)
+                    {
+                        <a class="btn-reset-filter" href="#review-composer">Viết đánh giá đầu tiên</a>
+                    }
+                    else
+                    {
+                        <a class="btn-reset-filter" href="@($"/login?returnUrl=/movie/{MovieId}")">Đăng nhập để đánh giá</a>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="reviews-empty-state">
+                    <div class="empty-icon-circle">
+                        <CinemaIcon Name="CinemaIconName.AlertCircle" Size="30" />
+                    </div>
+                    <h4>Không có đánh giá phù hợp</h4>
+                    <p>Bộ lọc hiện tại không khớp đánh giá nào. Hãy xem lại toàn bộ bình luận.</p>
+                    <button type="button" class="btn-reset-filter" @onclick="ClearFilter">
+                        Đặt lại bộ lọc
+                    </button>
+                </div>
+            }
+        </div>
+
+        <!-- Cột Phải: Sidebar Quote Điện Ảnh -->
+        <aside class="reviews-sidebar-quote" aria-label="Thông điệp điện ảnh">
+            <div class="sidebar-quote-box">
+                <div class="quote-double-symbol" aria-hidden="true">““</div>
+                <p class="quote-cinema-text">
+                    MỖI BỘ PHIM<br/>
+                    LÀ MỘT CÂU CHUYỆN<br/>
+                    VÀ MỖI KHÁN GIẢ<br/>
+                    LÀ MỘT GÓC NHÌN
+                </p>
+                <div class="quote-accent-bar" aria-hidden="true"></div>
+            </div>
+
+            <div class="sidebar-cinema-bottom-brand">
+                <div class="cinema-seats-art" aria-hidden="true"></div>
+                <strong class="brand-sub-title">CINEMAFLOW</strong>
+                <p class="brand-sub-desc">CÙNG BẠN TRẢI NGHIỆM ĐIỆN ẢNH THEO CÁCH RIÊNG</p>
+            </div>
+        </aside>
+    </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public int MovieId { get; set; }
+
+    private MovieReviewsDto? reviews;
+    private ReviewDto? ownReview;
+    private UpsertReviewRequest form = new() { Rating = 8, Comment = "" };
+    private int hoverScore = 0;
+    private bool saving;
+    private bool deleting;
+    private bool loading = true;
+    private bool loadFailed;
+    private string? statusMessage;
+    private bool isSuccessStatus;
+    private string sortBy = "newest";
+    private ReviewFilter activeFilter = ReviewFilter.All;
+    private int visibleCount = ReviewInsights.PageSize;
+    private Guid? openMenuReviewId;
+    private string? confirmDeletePlace;
+    private int loadedMovieId;
+
+    private static readonly ReviewFilter PositiveFilter = ReviewFilter.Tier(7, 10);
+    private static readonly ReviewFilter CriticalFilter = ReviewFilter.Tier(1, 6);
+
+    private static readonly SentimentTier[] SentimentTiers =
+    [
+        new("Rất hay", "😆", 9, 10, "tier-great"),
+        new("Hay", "😊", 7, 8, "tier-good"),
+        new("Bình thường", "😐", 5, 6, "tier-mid"),
+        new("Không hay", "🙁", 3, 4, "tier-low"),
+        new("Rất tệ", "😡", 1, 2, "tier-poor")
+    ];
+
+    private string searchQuery = "";
+    private readonly HashSet<Guid> expandedReviewIds = [];
+    private readonly HashSet<Guid> userHelpfulVotes = [];
+    private readonly Dictionary<Guid, int> helpfulCounts = [];
+
+    private IReadOnlyList<ReviewDto> Reviews => reviews?.Reviews ?? [];
+    private double AverageScore => reviews?.AverageRating ?? 0;
+    private int TotalCount => reviews?.TotalReviews ?? 0;
+    private int CommentLength => form.Comment?.Length ?? 0;
+    private IReadOnlyList<ReviewDto> ArrangedReviews
+    {
+        get
+        {
+            var arranged = ReviewInsights.Arrange(Reviews, activeFilter, sortBy, Auth.User?.Id);
+            if (string.IsNullOrWhiteSpace(searchQuery)) return arranged;
+            var query = searchQuery.Trim();
+            return arranged.Where(r =>
+                (r.Comment != null && r.Comment.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
+                (r.UserName != null && r.UserName.Contains(query, StringComparison.OrdinalIgnoreCase))
+            ).ToList();
+        }
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        searchQuery = e.Value?.ToString() ?? "";
+        ResetPaging();
+    }
+
+    private void ClearSearch()
+    {
+        searchQuery = "";
+        ResetPaging();
+    }
+
+    private void ClearActiveFilterOnly()
+    {
+        activeFilter = ReviewFilter.All;
+        ResetPaging();
+    }
+
+    private void ToggleExpand(Guid reviewId)
+    {
+        if (!expandedReviewIds.Add(reviewId))
+        {
+            expandedReviewIds.Remove(reviewId);
+        }
+    }
+
+    private void ToggleHelpful(Guid reviewId)
+    {
+        if (!userHelpfulVotes.Add(reviewId))
+        {
+            userHelpfulVotes.Remove(reviewId);
+            if (helpfulCounts.TryGetValue(reviewId, out var count))
+            {
+                helpfulCounts[reviewId] = Math.Max(0, count - 1);
+            }
+        }
+        else
+        {
+            helpfulCounts[reviewId] = helpfulCounts.GetValueOrDefault(reviewId, 0) + 1;
+        }
+    }
+
+    private void SetFilter(ReviewFilter filter)
+    {
+        activeFilter = filter;
+        ResetPaging();
+    }
+
+    private void ToggleFilter(ReviewFilter filter)
+    {
+        activeFilter = activeFilter == filter ? ReviewFilter.All : filter;
+        ResetPaging();
+    }
+
+    private void ToggleScoreFilter(int score) => ToggleFilter(ReviewFilter.Score(score));
+
+    private void ClearFilter()
+    {
+        activeFilter = ReviewFilter.All;
+        searchQuery = "";
+        ResetPaging();
+    }
+
+    private void ResetPaging()
+    {
+        visibleCount = ReviewInsights.PageSize;
+        openMenuReviewId = null;
+        confirmDeletePlace = null;
+    }
+
+    private void ShowMore() => visibleCount += ReviewInsights.PageSize;
+
+    private void ToggleMenu(Guid reviewId)
+    {
+        openMenuReviewId = openMenuReviewId == reviewId ? null : reviewId;
+        confirmDeletePlace = null;
+    }
+
+    private void CloseMenu() => openMenuReviewId = null;
+
+    private void AskDeleteFromCard() => confirmDeletePlace = "card";
+
+    private void AskDeleteFromComposer() => confirmDeletePlace = "composer";
+
+    private void CancelDelete() => confirmDeletePlace = null;
+
+    private async Task ConfirmDelete()
+    {
+        await Delete();
+        confirmDeletePlace = null;
+        openMenuReviewId = null;
+    }
+
+    /// <summary>Điều hướng thang điểm bằng bàn phím (← → ↑ ↓ Home End) theo chuẩn radiogroup.</summary>
+    private void OnStarsKeyDown(KeyboardEventArgs args)
+    {
+        var next = args.Key switch
+        {
+            "ArrowRight" or "ArrowUp" => Math.Min(10, form.Rating + 1),
+            "ArrowLeft" or "ArrowDown" => Math.Max(1, form.Rating - 1),
+            "Home" => 1,
+            "End" => 10,
+            _ => 0
+        };
+
+        if (next == 0) return;
+        hoverScore = 0;
+        form.Rating = next;
+    }
+
+    private void AddQuickTag(string tag)
+    {
+        if (string.IsNullOrWhiteSpace(form.Comment))
+        {
+            form.Comment = tag;
+        }
+        else if (!form.Comment.Contains(tag, StringComparison.OrdinalIgnoreCase))
+        {
+            form.Comment = form.Comment.TrimEnd() + " " + tag;
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedMovieId == MovieId) return;
+        loadedMovieId = MovieId;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        await FetchAsync();
+        loading = false;
+    }
+
+    /// <summary>Làm mới dữ liệu sau khi lưu/xóa mà không làm nhấp nháy skeleton.</summary>
+    private Task RefreshAsync() => FetchAsync();
+
+    private async Task FetchAsync()
+    {
+        loadFailed = false;
+
+        try
+        {
+            reviews = await Api.GetReviewsAsync(MovieId);
+            loadFailed = reviews is null;
+        }
+        catch
+        {
+            reviews = null;
+            loadFailed = true;
+        }
+
+        ownReview = reviews?.Reviews.FirstOrDefault(review => review.UserId == Auth.User?.Id);
+        form = ownReview is not null
+            ? new UpsertReviewRequest { Rating = ownReview.Rating, Comment = ownReview.Comment }
+            : new UpsertReviewRequest { Rating = 8, Comment = "" };
+        ResetPaging();
+    }
+
+    private async Task Save()
+    {
+        saving = true;
+        statusMessage = null;
+
+        try
+        {
+            var result = await Api.SaveReviewAsync(MovieId, form);
+            if (result?.Success == true)
+            {
+                isSuccessStatus = true;
+                statusMessage = ownReview is not null ? "Đã cập nhật đánh giá thành công." : "Đã đăng đánh giá thành công.";
+                await RefreshAsync();
+            }
+            else
+            {
+                isSuccessStatus = false;
+                statusMessage = result?.Message ?? "Không thể lưu đánh giá. Vui lòng thử lại.";
+            }
+        }
+        catch (Exception ex)
+        {
+            isSuccessStatus = false;
+            statusMessage = "Có lỗi xảy ra: " + ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task Delete()
+    {
+        deleting = true;
+        statusMessage = null;
+
+        try
+        {
+            var success = await Api.DeleteReviewAsync(MovieId);
+            if (success)
+            {
+                isSuccessStatus = true;
+                statusMessage = "Đã xóa đánh giá của bạn.";
+                ownReview = null;
+                form = new UpsertReviewRequest { Rating = 8, Comment = "" };
+                await RefreshAsync();
+            }
+            else
+            {
+                isSuccessStatus = false;
+                statusMessage = "Không thể xóa đánh giá. Vui lòng thử lại.";
+            }
+        }
+        catch (Exception ex)
+        {
+            isSuccessStatus = false;
+            statusMessage = "Có lỗi xảy ra: " + ex.Message;
+        }
+        finally
+        {
+            deleting = false;
+        }
+    }
+
+    private sealed record SentimentTier(string Label, string Emoji, int Min, int Max, string ClassName);
+}

@@ -1,0 +1,357 @@
+@page "/watch/{MovieId:int}"
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Shared.Requests
+@using WebXemPhim.Client.Components.Player
+@inject WatchApiClient Api
+@inject WatchlistState Watchlist
+@inject AuthState Auth
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>@(movie is null ? "Xem phim" : $"{movie.Title} - Tập {playback.Current?.EpisodeNumber}") - CinemaFlow</PageTitle>
+
+<div class="watch-v2">
+    @if (loading)
+    {
+        <div class="watch-loading" role="status" aria-label="Đang tải phim">
+            <div class="watch-skeleton breadcrumb-skeleton"></div>
+            <div class="watch-loading-grid"><div class="watch-skeleton player-skeleton"></div><div class="watch-skeleton rail-skeleton"></div></div>
+            <div class="watch-skeleton title-skeleton"></div><span class="visually-hidden">Đang tải phim...</span>
+        </div>
+    }
+    else if (movie is null)
+    {
+        <section class="watch-unavailable">
+            <CinemaIcon Name="CinemaIconName.Film" Size="40" />
+            <h1>@(loadError is null ? "Không tìm thấy phim" : "Chưa thể tải phim")</h1>
+            <p>@(loadError ?? "Phim này không tồn tại hoặc đã được gỡ khỏi thư viện.")</p>
+            @if (loadError is not null) { <button class="wv-button primary" @onclick="LoadMovie">Thử lại</button> }
+            <a class="wv-button" href="/explore">Khám phá phim</a>
+        </section>
+    }
+    else
+    {
+        <nav class="wv-breadcrumb" aria-label="Đường dẫn xem phim">
+            <a href="/">Trang chủ</a><CinemaIcon Name="CinemaIconName.ChevronRight" Size="12" />
+            <a href="@($"/movie/{MovieId}")">@movie.Title</a>
+            @if (playback.Current is not null) { <CinemaIcon Name="CinemaIconName.ChevronRight" Size="12" /><span>Tập @playback.Current.EpisodeNumber.ToString("00")</span> }
+        </nav>
+        @if (lightsOff)
+        {
+            <div class="wv-curtain" @onclick="() => lightsOff = false" aria-hidden="true"></div>
+            <button class="wv-button wv-lights-on" @onclick="() => lightsOff = false"><CinemaIcon Name="CinemaIconName.Moon" Size="17" />Bật lại đèn</button>
+        }
+        <div class="wv-workspace">
+            <div class="wv-main">
+                <section class="wv-stage @(lightsOff ? "focused" : "")" aria-label="Khung phát phim">
+                    @if (playback.Source is not null)
+                    {
+                        <CinemaPlayer @key="PlayerKey" @ref="player" ActiveStreamUrl="@playback.Source.StreamUrl" PosterUrl="@PlayerPoster"
+                                      AutoPlay="@(autoPlayEpisodeId == playback.Current?.Id)" ResumeSeconds="resumeSeconds"
+                                      CurrentEpisodeTitle="@playback.Current!.Title" QualityLabel="@playback.Source.Quality"
+                                      AvailableQualities="@playback.Qualities.ToList()"
+                                      OnQualityChanged="SelectQuality"
+                                      OnEnded="OnVideoEnded" />
+                    }
+                    else
+                    {
+                        <div class="wv-no-stream"><img src="@PlayerPoster" alt="" /><div><CinemaIcon Name="CinemaIconName.Film" Size="32" /><h2>Chưa có nguồn phát</h2><p>@(playback.Current is null ? "Phim chưa có tập được phát hành." : "Tập này chưa có nguồn phát khả dụng. Bạn có thể chọn tập khác.")</p></div></div>
+                    }
+                </section>
+                <!-- Thanh chọn nguồn phát siêu gọn tối giản (Minimalist Stream Bar) -->
+                <section class="wv-stream-compact-bar" aria-label="Chọn nguồn phát phim">
+                    <div class="wv-sc-left">
+                        <span class="wv-sc-label">Nguồn:</span>
+                        <div class="wv-sc-server-pills" role="radiogroup" aria-label="Danh sách nguồn phát">
+                            @{
+                                var serverIdx = 1;
+                            }
+                            @foreach (var serverName in playback.Servers)
+                            {
+                                var sInfo = playback.GetServerInfo(serverName);
+                                var isCurrentServer = playback.Source?.ServerName == serverName;
+                                var currentIdx = serverIdx++;
+                                <button type="button" 
+                                        class="wv-sc-pill @(isCurrentServer ? "active" : "")"
+                                        role="radio"
+                                        aria-checked="@isCurrentServer"
+                                        title="@($"{sInfo.FriendlyName} ({sInfo.PingMs}ms) • {sInfo.Description}")"
+                                        @onclick="() => SelectServer(serverName)">
+                                    <span class="wv-sc-pill-name">Nguồn @currentIdx</span>
+                                    <span class="wv-sc-pill-ping">@sInfo.PingMs ms</span>
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="wv-sc-right">
+                        <button type="button" class="wv-sc-tool-btn @(lightsOff ? "active" : "")" aria-pressed="@lightsOff" aria-label="@(lightsOff ? "Bật đèn" : "Tắt đèn")" @onclick="() => lightsOff = !lightsOff" title="Chế độ rạp chiếu phim (Tắt đèn)">
+                            <CinemaIcon Name="CinemaIconName.Moon" Size="13" />
+                            <span>@(lightsOff ? "Bật đèn" : "Tắt đèn")</span>
+                        </button>
+                        <button type="button" class="wv-sc-tool-btn" @ref="reportTrigger" disabled="@(playback.Current is null)" aria-label="Báo lỗi phát video" @onclick="OpenReport" title="Báo sự cố phát video">
+                            <CinemaIcon Name="CinemaIconName.AlertCircle" Size="13" />
+                            <span>Báo lỗi</span>
+                        </button>
+                    </div>
+                </section>
+                <div class="wv-heading">
+                    <div><h1>@movie.Title</h1><p>@(playback.Current is null ? movie.OriginalTitle : $"Tập {playback.Current.EpisodeNumber:00}: {WatchPlaybackState.Title(playback.Current)}")</p></div>
+                    <div class="wv-episode-nav">
+                        <button class="wv-button" disabled="@(playback.Previous is null)" @onclick="() => GoTo(playback.Previous)"><CinemaIcon Name="CinemaIconName.ArrowLeft" Size="17" />Tập trước</button>
+                        <button class="wv-button primary" disabled="@(playback.Next is null)" @onclick="() => GoTo(playback.Next)">Tập tiếp<CinemaIcon Name="CinemaIconName.ArrowRight" Size="17" /></button>
+                    </div>
+                </div>
+                <div class="wv-secondary-actions">
+                    <button class="wv-button" disabled="@savingFilm" aria-pressed="@(Auth.IsAuthenticated && Watchlist.IsInWatchlist(MovieId))" @onclick="ToggleSaved">
+                        <CinemaIcon Name="@(Auth.IsAuthenticated && Watchlist.IsInWatchlist(MovieId) ? CinemaIconName.BookmarkCheck : CinemaIconName.Bookmark)" Size="17" />
+                        @(savingFilm ? "Đang lưu..." : Auth.IsAuthenticated && Watchlist.IsInWatchlist(MovieId) ? "Đã lưu phim" : "Lưu phim")
+                    </button>
+                    <button class="wv-button" @onclick="Share"><CinemaIcon Name="CinemaIconName.MoreHorizontal" Size="17" />Chia sẻ</button>
+                    <label class="wv-autonext"><span>Tự chuyển tập</span><input type="checkbox" role="switch" @bind="playback.AutoNext" /><span class="wv-switch" aria-hidden="true"></span></label>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(status)) { <p class="wv-status" role="status">@status</p> }
+                @if (showShare)
+                {
+                    <div class="wv-share"><label for="watch-share-link">Liên kết đến tập này</label><input id="watch-share-link" value="@Nav.Uri" readonly @onclick="SelectShare" /><button class="wv-text-button" @onclick="() => showShare = false">Đóng</button></div>
+                }
+            </div>
+            <aside class="wv-rail" aria-labelledby="episode-list-heading">
+                <header>
+                    <div class="wv-rail-header-title">
+                        <h2 id="episode-list-heading">Danh sách tập</h2>
+                        <span class="wv-rail-count">@playback.Episodes.Count tập</span>
+                    </div>
+                    <div class="wv-view-switcher" role="radiogroup" aria-label="Kiểu hiển thị tập">
+                        <button type="button" class="wv-view-btn @(!isGridView ? "active" : "")" @onclick="() => isGridView = false" title="Dạng danh sách" aria-label="Dạng danh sách">
+                            <CinemaIcon Name="CinemaIconName.List" Size="14" />
+                        </button>
+                        <button type="button" class="wv-view-btn @(isGridView ? "active" : "")" @onclick="() => isGridView = true" title="Dạng lưới số" aria-label="Dạng lưới số">
+                            <CinemaIcon Name="CinemaIconName.Grid" Size="14" />
+                        </button>
+                    </div>
+                </header>
+                <label class="wv-search" for="watch-episode-search">
+                    <span class="visually-hidden">Tìm tập phim</span>
+                    <CinemaIcon Name="CinemaIconName.Search" Size="17" />
+                    <input id="watch-episode-search" placeholder="Tìm tập phim..." @bind="search" @bind:event="oninput" />
+                </label>
+
+                @if (!isGridView)
+                {
+                    <div class="wv-episodes wv-mode-list">
+                        @foreach (var episode in playback.Search(search))
+                        {
+                            var active = episode == playback.Current;
+                            <button class="wv-episode @(active ? "active" : "")" aria-current="@(active ? "true" : null)" @onclick="() => GoTo(episode)">
+                                <div class="wv-episode-image">
+                                    <img src="@(string.IsNullOrWhiteSpace(episode.ThumbnailUrl) ? PlayerPoster : episode.ThumbnailUrl)" alt="" loading="lazy" />
+                                    <span>@episode.DurationMinutes phút</span>
+                                    <div class="wv-episode-overlay" aria-hidden="true">
+                                        <CinemaIcon Name="CinemaIconName.Play" Size="16" Filled="true" />
+                                    </div>
+                                </div>
+                                <div class="wv-episode-copy">
+                                    <div class="wv-episode-headline">
+                                        <strong>Tập @episode.EpisodeNumber.ToString("00")</strong>
+                                        @if (active)
+                                        {
+                                            <span class="wv-now-playing" title="Đang phát">
+                                                <span class="wv-pulse-dot" aria-hidden="true"></span>
+                                                <span class="wv-eq-wave" aria-hidden="true">
+                                                    <span class="wv-eq-bar b1"></span>
+                                                    <span class="wv-eq-bar b2"></span>
+                                                    <span class="wv-eq-bar b3"></span>
+                                                </span>
+                                            </span>
+                                        }
+                                    </div>
+                                    <span>@WatchPlaybackState.Title(episode)</span>
+                                </div>
+                            </button>
+                        }
+                        @if (!playback.Search(search).Any())
+                        {
+                            <div class="wv-episode-empty">@(playback.Episodes.Count == 0 ? "Chưa có tập phim." : "Không tìm thấy tập phù hợp.")
+                                @if (playback.Episodes.Count > 0) { <button class="wv-text-button" @onclick="() => search = string.Empty">Xóa tìm kiếm</button> }
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="wv-grid-episodes wv-mode-grid">
+                        @foreach (var episode in playback.Search(search))
+                        {
+                            var active = episode == playback.Current;
+                            <button class="wv-grid-item @(active ? "active" : "")" aria-current="@(active ? "true" : null)" @onclick="() => GoTo(episode)" title="@($"Tập {episode.EpisodeNumber:00}: {WatchPlaybackState.Title(episode)}")">
+                                @if (active)
+                                {
+                                    <span class="wv-grid-badge" aria-hidden="true">
+                                        <span class="wv-pulse-dot mini"></span>
+                                    </span>
+                                }
+                                <span class="wv-grid-num">@episode.EpisodeNumber.ToString("00")</span>
+                            </button>
+                        }
+                        @if (!playback.Search(search).Any())
+                        {
+                            <div class="wv-episode-empty">@(playback.Episodes.Count == 0 ? "Chưa có tập phim." : "Không tìm thấy tập phù hợp.")
+                                @if (playback.Episodes.Count > 0) { <button class="wv-text-button" @onclick="() => search = string.Empty">Xóa tìm kiếm</button> }
+                            </div>
+                        }
+                    </div>
+                }
+            </aside>
+        </div>
+        <nav class="wv-section-links" aria-label="Nội dung trang"><a href="@(ReturnUrl + "#watch-information")">Thông tin phim</a><a href="@(ReturnUrl + "#watch-discussion")">Thảo luận</a></nav>
+        <section id="watch-information" class="wv-information" aria-labelledby="watch-film-title">
+            <img class="wv-poster" src="@movie.PosterUrl" alt="Poster @movie.Title" loading="lazy" />
+            <div class="wv-info-copy"><div class="wv-info-heading"><h2 id="watch-film-title">@movie.Title</h2><p class="wv-original-title">@movie.OriginalTitle</p></div>
+                <dl><div><dt>Năm phát hành</dt><dd>@movie.ReleaseYear</dd></div><div><dt>Thể loại</dt><dd>@string.Join(" / ", movie.Genres)</dd></div><div><dt>Quốc gia</dt><dd>@movie.Country</dd></div></dl>
+                <p class="wv-overview">@(string.IsNullOrWhiteSpace(movie.Overview) ? "Thông tin nội dung đang được cập nhật." : movie.Overview)</p>
+                <a class="wv-film-link" href="@($"/movie/{MovieId}")">Xem trang phim<CinemaIcon Name="CinemaIconName.ArrowRight" Size="18" /></a>
+            </div>
+        </section>
+        <section id="watch-discussion" class="wv-discussion"><WatchDiscussion @key="MovieId" MovieId="MovieId" ReturnUrl="@ReturnUrl" /></section>
+    }
+</div>
+@if (reportOpen && playback.Current is not null)
+{
+    <div class="wv-modal-backdrop" @onclick="CloseReport">
+        <section class="wv-report-dialog" role="dialog" aria-modal="true" aria-busy="@reportSending" aria-labelledby="report-heading" tabindex="-1" @ref="reportDialog" @onclick:stopPropagation="true" @onkeydown="ReportKeyDown">
+            <header><h2 id="report-heading">Báo lỗi tập @playback.Current.EpisodeNumber</h2><button class="wv-text-button" aria-label="Đóng báo lỗi" @onclick="CloseReport" disabled="@reportSending"><CinemaIcon Name="CinemaIconName.Close" Size="20" /></button></header>
+            <p>@movie?.Title</p>
+            <EditForm Model="report" OnValidSubmit="SendReport" FormName="playback-report"><DataAnnotationsValidator />
+                <label for="playback-issue-description">Mô tả lỗi</label><InputTextArea id="playback-issue-description" @bind-Value="report.Description" placeholder="Ví dụ: video không phát hoặc âm thanh bị lệch..." maxlength="800" /><ValidationMessage For="() => report.Description" />
+                <p class="wv-report-status" role="status">@reportStatus</p><button class="wv-button primary" disabled="@reportSending">@(reportSending ? "Đang gửi..." : "Gửi báo lỗi")</button>
+            </EditForm>
+        </section>
+    </div>
+}
+@code {
+    [Parameter] public int MovieId { get; set; }
+    [SupplyParameterFromQuery(Name = "ep")] public int? EpQuery { get; set; }
+    private readonly WatchPlaybackState playback = new();
+    private MovieDetailDto? movie;
+    private int loadedMovieId, loadVersion;
+    private int? autoPlayEpisodeId;
+    private double resumeSeconds;
+    private CinemaPlayer? player;
+    private bool loading = true, lightsOff, savingFilm, showShare, reportOpen, reportSending, focusReport;
+    private bool isGridView;
+    private string search = string.Empty;
+    private string? loadError, status, reportStatus;
+    private PlaybackIssueRequest report = new();
+    private ElementReference reportDialog, reportTrigger;
+    private bool focusReportTrigger;
+    private string ReturnUrl => $"/watch/{MovieId}" + (playback.Current is null ? "" : $"?ep={playback.Current.EpisodeNumber}");
+    private string PlayerKey => $"{playback.Current?.Id}:{playback.Source?.StreamUrl}";
+    private string PlayerPoster => !string.IsNullOrWhiteSpace(playback.Current?.ThumbnailUrl) ? playback.Current.ThumbnailUrl
+        : !string.IsNullOrWhiteSpace(movie?.BackdropUrl) ? movie.BackdropUrl : movie?.PosterUrl ?? "";
+    protected override void OnInitialized() { Auth.Changed += AuthChanged; Watchlist.OnChange += StateChanged; }
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedMovieId != MovieId || movie is null) await LoadMovie();
+        else { playback.Select(EpQuery); reportOpen = false; status = null; }
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) { await Auth.InitializeAsync(); if (Auth.IsAuthenticated) await Watchlist.InitializeAsync(); }
+        if (focusReport) { focusReport = false; await JS.InvokeVoidAsync("CinemaPlayer.focusDialog", reportDialog); }
+        if (focusReportTrigger) { focusReportTrigger = false; await reportTrigger.FocusAsync(); }
+    }
+    private async Task LoadMovie()
+    {
+        var version = ++loadVersion; var id = MovieId;
+        loading = true; loadError = null; lightsOff = false; reportOpen = false; search = ""; status = null;
+        autoPlayEpisodeId = null; resumeSeconds = 0;
+        try
+        {
+            var result = await Api.GetMovieAsync(id);
+            if (version != loadVersion) return;
+            movie = result; loadedMovieId = id;
+            if (movie is not null) playback.Load(movie, EpQuery);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            if (version != loadVersion) return;
+            movie = null; loadError = "Kết nối tới thư viện phim đang gián đoạn. Vui lòng thử lại.";
+        }
+        finally { if (version == loadVersion) loading = false; }
+    }
+    private void GoTo(EpisodeDto? episode)
+    {
+        if (episode is null) return;
+        autoPlayEpisodeId = episode.Id; resumeSeconds = 0;
+        Nav.NavigateTo($"/watch/{MovieId}?ep={episode.EpisodeNumber}");
+    }
+    private async Task PreserveCursor()
+    {
+        if (player is null) return;
+        var cursor = await player.GetCursorAsync();
+        resumeSeconds = cursor.Seconds;
+        autoPlayEpisodeId = cursor.Playing ? playback.Current?.Id : null;
+    }
+    private async Task SelectServer(string server)
+    {
+        if (playback.Source?.ServerName == server) return;
+        await PreserveCursor();
+        playback.SetServer(server);
+    }
+    private async Task SelectQuality(string quality)
+    {
+        if (playback.Source?.Quality == quality) return;
+        await PreserveCursor();
+        playback.SetQuality(quality);
+    }
+    private async Task ChangeServer(ChangeEventArgs e) { await PreserveCursor(); playback.SetServer(e.Value?.ToString() ?? ""); }
+    private async Task ChangeQuality(ChangeEventArgs e) { await PreserveCursor(); playback.SetQuality(e.Value?.ToString() ?? ""); }
+    private void OnVideoEnded() { GoTo(playback.OnEnded()); }
+    private void SignIn() => Nav.NavigateTo("/login?ReturnUrl=" + Uri.EscapeDataString(ReturnUrl));
+    private async Task ToggleSaved()
+    {
+        if (!Auth.IsAuthenticated) { SignIn(); return; }
+        if (movie is null || savingFilm) return;
+        savingFilm = true;
+        try
+        {
+            var wasSaved = Watchlist.IsInWatchlist(MovieId);
+            await Watchlist.ToggleWatchlistAsync(movie);
+            status = wasSaved != Watchlist.IsInWatchlist(MovieId) ? (wasSaved ? "Đã bỏ phim khỏi Watchlist." : "Đã lưu phim vào Watchlist.") : "Chưa thể cập nhật Watchlist. Vui lòng thử lại.";
+        }
+        finally { savingFilm = false; }
+    }
+    private async Task Share()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", Nav.Uri); status = "Đã sao chép liên kết đến tập phim."; }
+        catch (JSException) { showShare = true; status = "Bạn có thể sao chép liên kết bên dưới."; }
+    }
+    private async Task SelectShare() => await JS.InvokeVoidAsync("CinemaPlayer.selectShareLink");
+    private void OpenReport()
+    {
+        if (!Auth.IsAuthenticated) { SignIn(); return; }
+        if (playback.Current is null) return;
+        lightsOff = false; report = new() { MovieId = MovieId, EpisodeId = playback.Current.Id };
+        reportStatus = null; reportOpen = true; focusReport = true;
+    }
+    private void CloseReport() { if (!reportSending) { reportOpen = false; focusReportTrigger = true; } }
+    private void ReportKeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") CloseReport(); }
+    private async Task SendReport()
+    {
+        if (reportSending) return;
+        reportSending = true;
+        try
+        {
+            var response = await Api.ReportAsync(report);
+            if (response?.Success == true) { reportOpen = false; focusReportTrigger = true; status = response.Message; }
+            else reportStatus = response?.Message ?? "Chưa gửi được báo lỗi. Vui lòng thử lại.";
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { reportStatus = "Chưa gửi được báo lỗi. Vui lòng thử lại."; }
+        finally { reportSending = false; }
+    }
+    private void AuthChanged() => _ = InvokeAsync(async () => { if (Auth.IsAuthenticated) await Watchlist.InitializeAsync(); StateHasChanged(); });
+    private void StateChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() { ++loadVersion; Auth.Changed -= AuthChanged; Watchlist.OnChange -= StateChanged; }
+}

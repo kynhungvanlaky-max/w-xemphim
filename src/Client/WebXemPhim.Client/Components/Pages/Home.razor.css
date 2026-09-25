@@ -1,0 +1,407 @@
+.tonight-picks-section {
+    width: min(1440px, calc(100% - 3.5rem));
+    margin: 2rem auto 3.5rem;
+}
+
+.section-header-compact {
+    margin-bottom: 1.2rem;
+}
+
+.section-title-arrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #ffffff;
+    text-decoration: none;
+    transition: color 0.18s ease;
+}
+
+.section-title-arrow h2 {
+    font-size: 1.45rem;
+    font-weight: 800;
+    margin: 0;
+    letter-spacing: -0.01em;
+}
+
+.section-title-arrow .cinema-icon {
+    color: rgba(255, 255, 255, 0.7);
+    transition: transform 0.18s ease, color 0.18s ease;
+}
+
+.section-title-arrow:hover {
+    color: #e50914;
+}
+
+.section-title-arrow:hover .cinema-icon {
+    transform: translateX(3px);
+    color: #e50914;
+}
+
+.tonight-picks-grid {
+    display: grid;
+    grid-template-columns: 3.65fr 1fr 1fr 1fr;
+    gap: 1rem;
+    align-items: stretch;
+}
+
+.tonight-card {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    text-decoration: none;
+    background: #11141c;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease, border-color 0.25s ease;
+    display: block;
+}
+
+.tonight-card-wide {
+    aspect-ratio: 500 / 195;
+}
+
+.tonight-card-portrait {
+    aspect-ratio: 137 / 195;
+}
+
+.tonight-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(255, 255, 255, 0.25);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65);
+}
+
+.card-bg-wrap {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+.card-img-fit {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.card-gradient-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(9, 10, 13, 0.95) 0%, rgba(9, 10, 13, 0.6) 40%, transparent 80%);
+    pointer-events: none;
+}
+
+.card-content-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 1.2rem 1.4rem;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.card-portrait-content {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0.85rem 0.95rem;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.card-title-serif {
+    font-family: var(--font-display, "Be Vietnam Pro", sans-serif);
+    font-size: clamp(0.95rem, 1.2vw, 1.25rem);
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: 0.04em;
+    margin: 0;
+    text-transform: uppercase;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+
+.card-tagline {
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.8);
+    margin: 0;
+    line-height: 1.4;
+}
+
+.card-meta-line {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.76rem;
+    color: rgba(255, 255, 255, 0.7);
+    font-weight: 500;
+}
+
+.meta-dot {
+    color: rgba(255, 255, 255, 0.25);
+}
+
+.card-rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: #f59e0b;
+    font-weight: 700;
+}
+
+/* GENRE BENTO SECTION */
+.genre-bento-section {
+    width: min(1440px, calc(100% - 3.5rem));
+    margin: 1.5rem auto 4.5rem;
+}
+
+.section-header-split {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+}
+
+.bento-main-heading {
+    font-size: 1.65rem;
+    font-weight: 800;
+    margin: 0;
+    color: #ffffff;
+    letter-spacing: -0.01em;
+}
+
+.bento-sub-heading {
+    font-size: 0.95rem;
+    color: rgba(255, 255, 255, 0.65);
+    margin: 0.3rem 0 0;
+}
+
+.bento-all-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: rgba(255, 255, 255, 0.75);
+    text-decoration: none;
+    font-size: 0.92rem;
+    font-weight: 600;
+    transition: color 0.18s ease;
+}
+
+.bento-all-link:hover {
+    color: #e50914;
+}
+
+.genre-bento-grid {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    grid-template-rows: 230px 230px 220px;
+    gap: 1.25rem;
+}
+
+.bento-card {
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+    padding: clamp(1.5rem, 2.5vw, 2.25rem);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+    background: #0d0f17;
+    text-decoration: none;
+    transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bento-card:hover {
+    transform: translateY(-5px);
+    border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65), 0 0 24px rgba(229, 9, 20, 0.2);
+}
+
+.bento-card-action {
+    grid-row: 1 / span 2;
+    grid-column: 1;
+}
+
+.bento-card-romance {
+    grid-row: 1;
+    grid-column: 2;
+}
+
+.bento-card-anime {
+    grid-row: 2;
+    grid-column: 2;
+}
+
+.bento-card-scifi {
+    grid-row: 3;
+    grid-column: 1 / span 2;
+}
+
+.bento-bg-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    transform: scale(1.0);
+    transition: transform 0.75s cubic-bezier(0.16, 1, 0.3, 1), filter 0.5s ease;
+    z-index: 1;
+}
+
+.bento-card:hover .bento-bg-img {
+    transform: scale(1.06);
+    filter: brightness(1.08);
+}
+
+.bento-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    transition: opacity 0.3s ease;
+}
+
+.bento-card-action .bento-overlay {
+    background: linear-gradient(180deg, rgba(160, 20, 28, 0.45) 0%, rgba(10, 11, 14, 0.65) 45%, rgba(10, 11, 14, 0.95) 100%);
+}
+
+.bento-card-romance .bento-overlay {
+    background: linear-gradient(180deg, rgba(140, 60, 35, 0.45) 0%, rgba(12, 14, 18, 0.65) 45%, rgba(12, 14, 18, 0.95) 100%);
+}
+
+.bento-card-anime .bento-overlay {
+    background: linear-gradient(180deg, rgba(30, 65, 115, 0.45) 0%, rgba(10, 12, 18, 0.65) 45%, rgba(10, 12, 18, 0.95) 100%);
+}
+
+.bento-card-scifi .bento-overlay {
+    background: linear-gradient(180deg, rgba(20, 70, 95, 0.45) 0%, rgba(9, 12, 17, 0.65) 45%, rgba(9, 12, 17, 0.95) 100%);
+}
+
+.bento-header {
+    position: relative;
+    z-index: 3;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.bento-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.4rem 0.85rem;
+    border-radius: 9999px;
+    background: rgba(11, 12, 16, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 0.04em;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.bento-arrow-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(11, 12, 16, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bento-card:hover .bento-arrow-btn {
+    background: #e50914;
+    border-color: #e50914;
+    transform: scale(1.1) translateX(3px);
+    box-shadow: 0 4px 14px rgba(229, 9, 20, 0.5);
+}
+
+.bento-copy {
+    position: relative;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.bento-card-title {
+    font-family: var(--font-display, "Be Vietnam Pro", sans-serif);
+    font-size: clamp(1.35rem, 2vw, 1.75rem);
+    font-weight: 800;
+    color: #ffffff;
+    margin: 0;
+    line-height: 1.15;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.8);
+}
+
+.bento-card-desc {
+    font-size: 0.92rem;
+    color: rgba(255, 255, 255, 0.85);
+    margin: 0;
+    line-height: 1.45;
+}
+
+.bento-explore-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 0.35rem;
+    transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.bento-card:hover .bento-explore-cta {
+    color: #ffffff;
+    transform: translateX(4px);
+}
+
+@media (max-width: 1100px) {
+    .tonight-picks-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .tonight-card-wide {
+        grid-column: span 2;
+    }
+    .genre-bento-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+    }
+    .bento-card-action {
+        grid-row: auto;
+        grid-column: auto;
+        min-height: 200px;
+    }
+    .bento-card-romance, .bento-card-anime, .bento-card-scifi {
+        grid-row: auto;
+        grid-column: auto;
+        min-height: 180px;
+    }
+}
+
+@media (max-width: 640px) {
+    .tonight-picks-grid {
+        grid-template-columns: 1fr;
+    }
+    .tonight-card-wide {
+        grid-column: span 1;
+    }
+    .tonight-picks-section, .genre-bento-section {
+        width: calc(100% - 1.5rem);
+    }
+}
+

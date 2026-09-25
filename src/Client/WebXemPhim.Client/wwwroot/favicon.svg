@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <defs>
+    <linearGradient id="cf-reel" x1="6" y1="4" x2="42" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FF385C" />
+      <stop offset="50%" stop-color="#E50914" />
+      <stop offset="100%" stop-color="#FF8A00" />
+    </linearGradient>
+    <linearGradient id="cf-prism" x1="26" y1="16" x2="42" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFA826" />
+      <stop offset="50%" stop-color="#FF3B53" />
+      <stop offset="100%" stop-color="#E50914" />
+    </linearGradient>
+  </defs>
+  <path d="M 28 8 C 17 8 8 16 8 24 C 8 32 17 40 28 40 C 31 40 33 39 34 38 L 30 33 C 29 34 28 34.5 26.5 34.5 C 19.5 34.5 14 29.5 14 24 C 14 18.5 19.5 13.5 26.5 13.5 C 28 13.5 29 14 30 15 L 34 10 C 33 9 31 8 28 8 Z" fill="url(#cf-reel)" />
+  <path d="M 17 11.5 L 19 16.5" stroke="#090A0D" stroke-width="2.2" stroke-linecap="round" />
+  <path d="M 11 18 L 16 20" stroke="#090A0D" stroke-width="2.2" stroke-linecap="round" />
+  <path d="M 11 30 L 16 28" stroke="#090A0D" stroke-width="2.2" stroke-linecap="round" />
+  <path d="M 17 36.5 L 19 31.5" stroke="#090A0D" stroke-width="2.2" stroke-linecap="round" />
+  <path d="M 28 8 L 34 10 L 30 15 L 26.5 13.5 Z" fill="#FFA826" />
+  <path d="M 28 40 L 34 38 L 30 33 L 26.5 34.5 Z" fill="#FF5268" />
+  <path d="M 26 15 L 39 24 L 26 24 Z" fill="url(#cf-prism)" />
+  <path d="M 26 24 L 39 24 L 26 33 Z" fill="url(#cf-reel)" />
+  <line x1="26" y1="24" x2="39" y2="24" stroke="#FFFFFF" stroke-width="1.2" stroke-opacity="0.9" stroke-linecap="round" />
+  <circle cx="29" cy="24" r="1.8" fill="#FFFFFF" />
+</svg>

@@ -1,0 +1,137 @@
+/* Extends the existing image-first Obsidian/Crimson design, without changing routes. */
+body .site-main .hero-title { max-width: 24ch; font-size: clamp(2.8rem, 4.2vw, 4.8rem); }
+body .site-main .hero-content-wrapper { padding-top: 4rem; padding-bottom: 4rem; }
+body .site-main .cinema-recovery-page { min-height: calc(100dvh - 164px); padding: 5rem clamp(1.5rem, 7vw, 7rem); justify-content: flex-start; align-items: center; background: linear-gradient(90deg, rgb(8 9 11 / 98%), rgb(8 9 11 / 70%) 45%, rgb(8 9 11 / 10%)), url('/images/generated/redesign-2026/cinemaflow-projector.png') right center / cover; }
+body .site-main .cinema-recovery-page .system-state-panel { width: min(640px, 100%); max-width: none; background: transparent; border: 0; box-shadow: none; text-align: left; padding: 0; }
+body .site-main .cinema-recovery-page h1 { font-family: var(--font-display); font-size: clamp(2.5rem, 4vw, 4.5rem); line-height: 1.08; }
+body .site-main .cinema-recovery-page .system-state-actions { justify-content: flex-start; }
+body .site-main .home-expanded { width: min(1520px, calc(100% - clamp(2rem, 6vw, 6rem))); margin: 0 auto; }
+body .site-main .home-movie-section { padding-block: 3.5rem 1rem; }
+body .site-main .home-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem; }
+body .site-main .home-section-heading h2 { font-size: clamp(1.5rem, 2.3vw, 2.2rem); letter-spacing: -.035em; margin: 0; }
+body .site-main .home-section-heading p { color: var(--text-2); margin: .5rem 0 0; font-size: .9rem; }
+body .site-main .home-section-heading > a { color: #f16b70; display: inline-flex; align-items: center; gap: .6rem; white-space: nowrap; text-decoration: none; }
+body .site-main .home-movie-rail { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1.15rem; }
+body .site-main .home-movie-rail .movie-card { width: 100%; min-width: 0; }
+body .site-main .home-movie-rail .card-info { padding: .85rem 0 0; }
+body .site-main .home-movie-rail .poster-wrapper { aspect-ratio: 2 / 3; border-radius: var(--radius-card); overflow: hidden; }
+body .site-main .home-movie-rail .poster-img { width: 100%; height: 100%; object-fit: cover; }
+body .site-main .home-movie-rail .card-title { font-size: 1rem; line-height: 1.5; }
+body .site-main .home-movie-rail .card-subtext { flex-wrap: wrap; gap: .65rem; color: var(--text-2); }
+body .site-main .home-movie-rail-landscape { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5rem; }
+body .site-main .home-landscape-card { color: var(--text); text-decoration: none; min-width: 0; }
+body .site-main .home-landscape-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--radius-card); transition: transform .35s var(--ease); }
+body .site-main .home-landscape-card:hover img { transform: translateY(-4px); }
+body .site-main .home-landscape-card h3 { font-size: 1.1rem; margin: .85rem 0 .35rem; }
+body .site-main .home-landscape-card p { color: var(--text-2); font-size: .85rem; display: flex; flex-wrap: wrap; gap: 1rem; margin: 0; }
+body .site-main .home-spotlight { margin-top: 5rem; position: relative; isolation: isolate; min-height: 450px; display: flex; align-items: center; overflow: hidden; border-radius: var(--radius-card); background: var(--surface); }
+body .site-main .home-spotlight > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; }
+body .site-main .home-spotlight::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgb(8 9 11 / 96%), rgb(8 9 11 / 80%) 40%, rgb(8 9 11 / 10%)); }
+body .site-main .home-spotlight-copy { padding: clamp(1.5rem, 4vw, 4rem); max-width: 640px; }
+body .site-main .home-editorial-label { color: var(--text-2); font-size: .8rem; }
+body .site-main .home-spotlight h2 { font-family: var(--font-display); font-size: clamp(2rem, 3.7vw, 3.8rem); line-height: 1.1; margin: 1rem 0; }
+body .site-main .home-spotlight p { color: #d1cec8; line-height: 1.8; margin-bottom: 1.5rem; }
+body .site-main .home-discovery { margin-block: 5rem; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 2rem; background: #101216; overflow: hidden; border-radius: var(--radius-card); }
+body .site-main .home-discovery > div { padding: clamp(1.5rem, 4vw, 4rem); }
+body .site-main .home-discovery h2 { font-size: clamp(2rem, 3.2vw, 3.2rem); line-height: 1.15; margin: 0 0 1rem; }
+body .site-main .home-discovery p { color: var(--text-2); margin-bottom: 1.6rem; }
+body .site-main .home-discovery img { width: 100%; height: 100%; min-height: 340px; object-fit: cover; }
+body .site-main .home-expanded .button { display: inline-flex; gap: .75rem; align-items: center; min-height: 48px; }
+body .site-main .home-empty { padding: 2rem 0; color: var(--text-2); }
+body .site-main .home-empty a { color: #f16b70; }
+body .site-main .home-card-skeleton { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-card); background-color: var(--surface-2); }
+body .site-main .genre-bento-section,
+body .site-main .home-expanded .genre-bento-section {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-inline: 0 !important;
+    padding-inline: 0 !important;
+    padding-block: 3.5rem 1rem !important;
+    box-sizing: border-box !important;
+}
+body .site-main .home-expanded .genre-bento-grid {
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+body .site-main .explore-search-box { max-width: 850px; margin-top: 0; position: relative; z-index: 1; }
+body .site-main .explore-header-row::after { background-image: url('/images/generated/redesign-2026/cinemaflow-projector.png'); opacity: .4; }
+body .site-main .explore-heading { font-size: clamp(3rem, 5vw, 5.5rem); }
+body .site-main .explore-live-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2rem 1.25rem; }
+body .site-main .explore-live-grid .movie-card { width: 100%; min-width: 0; }
+body .site-main .home-results-note { color: var(--text-2); font-size: .85rem; }
+body .site-main .explore-pagination { display: flex; justify-content: center; align-items: center; gap: 1.5rem; margin-top: 3rem; }
+body .site-main .explore-pagination button:disabled { opacity: .45; cursor: not-allowed; }
+body .site-main .home-expanded a:focus-visible,
+body .site-main .explore-live-grid a:focus-visible { outline: 2px solid var(--amber); outline-offset: 5px; }
+@media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+        body .site-main .home-movie-section,
+        body .site-main .home-spotlight,
+        body .site-main .home-discovery { animation: cinema-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 18%; }
+    }
+}
+@media (max-width: 1180px) {
+    body .site-main .home-movie-rail,
+    body .site-main .explore-live-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 767px) {
+    body .site-main .home-expanded { width: calc(100% - 1.5rem); }
+    body .site-main .home-movie-section { padding-top: 2rem; padding-bottom: 0.5rem; }
+    body .site-main .home-section-heading {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.35rem 0.75rem;
+        margin-bottom: 1rem;
+    }
+    body .site-main .home-section-heading h2 {
+        font-size: clamp(1.35rem, 5.5vw, 1.85rem);
+        line-height: 1.25;
+        max-width: 100%;
+        margin: 0;
+    }
+    body .site-main .home-section-heading > a { font-size: .82rem; }
+    body .site-main .home-section-heading p { max-width: 100%; font-size: .8rem; margin-top: 0.25rem; }
+    body .site-main .home-movie-rail {
+        display: flex;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        padding: .25rem 0 0.5rem;
+        gap: 0.85rem;
+        scrollbar-width: none !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    body .site-main .home-movie-rail::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+    }
+    body .site-main .home-movie-rail > * { flex: 0 0 44vw; scroll-snap-align: start; }
+    body .site-main .home-movie-rail-landscape > * { flex-basis: 82vw; }
+    body .site-main .row-scroll-container,
+    body .site-main .tonight-picks-grid,
+    body .site-main .continue-strip {
+        scrollbar-width: none !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    body .site-main .row-scroll-container::-webkit-scrollbar,
+    body .site-main .tonight-picks-grid::-webkit-scrollbar,
+    body .site-main .continue-strip::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+    }
+    body .site-main .home-spotlight { min-height: 400px; margin-top: 2.5rem; }
+    body .site-main .home-spotlight::before { background: linear-gradient(0deg, rgb(8 9 11 / 98%), rgb(8 9 11 / 55%)); }
+    body .site-main .home-spotlight-copy { padding: 1.25rem; }
+    body .site-main .home-discovery { grid-template-columns: 1fr; gap: 0; margin-block: 2.5rem; }
+    body .site-main .home-discovery img { min-height: 0; max-height: 200px; }
+    body .site-main .explore-live-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem .75rem; }
+    body .site-main .explore-header-row { min-height: auto; }
+    body .site-main .explore-search-box { margin-top: 0; }
+    body .site-main .hero-title { max-width: 20ch; font-size: clamp(1.4rem, 5.6vw, 1.95rem); line-height: 1.16; text-align: center; }
+    body .site-main .hero-tagline { display: none; }
+}
+

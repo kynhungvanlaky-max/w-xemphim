@@ -1,0 +1,825 @@
+@page "/admin/audit-logs"
+@layout WebXemPhim.Client.Components.Layout.AdminLayout
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Client.Components.Icons
+@using WebXemPhim.Client.Services
+@using System.Text.Json
+@inject NavigationManager Nav
+@inject AuthState Auth
+@inject IAdminApiClient AdminApi
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Nhật ký hệ thống (Audit Trail) - CinemaFlow Cockpit</PageTitle>
+
+<!-- Topbar -->
+<header class="admin-topbar">
+    <div class="topbar-title-group">
+        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <h1 class="topbar-title">Nhật ký Hệ thống &amp; Giám sát (Audit Trail)</h1>
+            @if (autoRefreshIntervalSeconds > 0)
+            {
+                <span class="sentinel-badge">
+                    <span class="sentinel-pulse-dot"></span> SENTINEL LIVE (@autoRefreshIntervalSeconds s)
+                </span>
+            }
+            else
+            {
+                <span class="cockpit-pulse-badge">
+                    <span class="pulse-dot"></span> COCKPIT AUDIT
+                </span>
+            }
+        </div>
+        <p class="topbar-subtitle">Ghi vết thời gian thực mọi thao tác quản trị nhạy cảm: cập nhật phim, phân quyền, cấu hình luồng phát và duyệt thanh toán</p>
+    </div>
+
+    <div class="topbar-actions">
+        <div class="topbar-search-pill">
+            <CinemaIcon Name="CinemaIconName.Search" Size="16" Class="search-icon" />
+            <input type="text" placeholder="Tìm theo quản trị viên, hành động, ID..." @bind="searchQuery" @bind:event="oninput" @onkeydown="HandleSearchKeyDown" />
+            @if (!string.IsNullOrWhiteSpace(searchQuery))
+            {
+                <button type="button" class="search-clear-btn" @onclick="ClearSearch" title="Xóa tìm kiếm">×</button>
+            }
+        </div>
+
+        <!-- Auto Refresh Sentinel Selector -->
+        <div class="audit-auto-refresh-selector">
+            <CinemaIcon Name="CinemaIconName.Clock" Size="14" />
+            <span class="refresh-selector-label">Tự làm mới:</span>
+            <select class="audit-refresh-select" value="@autoRefreshIntervalSeconds" @onchange="OnAutoRefreshChanged">
+                <option value="0">Tắt</option>
+                <option value="5">Mỗi 5 giây</option>
+                <option value="15">Mỗi 15 giây</option>
+                <option value="30">Mỗi 30 giây</option>
+            </select>
+        </div>
+
+        <button type="button" class="action-btn secondary" @onclick="() => LoadAuditLogsAsync()" title="Làm mới nhật ký ngay">
+            <CinemaIcon Name="CinemaIconName.Refresh" Size="16" />
+            <span>Làm mới</span>
+        </button>
+
+        <button type="button" class="action-btn secondary" @onclick="ExportLogsJsonAsync" title="Xuất dữ liệu JSON">
+            <CinemaIcon Name="CinemaIconName.Bookmark" Size="16" />
+            <span>Xuất JSON</span>
+        </button>
+
+        <button type="button" class="action-btn secondary" @onclick="ExportLogsCsvAsync" title="Xuất file CSV">
+            <CinemaIcon Name="CinemaIconName.Bookmark" Size="16" />
+            <span>Xuất CSV</span>
+        </button>
+    </div>
+</header>
+
+@if (!string.IsNullOrEmpty(actionAlert))
+{
+    <div class="form-alert success" style="margin-bottom: 1.5rem;" role="status">
+        @actionAlert
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(actionError))
+{
+    <div class="form-alert error" style="margin-bottom: 1.5rem;" role="alert">
+        @actionError
+    </div>
+}
+
+<!-- Streamlined Cockpit Telemetry & Mini-Distribution Ribbon (Compact Executive Grade) -->
+<section class="audit-streamlined-bar">
+    <div class="audit-telemetry-chips">
+        <div class="audit-metric-chip @(string.IsNullOrEmpty(selectedRiskLevel) ? "active" : "")" @onclick='() => FilterByRiskLevel(null)' title="Xem toàn bộ sự kiện">
+            <CinemaIcon Name="CinemaIconName.Shield" Size="13" />
+            <span>Tổng:</span>
+            <strong class="font-mono-num">@logs.Count</strong>
+        </div>
+        <div class="audit-metric-chip create @(selectedRiskLevel == "create" ? "active" : "")" @onclick='() => FilterByRiskLevel("create")' title="Lọc các thao tác Tạo mới (+ADD)">
+            <CinemaIcon Name="CinemaIconName.Plus" Size="13" />
+            <span>Tạo mới:</span>
+            <strong class="font-mono-num">@logs.Count(l => IsCreateAction(l.Action))</strong>
+        </div>
+        <div class="audit-metric-chip update @(selectedRiskLevel == "update" ? "active" : "")" @onclick='() => FilterByRiskLevel("update")' title="Lọc các thao tác Cập nhật / Sửa">
+            <CinemaIcon Name="CinemaIconName.Refresh" Size="13" />
+            <span>Sửa:</span>
+            <strong class="font-mono-num">@logs.Count(l => IsUpdateAction(l.Action))</strong>
+        </div>
+        <div class="audit-metric-chip danger @(selectedRiskLevel == "danger" ? "active" : "")" @onclick='() => FilterByRiskLevel("danger")' title="Lọc các thao tác Rủi ro cao (Xóa / Khóa)">
+            <CinemaIcon Name="CinemaIconName.Trash" Size="13" />
+            <span>Rủi ro:</span>
+            <strong class="font-mono-num">@logs.Count(l => IsDangerAction(l.Action))</strong>
+        </div>
+        <div class="audit-metric-chip batch @(selectedRiskLevel == "batch" ? "active" : "")" @onclick='() => FilterByRiskLevel("bulk")' title="Lọc các thao tác Hàng loạt & Đo kiểm">
+            <CinemaIcon Name="CinemaIconName.Play" Size="13" />
+            <span>Khác:</span>
+            <strong class="font-mono-num">@logs.Count(l => IsBulkOrProbeAction(l.Action))</strong>
+        </div>
+    </div>
+
+    @if (logs.Any())
+    {
+        <div class="audit-mini-distribution" title="Phân bổ: Tạo mới @(GetActionPercent(IsCreateAction))% | Sửa @(GetActionPercent(IsUpdateAction))% | Xóa @(GetActionPercent(IsDangerAction))% | Khác @(GetActionPercent(IsBulkOrProbeAction))%">
+            <div class="audit-mini-track">
+                <div class="track-seg create" style="width: @(GetActionPercent(IsCreateAction))%;"></div>
+                <div class="track-seg update" style="width: @(GetActionPercent(IsUpdateAction))%;"></div>
+                <div class="track-seg delete" style="width: @(GetActionPercent(IsDangerAction))%;"></div>
+                <div class="track-seg bulk" style="width: @(GetActionPercent(IsBulkOrProbeAction))%;"></div>
+            </div>
+            <span class="audit-mini-legend font-mono-num">
+                +@(GetActionPercent(IsCreateAction))% / ~@(GetActionPercent(IsUpdateAction))% / -@(GetActionPercent(IsDangerAction))%
+            </span>
+        </div>
+    }
+</section>
+
+<section class="admin-table-section">
+    <!-- Streamlined Header & Unified Filter Suite -->
+    <div class="cockpit-filter-suite" style="margin-bottom: 1rem;">
+        <div class="filter-suite-top">
+            <div style="display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap;">
+                <h2 style="font-size: 1.05rem; margin: 0; font-weight: 700;">Nhật ký thao tác</h2>
+
+                <!-- View Mode Toggle -->
+                <div class="view-mode-toggle">
+                    <button type="button" class="view-mode-btn @(!isTimelineView ? "active" : "")" @onclick="() => isTimelineView = false" title="Xem dạng bảng chi tiết">
+                        <CinemaIcon Name="CinemaIconName.List" Size="13" />
+                        <span>Bảng</span>
+                    </button>
+                    <button type="button" class="view-mode-btn @(isTimelineView ? "active" : "")" @onclick="() => isTimelineView = true" title="Xem dạng dòng thời gian trực quan">
+                        <CinemaIcon Name="CinemaIconName.Clock" Size="13" />
+                        <span>Dòng thời gian</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="filter-count-chip">
+                <span>Hiển thị: <strong>@filteredLogs.Count</strong> / @logs.Count bản ghi</span>
+            </div>
+        </div>
+
+        <!-- Filter Controls Grid -->
+        <div class="filter-controls-grid">
+            <div class="filter-control-item">
+                <label class="filter-label">Thực thể quản trị</label>
+                <select class="admin-select-picker" value="@(selectedEntityType ?? "")" @onchange="e => FilterByEntityType(string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value.ToString())">
+                    <option value="">Tất cả thực thể (@logs.Count)</option>
+                    <option value="Movie">🎬 Phim (@logs.Count(l => l.EntityType.Equals("Movie", StringComparison.OrdinalIgnoreCase)))</option>
+                    <option value="Episode">📺 Tập phim (@logs.Count(l => l.EntityType.Equals("Episode", StringComparison.OrdinalIgnoreCase)))</option>
+                    <option value="StreamSource">⚡ Nguồn Stream (@logs.Count(l => l.EntityType.Equals("StreamSource", StringComparison.OrdinalIgnoreCase)))</option>
+                    <option value="User">👤 Người dùng (@logs.Count(l => l.EntityType.Equals("User", StringComparison.OrdinalIgnoreCase)))</option>
+                    <option value="Payment">💳 Giao dịch VIP (@logs.Count(l => l.EntityType.Equals("Payment", StringComparison.OrdinalIgnoreCase)))</option>
+                    <option value="Review">⭐ Đánh giá (@logs.Count(l => l.EntityType.Equals("Review", StringComparison.OrdinalIgnoreCase)))</option>
+                </select>
+            </div>
+
+            <div class="filter-control-item">
+                <label class="filter-label">Mức độ rủi ro</label>
+                <select class="admin-select-picker" value="@(selectedRiskLevel ?? "")" @onchange="e => FilterByRiskLevel(string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value.ToString())">
+                    <option value="">Tất cả mức độ</option>
+                    <option value="danger">⚠ Rủi ro cao (Xóa / Khóa)</option>
+                    <option value="create">+ Tạo mới &amp; Thêm</option>
+                    <option value="update">✎ Cập nhật &amp; Sửa</option>
+                    <option value="bulk">⚡ Hàng loạt &amp; Đo kiểm</option>
+                </select>
+            </div>
+
+            <div class="filter-control-item">
+                <label class="filter-label">Khung thời gian</label>
+                <select class="admin-select-picker" value="@timeHorizonFilter" @onchange="OnTimeHorizonChanged">
+                    <option value="all">Toàn bộ thời gian</option>
+                    <option value="24h">Trong 24 giờ qua</option>
+                    <option value="7d">Trong 7 ngày qua</option>
+                    <option value="30d">Trong 30 ngày qua</option>
+                </select>
+            </div>
+
+            <div class="filter-control-item">
+                <label class="filter-label">Bản ghi hiển thị</label>
+                <select class="admin-select-picker" value="@takeLimit" @onchange="OnTakeLimitChanged">
+                    <option value="50">50 sự kiện gần nhất</option>
+                    <option value="100">100 sự kiện gần nhất</option>
+                    <option value="200">200 sự kiện gần nhất</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Active Filter Strip & Clear All -->
+        @if (!string.IsNullOrEmpty(selectedEntityType) || !string.IsNullOrEmpty(selectedRiskLevel) || timeHorizonFilter != "all" || !string.IsNullOrEmpty(searchQuery))
+        {
+            <div class="filter-active-strip">
+                <span class="active-filter-title">Bộ lọc đang áp dụng:</span>
+                @if (!string.IsNullOrEmpty(selectedEntityType))
+                {
+                    <span class="filter-pill-tag">
+                        <span>Thực thể: @selectedEntityType</span>
+                        <button type="button" @onclick="() => FilterByEntityType(null)">&times;</button>
+                    </span>
+                }
+                @if (!string.IsNullOrEmpty(selectedRiskLevel))
+                {
+                    <span class="filter-pill-tag">
+                        <span>Mức độ: @(selectedRiskLevel == "danger" ? "Rủi ro cao" : selectedRiskLevel == "create" ? "Tạo mới" : selectedRiskLevel == "update" ? "Cập nhật" : "Khác")</span>
+                        <button type="button" @onclick="() => FilterByRiskLevel(null)">&times;</button>
+                    </span>
+                }
+                @if (timeHorizonFilter != "all")
+                {
+                    <span class="filter-pill-tag">
+                        <span>Thời gian: @(timeHorizonFilter == "24h" ? "24h qua" : timeHorizonFilter == "7d" ? "7 ngày qua" : "30 ngày qua")</span>
+                        <button type="button" @onclick='() => { timeHorizonFilter = "all"; ApplyFilters(); }'>&times;</button>
+                    </span>
+                }
+                @if (!string.IsNullOrEmpty(searchQuery))
+                {
+                    <span class="filter-pill-tag">
+                        <span>Tìm kiếm: "@searchQuery"</span>
+                        <button type="button" @onclick="ClearSearch">&times;</button>
+                    </span>
+                }
+
+                <button type="button" class="btn-clear-all-filters" @onclick="ResetFilters">
+                    Xóa tất cả bộ lọc
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (isLoading)
+    {
+        <div style="display: flex; flex-direction: column; gap: 0.75rem; padding: 1.5rem 0;">
+            <div class="cockpit-skeleton-card" style="height: 52px;"></div>
+            <div class="cockpit-skeleton-card" style="height: 52px;"></div>
+            <div class="cockpit-skeleton-card" style="height: 52px;"></div>
+            <div class="cockpit-skeleton-card" style="height: 52px;"></div>
+            <div class="cockpit-skeleton-card" style="height: 52px;"></div>
+        </div>
+    }
+    else if (!filteredLogs.Any())
+    {
+        <div class="empty-state audit-empty-state">
+            <CinemaIcon Name="CinemaIconName.Shield" Size="48" Class="audit-empty-icon" />
+            <h3 class="audit-empty-title">Không tìm thấy nhật ký tương ứng</h3>
+            <p class="audit-empty-desc">
+                Chưa có thao tác nào phù hợp với bộ lọc hoặc từ khóa tìm kiếm "@searchQuery".
+            </p>
+            <button type="button" class="action-btn secondary" @onclick="ResetFilters">Xóa toàn bộ bộ lọc</button>
+        </div>
+    }
+    else if (isTimelineView)
+    {
+        <!-- VISUAL TIMELINE VIEW -->
+        <div class="audit-timeline-container">
+            <div class="audit-timeline-axis"></div>
+
+            @foreach (var log in filteredLogs)
+            {
+                <div class="audit-timeline-item">
+                    <div class="audit-timeline-node @GetNodeCssClass(log.Action)">
+                        <span style="font-size: 0.65rem; font-weight: 800;">@GetActionSymbol(log.Action)</span>
+                    </div>
+
+                    <div class="audit-timeline-card">
+                        <div class="audit-timeline-card-header">
+                            <div class="audit-timeline-meta">
+                                <span class="audit-row-action @GetActionCssClass(log.Action)">
+                                    @log.Action
+                                </span>
+                                <span class="audit-timeline-actor">@log.AdminEmail</span>
+                                <span class="audit-timeline-entity-tag font-mono-num">
+                                    @log.EntityType #@log.EntityId
+                                </span>
+                            </div>
+                            <span class="audit-timeline-time">
+                                @GetRelativeTime(log.Timestamp) (@log.Timestamp.ToLocalTime().ToString("HH:mm:ss"))
+                            </span>
+                        </div>
+
+                        <div class="audit-timeline-summary">
+                            @log.Summary
+                        </div>
+
+                        <div class="audit-timeline-footer">
+                            <span class="monospace-num">ID: @log.Id.ToString().Substring(0, 8)</span>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <span class="monospace-num" style="font-size: 0.72rem;">@log.Timestamp.ToLocalTime().ToString("yyyy-MM-dd")</span>
+                                @if (!string.IsNullOrEmpty(log.DetailsJson))
+                                {
+                                    <button type="button" class="action-btn secondary small" @onclick="() => OpenDetailsModal(log)" title="Xem payload chi tiết">
+                                        <CinemaIcon Name="CinemaIconName.Eye" Size="13" />
+                                        <span>Chi tiết JSON</span>
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <!-- DATA TABLE GRID VIEW -->
+        <div class="table-frame">
+            <table class="admin-movies-table">
+                <thead>
+                    <tr>
+                        <th style="width: 170px;">Thời gian (Local)</th>
+                        <th style="width: 190px;">Quản trị viên</th>
+                        <th style="width: 140px;">Thao tác</th>
+                        <th style="width: 140px;">Thực thể</th>
+                        <th>Tóm tắt hành động</th>
+                        <th style="width: 100px; text-align: right;">Chi tiết</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var log in filteredLogs)
+                    {
+                        <tr>
+                            <td>
+                                <div class="audit-time-main monospace-num">
+                                    @log.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                                </div>
+                                <div class="audit-time-rel">
+                                    @GetRelativeTime(log.Timestamp)
+                                </div>
+                            </td>
+                            <td>
+                                <div class="audit-actor-row">
+                                    <div class="user-avatar-initial">
+                                        @(string.IsNullOrEmpty(log.AdminEmail) ? "A" : log.AdminEmail[0].ToString().ToUpper())
+                                    </div>
+                                    <div class="audit-actor-name" title="@log.AdminEmail">
+                                        @log.AdminEmail
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="audit-row-action @GetActionCssClass(log.Action)">
+                                    @log.Action
+                                </span>
+                            </td>
+                            <td>
+                                <div class="audit-entity-group">
+                                    <span class="audit-entity-type">
+                                        @log.EntityType
+                                    </span>
+                                    @if (!string.IsNullOrEmpty(log.EntityId))
+                                    {
+                                        <span class="audit-entity-id monospace-num" title="@log.EntityId">
+                                            #@log.EntityId
+                                        </span>
+                                    }
+                                </div>
+                            </td>
+                            <td>
+                                <div class="audit-summary-text">
+                                    @log.Summary
+                                </div>
+                            </td>
+                            <td style="text-align: right;">
+                                @if (!string.IsNullOrEmpty(log.DetailsJson))
+                                {
+                                    <button type="button" class="action-btn secondary small" @onclick="() => OpenDetailsModal(log)" title="Xem payload chi tiết">
+                                        <CinemaIcon Name="CinemaIconName.Eye" Size="14" />
+                                        <span>JSON</span>
+                                    </button>
+                                }
+                                else
+                                {
+                                    <span class="audit-empty-dash">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<!-- JSON Inspector Drawer -->
+@if (activeLog != null)
+{
+    <div class="drawer-overlay" @onclick="CloseDetailsModal">
+        <div class="drawer-content audit-modal-drawer" role="dialog" aria-modal="true" aria-labelledby="audit-detail-title" @onclick:stopPropagation="true" style="max-width: 620px;">
+            <div class="drawer-header audit-modal-header">
+                <div>
+                    <h3 class="audit-modal-title" id="audit-detail-title">
+                        Chi tiết Sự kiện #@activeLog.Id.ToString().Substring(0, 8)
+                    </h3>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.25rem;">
+                        <span class="audit-row-action @GetActionCssClass(activeLog.Action)">@activeLog.Action</span>
+                        <span class="audit-modal-subtitle">@activeLog.EntityType #@activeLog.EntityId</span>
+                    </div>
+                </div>
+                <button type="button" class="drawer-close-btn" aria-label="Đóng chi tiết nhật ký" @onclick="CloseDetailsModal">×</button>
+            </div>
+
+            <div class="drawer-body" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
+                <!-- Overview Card -->
+                <div class="audit-modal-overview-box">
+                    <div class="audit-modal-field-heading">TÓM TẮT THAO TÁC</div>
+                    <div class="audit-modal-summary-text">@activeLog.Summary</div>
+
+                    <div class="audit-modal-grid">
+                        <div>
+                            <span class="audit-modal-sublabel">Người thực hiện:</span>
+                            <strong class="audit-modal-subvalue">@activeLog.AdminEmail</strong>
+                        </div>
+                        <div>
+                            <span class="audit-modal-sublabel">Thời gian (Local):</span>
+                            <span class="audit-modal-subvalue monospace-num">@activeLog.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span>
+                        </div>
+                        <div>
+                            <span class="audit-modal-sublabel">Mã đối tượng:</span>
+                            <span class="monospace-num" style="color: #3b82f6; font-weight: 600;">#@activeLog.EntityId</span>
+                        </div>
+                        <div>
+                            <span class="audit-modal-sublabel">Thời gian tương đối:</span>
+                            <span style="color: #10b981; font-weight: 600;">@GetRelativeTime(activeLog.Timestamp)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- JSON Tree & Code Block -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div class="audit-modal-section-title">
+                        Payload Dữ liệu JSON (Raw)
+                    </div>
+                    <button type="button" class="action-btn secondary small" @onclick="CopyPayloadToClipboard">
+                        <CinemaIcon Name="CinemaIconName.Check" Size="13" />
+                        <span>@(isCopied ? "Đã copy vào Clipboard!" : "Copy JSON")</span>
+                    </button>
+                </div>
+
+                <pre class="audit-json-codeblock">@FormatJson(activeLog.DetailsJson)</pre>
+            </div>
+
+            <div class="drawer-footer audit-modal-footer">
+                <button type="button" class="action-btn secondary" @onclick="CloseDetailsModal">Đóng</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<AuditLogDto> logs = new();
+    private List<AuditLogDto> filteredLogs = new();
+    private string searchQuery = string.Empty;
+    private string? selectedEntityType = null;
+    private string? selectedRiskLevel = null;
+    private string timeHorizonFilter = "all";
+    private int takeLimit = 50;
+    private bool isLoading = true;
+    private bool isTimelineView = false;
+    private string? actionAlert;
+    private string? actionError;
+    private AuditLogDto? activeLog;
+    private bool isCopied = false;
+
+    // Sentinel Auto-Refresh
+    private int autoRefreshIntervalSeconds = 0;
+    private System.Threading.Timer? refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Auth.OnChange += HandleAuthChanged;
+
+        if (!Auth.IsAuthenticated || !Auth.IsAdmin)
+        {
+            Nav.NavigateTo("/login?returnUrl=/admin/audit-logs");
+            return;
+        }
+
+        await LoadAuditLogsAsync();
+    }
+
+    private void HandleAuthChanged()
+    {
+        InvokeAsync(() =>
+        {
+            if (!Auth.IsAuthenticated || !Auth.IsAdmin)
+            {
+                Nav.NavigateTo("/login?returnUrl=/admin/audit-logs");
+            }
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadAuditLogsAsync(bool silent = false)
+    {
+        if (!Auth.IsAdmin) return;
+        if (!silent)
+        {
+            isLoading = true;
+            actionAlert = null;
+            actionError = null;
+            StateHasChanged();
+        }
+
+        try
+        {
+            logs = await AdminApi.GetAuditLogsAsync(searchQuery, selectedEntityType, takeLimit);
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            if (!silent)
+            {
+                actionError = $"Không thể tải dữ liệu nhật ký hệ thống: {ex.Message}";
+            }
+        }
+        finally
+        {
+            if (!silent)
+            {
+                isLoading = false;
+            }
+            StateHasChanged();
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        var result = logs.AsEnumerable();
+
+        // 1. Filter by Entity Type
+        if (!string.IsNullOrWhiteSpace(selectedEntityType))
+        {
+            result = result.Where(l => l.EntityType.Equals(selectedEntityType, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // 2. Filter by Risk Level
+        if (!string.IsNullOrWhiteSpace(selectedRiskLevel))
+        {
+            result = selectedRiskLevel switch
+            {
+                "danger" => result.Where(l => IsDangerAction(l.Action)),
+                "create" => result.Where(l => IsCreateAction(l.Action)),
+                "update" => result.Where(l => IsUpdateAction(l.Action)),
+                "bulk" => result.Where(l => IsBulkOrProbeAction(l.Action)),
+                _ => result
+            };
+        }
+
+        // 3. Filter by Time Horizon
+        if (timeHorizonFilter != "all")
+        {
+            var now = DateTimeOffset.UtcNow;
+            result = timeHorizonFilter switch
+            {
+                "24h" => result.Where(l => (now - l.Timestamp.ToUniversalTime()).TotalHours <= 24),
+                "7d" => result.Where(l => (now - l.Timestamp.ToUniversalTime()).TotalDays <= 7),
+                "30d" => result.Where(l => (now - l.Timestamp.ToUniversalTime()).TotalDays <= 30),
+                _ => result
+            };
+        }
+
+        // 4. Filter by Search Query
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            var q = searchQuery.Trim().ToLowerInvariant();
+            result = result.Where(l =>
+                l.Summary.ToLowerInvariant().Contains(q) ||
+                l.AdminEmail.ToLowerInvariant().Contains(q) ||
+                l.Action.ToLowerInvariant().Contains(q) ||
+                l.EntityType.ToLowerInvariant().Contains(q) ||
+                l.EntityId.ToLowerInvariant().Contains(q));
+        }
+
+        filteredLogs = result.ToList();
+    }
+
+    private async Task HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await LoadAuditLogsAsync();
+        }
+    }
+
+    private async Task ClearSearch()
+    {
+        searchQuery = string.Empty;
+        await LoadAuditLogsAsync();
+    }
+
+    private async Task FilterByEntityType(string? entityType)
+    {
+        selectedEntityType = entityType;
+        await LoadAuditLogsAsync();
+    }
+
+    private void FilterByRiskLevel(string? risk)
+    {
+        selectedRiskLevel = risk;
+        ApplyFilters();
+    }
+
+    private void OnTimeHorizonChanged(ChangeEventArgs e)
+    {
+        timeHorizonFilter = e.Value?.ToString() ?? "all";
+        ApplyFilters();
+    }
+
+    private async Task OnTakeLimitChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var limit))
+        {
+            takeLimit = limit;
+            await LoadAuditLogsAsync();
+        }
+    }
+
+    private void OnAutoRefreshChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var seconds))
+        {
+            autoRefreshIntervalSeconds = seconds;
+            SetupRefreshTimer();
+        }
+    }
+
+    private void SetupRefreshTimer()
+    {
+        refreshTimer?.Dispose();
+        refreshTimer = null;
+
+        if (autoRefreshIntervalSeconds > 0)
+        {
+            refreshTimer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadAuditLogsAsync(silent: true);
+                });
+            }, null, TimeSpan.FromSeconds(autoRefreshIntervalSeconds), TimeSpan.FromSeconds(autoRefreshIntervalSeconds));
+        }
+    }
+
+    private async Task ResetFilters()
+    {
+        searchQuery = string.Empty;
+        selectedEntityType = null;
+        selectedRiskLevel = null;
+        timeHorizonFilter = "all";
+        await LoadAuditLogsAsync();
+    }
+
+    private void OpenDetailsModal(AuditLogDto log)
+    {
+        activeLog = log;
+        isCopied = false;
+    }
+
+    private void CloseDetailsModal()
+    {
+        activeLog = null;
+        isCopied = false;
+    }
+
+    private async Task CopyPayloadToClipboard()
+    {
+        if (activeLog?.DetailsJson == null) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", activeLog.DetailsJson);
+            isCopied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            isCopied = false;
+            StateHasChanged();
+        }
+        catch
+        {
+            // Ignore clipboard errors
+        }
+    }
+
+    private async Task ExportLogsJsonAsync()
+    {
+        if (!filteredLogs.Any()) return;
+        try
+        {
+            var json = JsonSerializer.Serialize(filteredLogs, new JsonSerializerOptions { WriteIndented = true });
+            var fileName = $"cinemaflow_audit_logs_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json";
+            await JS.InvokeVoidAsync("adminTools.downloadFile", fileName, "application/json", json);
+            actionAlert = $"Đã xuất {filteredLogs.Count} bản ghi nhật ký dạng JSON.";
+        }
+        catch (Exception ex)
+        {
+            actionError = $"Lỗi khi xuất file JSON: {ex.Message}";
+        }
+    }
+
+    private async Task ExportLogsCsvAsync()
+    {
+        if (!filteredLogs.Any()) return;
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("TimestampUtc,AdminEmail,Action,EntityType,EntityId,Summary");
+            foreach (var l in filteredLogs)
+            {
+                sb.AppendLine(CsvSecurity.FormatRow(
+                    l.Timestamp.ToString("O"), l.AdminEmail, l.Action, l.EntityType, l.EntityId, l.Summary));
+            }
+            var fileName = $"cinemaflow_audit_logs_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv";
+            await JS.InvokeVoidAsync("adminTools.downloadFile", fileName, "text/csv;charset=utf-8", sb.ToString());
+            actionAlert = $"Đã xuất {filteredLogs.Count} bản ghi nhật ký dạng CSV.";
+        }
+        catch (Exception ex)
+        {
+            actionError = $"Lỗi khi xuất file CSV: {ex.Message}";
+        }
+    }
+
+    private string FormatJson(string? rawJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawJson)) return "{}";
+        try
+        {
+            using var doc = JsonDocument.Parse(rawJson);
+            return JsonSerializer.Serialize(doc.RootElement, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return rawJson;
+        }
+    }
+
+    private bool IsCreateAction(string action) =>
+        action.Contains("CREATE", StringComparison.OrdinalIgnoreCase) ||
+        action.Contains("ADD", StringComparison.OrdinalIgnoreCase) ||
+        action.Contains("GENERATE", StringComparison.OrdinalIgnoreCase) ||
+        action.Contains("CLONE", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsUpdateAction(string action) =>
+        action.Contains("UPDATE", StringComparison.OrdinalIgnoreCase) ||
+        action.Contains("EDIT", StringComparison.OrdinalIgnoreCase) ||
+        action.Contains("TOGGLE", StringComparison.OrdinalIgnoreCase) ||
+        action.Contains("REPLY", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsDangerAction(string action) =>
+        action.Contains("DELETE", StringComparison.OrdinalIgnoreCase) ||
+        action.Contains("LOCK", StringComparison.OrdinalIgnoreCase) ||
+        action.Contains("BAN", StringComparison.OrdinalIgnoreCase) ||
+        action.Contains("ROLE", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsBulkOrProbeAction(string action) =>
+        action.Contains("BULK", StringComparison.OrdinalIgnoreCase) ||
+        action.Contains("BATCH", StringComparison.OrdinalIgnoreCase) ||
+        action.Contains("PROBE", StringComparison.OrdinalIgnoreCase) ||
+        action.Contains("APPROVE", StringComparison.OrdinalIgnoreCase);
+
+    private double GetActionPercent(Func<string, bool> predicate)
+    {
+        if (!logs.Any()) return 0;
+        var count = logs.Count(l => predicate(l.Action));
+        return Math.Round((double)count / logs.Count * 100.0, 1);
+    }
+
+    private string GetActionCssClass(string action)
+    {
+        if (string.IsNullOrEmpty(action)) return "audit-action-bulk";
+        if (IsCreateAction(action)) return "audit-action-create";
+        if (IsDangerAction(action)) return "audit-action-delete";
+        if (action.Contains("PROBE", StringComparison.OrdinalIgnoreCase)) return "audit-action-probe";
+        if (action.Contains("BULK", StringComparison.OrdinalIgnoreCase) || action.Contains("BATCH", StringComparison.OrdinalIgnoreCase)) return "audit-action-bulk";
+        return "audit-action-update";
+    }
+
+    private string GetNodeCssClass(string action)
+    {
+        if (IsDangerAction(action)) return "danger";
+        if (IsCreateAction(action)) return "success";
+        if (action.Contains("PROBE", StringComparison.OrdinalIgnoreCase)) return "probe";
+        if (IsBulkOrProbeAction(action)) return "warning";
+        return "update";
+    }
+
+    private string GetActionSymbol(string action)
+    {
+        if (IsDangerAction(action)) return "!";
+        if (IsCreateAction(action)) return "+";
+        if (action.Contains("PROBE", StringComparison.OrdinalIgnoreCase)) return "P";
+        if (action.Contains("BULK", StringComparison.OrdinalIgnoreCase)) return "*";
+        return "~";
+    }
+
+    private string GetRelativeTime(DateTimeOffset time)
+    {
+        var diff = DateTimeOffset.UtcNow - time.ToUniversalTime();
+        if (diff.TotalSeconds < 60) return "vừa xong";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes} phút trước";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours} giờ trước";
+        if (diff.TotalDays < 30) return $"{(int)diff.TotalDays} ngày trước";
+        return time.ToLocalTime().ToString("dd/MM/yyyy");
+    }
+
+    public void Dispose()
+    {
+        Auth.OnChange -= HandleAuthChanged;
+        refreshTimer?.Dispose();
+    }
+}

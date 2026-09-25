@@ -1,0 +1,254 @@
+@inject WatchlistState Watchlist
+@using WebXemPhim.Client.Components.Icons
+@implements IDisposable
+
+<section class="hero-billboard-stage"
+         aria-label="Phim nổi bật"
+         @onmouseenter="OnMouseEnter"
+         @onmouseleave="OnMouseLeave">
+    <!-- Cinematic Background Image Layers (Cross-fade) -->
+    <div class="hero-backdrop-layer">
+        @for (int i = 0; i < SlideList.Count; i++)
+        {
+            var m = SlideList[i];
+            var isActive = i == currentIndex;
+            <div class="hero-backdrop-slide @(isActive ? "active" : "")" aria-hidden="@(!isActive)">
+                <img src="@m.BackdropUrl"
+                     alt="@m.Title"
+                     class="hero-backdrop-img @(isActive ? "drifting" : "")" />
+            </div>
+        }
+        <div class="hero-gradient-overlay-left"></div>
+        <div class="hero-gradient-overlay-right"></div>
+        <div class="hero-gradient-overlay-bottom"></div>
+        <div class="hero-gradient-overlay-top"></div>
+    </div>
+
+    <!-- Edge Navigation Arrows (Netflix / Apple TV+ Style) -->
+    @if (SlideList.Count > 1)
+    {
+        <button type="button"
+                class="hero-edge-btn hero-edge-prev"
+                @onclick="PrevSlide"
+                aria-label="Phim trước đó"
+                title="Phim trước đó">
+            <CinemaIcon Name="CinemaIconName.ChevronLeft" Size="26" />
+        </button>
+
+        <button type="button"
+                class="hero-edge-btn hero-edge-next"
+                @onclick="() => NextSlide(false)"
+                aria-label="Phim tiếp theo"
+                title="Phim tiếp theo">
+            <CinemaIcon Name="CinemaIconName.ChevronRight" Size="26" />
+        </button>
+    }
+
+    <!-- Semantic UI Content Layer -->
+    <div class="hero-content-wrapper">
+        @if (CurrentMovie is not null)
+        {
+            <div class="hero-info-column" @key="CurrentMovie.Id">
+                <div class="hero-kicker-row">
+                    <span class="hero-kicker">PHIM NỔI BẬT</span>
+                    @if (SlideList.Count > 1)
+                    {
+                        <span class="hero-slide-badge font-mono-num">
+                            @(currentIndex + 1) / @(SlideList.Count)
+                        </span>
+                    }
+                </div>
+
+                <h1 class="hero-title">@CurrentMovie.Title</h1>
+
+                <p class="hero-tagline">@CurrentMovie.Overview</p>
+
+                <div class="hero-meta-bar">
+                    <span class="font-mono-num">@CurrentMovie.ReleaseYear</span>
+                    <span class="meta-sep">|</span>
+                    <span>@(CurrentMovie.Genres.FirstOrDefault() ?? "Điện ảnh")</span>
+                    <span class="meta-sep">|</span>
+                    <span class="font-mono-num">@CurrentMovie.DurationMinutes phút</span>
+                    <span class="meta-sep">|</span>
+                    <span class="hero-rating-badge">
+                        <CinemaIcon Name="CinemaIconName.Star" Size="14" Filled="true" />
+                        <strong class="font-mono-num">@CurrentMovie.Rating.ToString("0.0")</strong>
+                    </span>
+                </div>
+
+                <div class="hero-actions-group">
+                    <a href="@($"/watch/{CurrentMovie.Id}")" class="btn-hero-watch" title="Xem ngay @CurrentMovie.Title">
+                        <CinemaIcon Name="CinemaIconName.Play" Size="16" Filled="true" />
+                        <span>Xem ngay</span>
+                    </a>
+
+                    <button type="button" class="btn-hero-watchlist" @onclick="ToggleWatchlist" title="Thêm vào tủ phim">
+                        <CinemaIcon Name="@(isInWatchlist ? CinemaIconName.Check : CinemaIconName.Plus)" Size="16" />
+                        <span>@(isInWatchlist ? "Đã trong tủ phim" : "Thêm vào tủ phim")</span>
+                    </button>
+                </div>
+            </div>
+        }
+
+        <!-- Apple TV+ / HBO Max Style Cinematic Mini-Preview Rail -->
+        @if (SlideList.Count > 1)
+        {
+            <div class="hero-preview-rail" role="tablist" aria-label="Danh sách phim nổi bật">
+                <div class="hero-preview-strip">
+                    @for (int i = 0; i < SlideList.Count; i++)
+                    {
+                        var idx = i;
+                        var m = SlideList[i];
+                        var isCur = idx == currentIndex;
+                        <button type="button"
+                                class="hero-thumb-card @(isCur ? "active" : "")"
+                                @onclick="() => SelectSlide(idx)"
+                                role="tab"
+                                aria-selected="@isCur"
+                                title="@m.Title"
+                                aria-label="Chuyển tới phim @m.Title">
+                            <img src="@m.BackdropUrl" alt="@m.Title" class="thumb-img" loading="lazy" />
+                            <div class="thumb-overlay">
+                                @if (isCur)
+                                {
+                                    <span class="thumb-now-playing">
+                                        <span class="pulse-dot"></span>
+                                        <span class="now-text">ĐANG CHIẾU</span>
+                                    </span>
+                                }
+                                <span class="thumb-title">@m.Title</span>
+                            </div>
+
+                            @if (isCur)
+                            {
+                                <span @key="progressKey"
+                                      class="thumb-progress-bar @(isPaused ? "paused" : "")"
+                                      style="animation-duration: @(AutoSlideIntervalSeconds)s;"></span>
+                            }
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    [Parameter] public MovieDto? Movie { get; set; }
+    [Parameter] public List<MovieDto> Movies { get; set; } = [];
+    [Parameter] public int AutoSlideIntervalSeconds { get; set; } = 7;
+
+    private int currentIndex = 0;
+    private int progressKey = 0;
+    private bool isPaused = false;
+    private System.Timers.Timer? carouselTimer;
+
+    private List<MovieDto> SlideList
+    {
+        get
+        {
+            if (Movies.Count > 0) return Movies;
+            if (Movie is not null) return [Movie];
+            return [];
+        }
+    }
+
+    private MovieDto? CurrentMovie => SlideList.Count > 0 ? SlideList[currentIndex % SlideList.Count] : Movie;
+    private bool isInWatchlist => CurrentMovie is not null && Watchlist.IsInWatchlist(CurrentMovie.Id);
+
+    protected override void OnParametersSet()
+    {
+        if (currentIndex >= SlideList.Count && SlideList.Count > 0)
+        {
+            currentIndex = 0;
+        }
+
+        SetupTimer();
+    }
+
+    private void SetupTimer()
+    {
+        carouselTimer?.Stop();
+        carouselTimer?.Dispose();
+        carouselTimer = null;
+
+        if (SlideList.Count > 1)
+        {
+            carouselTimer = new System.Timers.Timer(AutoSlideIntervalSeconds * 1000);
+            carouselTimer.Elapsed += OnTimerElapsed;
+            carouselTimer.AutoReset = true;
+            carouselTimer.Start();
+        }
+    }
+
+    private void OnTimerElapsed(object? sender, System.Timers.ElapsedEventArgs e)
+    {
+        if (isPaused || SlideList.Count <= 1) return;
+
+        InvokeAsync(() =>
+        {
+            NextSlide(auto: true);
+            StateHasChanged();
+        });
+    }
+
+    private void NextSlide(bool auto = false)
+    {
+        if (SlideList.Count <= 1) return;
+        currentIndex = (currentIndex + 1) % SlideList.Count;
+        progressKey++;
+        if (!auto) ResetTimerInterval();
+    }
+
+    private void PrevSlide()
+    {
+        if (SlideList.Count <= 1) return;
+        currentIndex = (currentIndex - 1 + SlideList.Count) % SlideList.Count;
+        progressKey++;
+        ResetTimerInterval();
+    }
+
+    private void SelectSlide(int index)
+    {
+        if (index < 0 || index >= SlideList.Count) return;
+        currentIndex = index;
+        progressKey++;
+        ResetTimerInterval();
+    }
+
+    private void ResetTimerInterval()
+    {
+        if (carouselTimer is not null)
+        {
+            carouselTimer.Stop();
+            carouselTimer.Start();
+        }
+    }
+
+    private void OnMouseEnter()
+    {
+        isPaused = true;
+    }
+
+    private void OnMouseLeave()
+    {
+        isPaused = false;
+    }
+
+    private async Task ToggleWatchlist()
+    {
+        if (CurrentMovie is not null)
+            await Watchlist.ToggleWatchlistAsync(CurrentMovie);
+    }
+
+    public void Dispose()
+    {
+        if (carouselTimer is not null)
+        {
+            carouselTimer.Elapsed -= OnTimerElapsed;
+            carouselTimer.Stop();
+            carouselTimer.Dispose();
+            carouselTimer = null;
+        }
+    }
+}

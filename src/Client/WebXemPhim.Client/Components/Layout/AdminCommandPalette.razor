@@ -1,0 +1,207 @@
+@using Microsoft.JSInterop
+@using WebXemPhim.Client.Components.Icons
+@using WebXemPhim.Client.Services
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject ThemeState Theme
+@implements IDisposable
+
+@if (IsOpen)
+{
+    <div class="cmd-palette-backdrop" @onclick="Close">
+        <div class="cmd-palette-dialog" @onclick:stopPropagation="true">
+            <div class="cmd-palette-input-wrap">
+                <CinemaIcon Name="CinemaIconName.Search" Size="18" Class="cmd-palette-icon" />
+                <input @ref="inputElement"
+                       type="text"
+                       class="cmd-palette-input"
+                       placeholder="Nhập lệnh hoặc tìm trang điều phối... (Gợi ý: phim, stream, vip, user)"
+                       @bind="searchQuery"
+                       @bind:event="oninput"
+                       @onkeydown="HandleKeyDown" />
+                <kbd class="cmd-palette-esc" @onclick="Close">ESC</kbd>
+            </div>
+
+            <div class="cmd-palette-results">
+                @if (FilteredCommands.Count == 0)
+                {
+                    <div class="cmd-palette-empty">
+                        <CinemaIcon Name="CinemaIconName.AlertCircle" Size="20" />
+                        <span>Không tìm thấy lệnh hoặc trang nào phù hợp.</span>
+                    </div>
+                }
+                else
+                {
+                    var group = "";
+                    var index = 0;
+                    @foreach (var cmd in FilteredCommands)
+                    {
+                        var currentIndex = index;
+                        if (cmd.Category != group)
+                        {
+                            group = cmd.Category;
+                            <div class="cmd-palette-group-title">@group</div>
+                        }
+                        <button type="button"
+                                class="cmd-palette-item @(currentIndex == selectedIndex ? "is-active" : "")"
+                                @onclick="() => ExecuteCommand(cmd)"
+                                @onmouseenter="() => selectedIndex = currentIndex">
+                            <span class="cmd-item-icon">
+                                <CinemaIcon Name="@cmd.Icon" Size="16" />
+                            </span>
+                            <div class="cmd-item-info">
+                                <span class="cmd-item-title">@cmd.Title</span>
+                                <span class="cmd-item-desc">@cmd.Description</span>
+                            </div>
+                            <span class="cmd-item-badge">@cmd.Badge</span>
+                        </button>
+                        index++;
+                    }
+                }
+            </div>
+
+            <div class="cmd-palette-footer">
+                <span>Dùng <kbd>↑</kbd> <kbd>↓</kbd> để di chuyển</span>
+                <span><kbd>↵</kbd> để chọn</span>
+                <span><kbd>ESC</kbd> để đóng</span>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+
+    private ElementReference inputElement;
+    private string searchQuery = "";
+    private int selectedIndex = 0;
+    private DotNetObjectReference<AdminCommandPalette>? dotNetRef;
+
+    public record PaletteCommand(string Title, string Description, string Category, string TargetUrl, CinemaIconName Icon, string Badge);
+
+    private readonly List<PaletteCommand> allCommands =
+    [
+        new("Tổng quan hệ thống", "Xem các chỉ số thời gian thực, dung lượng DB, doanh thu", "Trang Điều Hành", "/admin", CinemaIconName.Dashboard, "Nav"),
+        new("Quản lý Phim", "Duyệt danh sách, thêm, sửa, nhân bản, thao tác hàng loạt", "Trang Điều Hành", "/admin/movies", CinemaIconName.Film, "Nav"),
+        new("Quản lý Tập phim & Streams", "Cấu hình multi-server stream, kiểm tra ping luồng", "Trang Điều Hành", "/admin/episodes", CinemaIconName.List, "Nav"),
+        new("Quản lý Người dùng", "Hồ sơ người dùng 360°, mở/khóa tài khoản, quyền admin", "Trang Điều Hành", "/admin/users", CinemaIconName.Users, "Nav"),
+        new("Đánh giá & Bình luận", "Kiểm duyệt nội dung, trả lời chính thức, lọc spam", "Trang Điều Hành", "/admin/reviews", CinemaIconName.Star, "Nav"),
+        new("Gói VIP & Thanh toán", "Duyệt giao dịch chuyển khoản thủ công, báo cáo tài chính", "Trang Điều Hành", "/admin/vip", CinemaIconName.Crown, "Nav"),
+        new("Nhật ký Kiểm toán (Audit)", "Theo dõi toàn bộ lịch sử thao tác của các quản trị viên", "Trang Điều Hành", "/admin/audit-logs", CinemaIconName.Shield, "Audit"),
+
+        new("Thêm phim mới", "Mở biểu mẫu khởi tạo phim vào cơ sở dữ liệu", "Hành Động Nhanh", "/admin/movies?action=new", CinemaIconName.Plus, "Thao tác"),
+        new("Tạo tập phim hàng loạt", "Sinh tự động danh sách tập với cấu hình template URL", "Hành Động Nhanh", "/admin/episodes?action=batch", CinemaIconName.Sparkles, "Thao tác"),
+        new("Kiểm tra luồng trực tiếp (Probe)", "Đo độ trễ và trạng thái HTTP của URL stream", "Hành Động Nhanh", "/admin/episodes?action=probe", CinemaIconName.TrendingUp, "Công cụ"),
+        new("Duyệt giao dịch chuyển khoản", "Kiểm tra và kích hoạt ngay đơn VIP cho khách", "Hành Động Nhanh", "/admin/vip?filter=pending", CinemaIconName.Check, "Tài chính"),
+        new("Chuyển giao diện Sáng / Tối (Toggle Theme)", "Chuyển đổi tức thời giữa giao diện Sáng và Tối", "Hệ Thống", "THEME_TOGGLE", CinemaIconName.Sun, "Giao diện")
+    ];
+
+    private List<PaletteCommand> FilteredCommands
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(searchQuery)) return allCommands;
+            var q = searchQuery.Trim().ToLower();
+            return allCommands.Where(c => c.Title.ToLower().Contains(q) || c.Description.ToLower().Contains(q) || c.Category.ToLower().Contains(q)).ToList();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            dotNetRef = DotNetObjectReference.Create(this);
+            try
+            {
+                await JS.InvokeVoidAsync("adminTools.registerCommandPalette", dotNetRef);
+            }
+            catch { }
+        }
+
+        if (IsOpen)
+        {
+            try
+            {
+                await inputElement.FocusAsync();
+            }
+            catch { }
+        }
+    }
+
+    [JSInvokable]
+    public async Task ToggleCommandPalette()
+    {
+        IsOpen = !IsOpen;
+        if (IsOpen)
+        {
+            searchQuery = "";
+            selectedIndex = 0;
+        }
+        await IsOpenChanged.InvokeAsync(IsOpen);
+        StateHasChanged();
+    }
+
+    public async Task Open()
+    {
+        IsOpen = true;
+        searchQuery = "";
+        selectedIndex = 0;
+        await IsOpenChanged.InvokeAsync(IsOpen);
+        StateHasChanged();
+    }
+
+    public async Task Close()
+    {
+        IsOpen = false;
+        await IsOpenChanged.InvokeAsync(IsOpen);
+        StateHasChanged();
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        var count = FilteredCommands.Count;
+        if (count == 0) return;
+
+        if (e.Key == "ArrowDown")
+        {
+            selectedIndex = (selectedIndex + 1) % count;
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            selectedIndex = (selectedIndex - 1 + count) % count;
+        }
+        else if (e.Key == "Enter")
+        {
+            if (selectedIndex >= 0 && selectedIndex < count)
+            {
+                _ = ExecuteCommand(FilteredCommands[selectedIndex]);
+            }
+        }
+        else if (e.Key == "Escape")
+        {
+            _ = Close();
+        }
+    }
+
+    private async Task ExecuteCommand(PaletteCommand cmd)
+    {
+        await Close();
+        if (cmd.TargetUrl == "THEME_TOGGLE")
+        {
+            await Theme.ToggleThemeAsync();
+        }
+        else
+        {
+            Nav.NavigateTo(cmd.TargetUrl);
+        }
+    }
+
+    public void Dispose()
+    {
+        dotNetRef?.Dispose();
+    }
+}

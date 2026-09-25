@@ -1,0 +1,304 @@
+@page "/genres"
+@inject IMovieApiClient ApiClient
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Client.Components.Common
+@using WebXemPhim.Client.Components.Icons
+
+<PageTitle>Thể loại phim - CinemaFlow</PageTitle>
+
+<section class="genres-catalog-page" aria-labelledby="genres-page-title">
+    <div class="genres-container">
+        <!-- Hero Header -->
+        <header class="genres-hero-header">
+            <div class="genres-hero-badges">
+                <span class="genres-hero-pill">
+                    <CinemaIcon Name="CinemaIconName.Compass" Size="14" />
+                    Vũ Trụ Thể Loại
+                </span>
+                <span class="genres-count-badge">
+                    @(genres?.Count ?? 15) Vũ trụ điện ảnh
+                </span>
+            </div>
+            
+            <h1 class="genres-main-title" id="genres-page-title">Khám Phá Theo Thể Loại</h1>
+            <p class="genres-main-desc">
+                Mỗi thể loại là một cánh cửa mở ra thế giới cảm xúc riêng biệt. Lựa chọn cung bậc cảm xúc tiếp theo và bắt đầu hành trình điện ảnh của bạn.
+            </p>
+
+            <!-- Interactive Toolbar: Search & Category Filter Tabs -->
+            <div class="genres-toolbar">
+                <div class="genres-search-wrap">
+                    <CinemaIcon Name="CinemaIconName.Search" Size="18" Class="genres-search-icon" />
+                    <input type="text"
+                           class="genres-search-input"
+                           placeholder="Tìm thể loại, phong cách, cảm xúc..."
+                           @bind="searchQuery"
+                           @bind:event="oninput"
+                           aria-label="Tìm kiếm thể loại" />
+                    @if (!string.IsNullOrWhiteSpace(searchQuery))
+                    {
+                        <button type="button" class="genres-search-clear" @onclick="ClearSearch" aria-label="Xóa từ khóa">
+                            <CinemaIcon Name="CinemaIconName.Close" Size="14" />
+                        </button>
+                    }
+                </div>
+
+                <div class="genres-filter-tabs" role="tablist" aria-label="Phân nhóm thể loại">
+                    @foreach (var tab in FilterTabs)
+                    {
+                        <button type="button"
+                                class="genres-tab-btn @(selectedTab == tab.Key ? "active" : "")"
+                                @onclick="() => SelectTab(tab.Key)"
+                                role="tab"
+                                aria-selected="@(selectedTab == tab.Key)">
+                            @tab.Label
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <!-- Stats Bar -->
+            @if (genres is not null && genres.Count > 0)
+            {
+                <div class="genres-stats-bar">
+                    <span class="genres-result-counter">
+                        Hiển thị <strong>@FilteredGenres.Count</strong> / @genres.Count thể loại
+                    </span>
+                    @if (!string.IsNullOrWhiteSpace(searchQuery) || selectedTab != "all")
+                    {
+                        <button type="button" class="genres-reset-filter-btn" @onclick="ResetFilters">
+                            <CinemaIcon Name="CinemaIconName.Refresh" Size="13" />
+                            <span>Hiện tất cả thể loại</span>
+                        </button>
+                    }
+                </div>
+            }
+        </header>
+
+        <!-- Genre Cards Bento Grid -->
+        @if (genres is null)
+        {
+            <div class="genres-bento-grid" aria-busy="true">
+                @for (var s = 0; s < 8; s++)
+                {
+                    <div class="genre-card-skeleton skeleton" aria-hidden="true"></div>
+                }
+            </div>
+        }
+        else if (FilteredGenres.Count == 0)
+        {
+            <div class="genres-empty-state">
+                <div class="empty-icon-circle">
+                    <CinemaIcon Name="CinemaIconName.Compass" Size="28" />
+                </div>
+                <h2>Không tìm thấy thể loại phù hợp</h2>
+                <p>Không có thể loại nào khớp với từ khóa "@searchQuery". Hãy thử tìm kiếm với tên hoặc cảm xúc khác.</p>
+                <button type="button" class="btn-clear-genre-search" @onclick="ResetFilters">
+                    Xem tất cả thể loại
+                </button>
+            </div>
+        }
+        else
+        {
+            <section class="genres-bento-grid" aria-label="Danh sách thể loại phim">
+                @for (var i = 0; i < FilteredGenres.Count; i++)
+                {
+                    var genre = FilteredGenres[i];
+                    var isFeatured = (selectedTab == "all" && string.IsNullOrWhiteSpace(searchQuery) && i < 2);
+                    var backdropUrl = GetBackdropForGenre(genre.Name, i);
+                    var vibe = GetGenreVibe(genre.Name);
+                    var previewMovies = GetPreviewMoviesForGenre(genre.Name, 3);
+
+                    <a class="genre-card @(isFeatured ? "featured" : "")"
+                       href="@($"/explore?genre={Uri.EscapeDataString(genre.Name)}")"
+                       title="Khám phá thể loại @genre.Name">
+                        <!-- Dynamic Backdrop Image -->
+                        <div class="genre-card-bg" style="background-image: url('@backdropUrl');" aria-hidden="true"></div>
+                        <div class="genre-card-overlay" aria-hidden="true"></div>
+
+                        <!-- Card Top: Index Badge, Movie Count & Mini Poster Previews -->
+                        <div class="genre-card-top">
+                            <div class="genre-top-left">
+                                <span class="genre-index-badge">@((i + 1).ToString("00"))</span>
+                                <span class="genre-count-pill">
+                                    <CinemaIcon Name="CinemaIconName.Film" Size="13" />
+                                    <span>@genre.MovieCount tác phẩm</span>
+                                </span>
+                            </div>
+
+                            @if (previewMovies.Count > 0)
+                            {
+                                <div class="genre-poster-stack" aria-hidden="true">
+                                    @for (var p = 0; p < previewMovies.Count; p++)
+                                    {
+                                        var pm = previewMovies[p];
+                                        <img src="@pm.PosterUrl"
+                                             alt="@pm.Title"
+                                             class="genre-poster-thumb thumb-@p"
+                                             loading="lazy" />
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Card Bottom: Vibe, Title, Description & Action CTA -->
+                        <div class="genre-card-bottom">
+                            <span class="genre-vibe-tag">@vibe.Tag</span>
+                            <h2 class="genre-card-title">@genre.Name</h2>
+                            <p class="genre-card-desc">@vibe.Description</p>
+
+                            <div class="genre-card-cta">
+                                <span>Khám phá bộ sưu tập</span>
+                                <CinemaIcon Name="CinemaIconName.ArrowRight" Size="15" />
+                            </div>
+                        </div>
+                    </a>
+                }
+            </section>
+        }
+    </div>
+</section>
+
+@code {
+    private List<GenreDto>? genres;
+    private List<MovieDto> movies = [];
+    private string searchQuery = string.Empty;
+    private string selectedTab = "all";
+
+    private static readonly (string Key, string Label)[] FilterTabs =
+    [
+        ("all", "Tất cả"),
+        ("action", "Hành động & Mạo hiểm"),
+        ("fantasy", "Kỳ ảo & Viễn tưởng"),
+        ("emotion", "Cảm xúc & Tình cảm"),
+        ("drama", "Hồi hộp & Kịch tính")
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var genresTask = ApiClient.GetGenresAsync();
+        var trendingTask = ApiClient.GetTrendingAsync(30);
+        var latestTask = ApiClient.GetLatestAsync(30);
+        await Task.WhenAll(genresTask, trendingTask, latestTask);
+
+        genres = await genresTask;
+        var trend = await trendingTask;
+        var latest = await latestTask;
+
+        var combined = new Dictionary<int, MovieDto>();
+        foreach (var m in trend) combined[m.Id] = m;
+        foreach (var m in latest) combined[m.Id] = m;
+        movies = combined.Values.ToList();
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        searchQuery = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void ClearSearch()
+    {
+        searchQuery = string.Empty;
+    }
+
+    private void SelectTab(string tabKey)
+    {
+        selectedTab = tabKey;
+    }
+
+    private void ResetFilters()
+    {
+        searchQuery = string.Empty;
+        selectedTab = "all";
+    }
+
+    private List<GenreDto> FilteredGenres
+    {
+        get
+        {
+            if (genres is null) return [];
+            var query = searchQuery.Trim();
+
+            return genres.Where(g =>
+            {
+                // Filter by category tab
+                if (selectedTab != "all")
+                {
+                    var cat = GetGenreCategory(g.Name);
+                    if (!cat.Equals(selectedTab, StringComparison.OrdinalIgnoreCase))
+                        return false;
+                }
+
+                // Filter by search query
+                if (!string.IsNullOrWhiteSpace(query))
+                {
+                    var vibe = GetGenreVibe(g.Name);
+                    var matchName = g.Name.Contains(query, StringComparison.OrdinalIgnoreCase);
+                    var matchTag = vibe.Tag.Contains(query, StringComparison.OrdinalIgnoreCase);
+                    var matchDesc = vibe.Description.Contains(query, StringComparison.OrdinalIgnoreCase);
+                    if (!matchName && !matchTag && !matchDesc)
+                        return false;
+                }
+
+                return true;
+            }).ToList();
+        }
+    }
+
+    private List<MovieDto> GetPreviewMoviesForGenre(string genreName, int count = 3)
+    {
+        return movies
+            .Where(m => m.Genres.Any(g => g.Equals(genreName, StringComparison.OrdinalIgnoreCase))
+                        && !string.IsNullOrWhiteSpace(m.PosterUrl))
+            .Take(count)
+            .ToList();
+    }
+
+    private string GetBackdropForGenre(string genreName, int index)
+    {
+        var matched = movies.FirstOrDefault(m =>
+            m.Genres.Any(g => g.Equals(genreName, StringComparison.OrdinalIgnoreCase))
+            && !string.IsNullOrWhiteSpace(m.BackdropUrl));
+
+        if (matched is not null)
+            return matched.BackdropUrl;
+
+        if (movies.Count > 0)
+        {
+            var fallback = movies[index % movies.Count];
+            if (!string.IsNullOrWhiteSpace(fallback.BackdropUrl))
+                return fallback.BackdropUrl;
+        }
+
+        return "/images/movies/movie-1-backdrop.jpg";
+    }
+
+    private static string GetGenreCategory(string genreName) => genreName switch
+    {
+        "Hành Động" or "Phiêu Lưu" or "Tội Phạm" or "Chiến Tranh" => "action",
+        "Khoa Học Viễn Tưởng" or "Kỳ Ảo" or "Anime" or "Hoạt Hình" => "fantasy",
+        "Lãng Mạn" or "Gia Đình" or "Hài Hước" or "Tâm Lý" => "emotion",
+        "Kinh Dị" or "Kịch Tính" or "Lịch Sử" => "drama",
+        _ => "all"
+    };
+
+    private static (string Tag, string Description) GetGenreVibe(string genreName) => genreName switch
+    {
+        "Hành Động" => ("Kịch tính & Gay cấn", "Những màn rượt đuổi nghẹt thở, kỹ xảo hoành tráng và võ thuật đỉnh cao."),
+        "Khoa Học Viễn Tưởng" => ("Tương lai & Vũ trụ", "Khám phá không gian vô tận, công nghệ viễn tưởng và chiều không gian mới."),
+        "Kỳ Ảo" => ("Phép thuật & Huyền bí", "Vương quốc diệu kỳ, thần thoại cổ xưa và những chuyến phiêu lưu bất tận."),
+        "Phiêu Lưu" => ("Hành trình mạo hiểm", "Dấn thân vào những vùng đất bí ẩn và những cuộc thám hiểm ngoạn mục."),
+        "Kịch Tính" => ("Căng thẳng & Đỉnh cao", "Cốt truyện đa tầng, xung đột tâm lý sâu sắc và kịch bản cuốn hút."),
+        "Anime" => ("Nghệ thuật hoạt họa", "Tuyệt phẩm animation từ xứ sở mặt trời mọc với chiều sâu cảm xúc."),
+        "Lịch Sử" => ("Hào hùng & Bi tráng", "Tái hiện những trang sử vàng son và khoảnh khắc định hình thời đại."),
+        "Tội Phạm" => ("Thế giới ngầm", "Đấu trí căng não giữa những thám tử tài ba và tội phạm khét tiếng."),
+        "Tâm Lý" => ("Sâu lắng & Chiêm nghiệm", "Thấu suốt những ngõ ngách sâu kín trong tâm hồn con người."),
+        "Hài Hước" => ("Tiếng cười rộn rã", "Xua tan mệt mỏi với những tình huống dí dỏm, thông minh và sảng khoái."),
+        "Kinh Dị" => ("Ám ảnh & Rùng rợn", "Bóng tối rình rập, cảm giác hồi hộp đến nghẹt thở từng giây phút."),
+        "Lãng Mạn" => ("Ngọt ngào & Say đắm", "Những câu chuyện tình yêu chân thành lay động triệu trái tim."),
+        "Gia Đình" => ("Ấm áp & Gắn kết", "Khoảnh khắc yêu thương trọn vẹn dành cho tất cả thành viên."),
+        "Hoạt Hình" => ("Sắc màu diệu kỳ", "Thế giới mộng mơ đầy cảm hứng cho tuổi thơ và gia đình."),
+        "Chiến Tranh" => ("Khốc liệt & Nghĩa tình", "Bản anh hùng ca về lòng dũng cảm, tình đồng chí giữa lửa đạn."),
+        _ => ("Khám phá ngay", "Bộ sưu tập những tác phẩm điện ảnh chọn lọc đặc sắc nhất.")
+    };
+}

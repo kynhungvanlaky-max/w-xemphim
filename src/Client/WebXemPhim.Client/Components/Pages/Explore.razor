@@ -1,0 +1,277 @@
+@page "/explore"
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Shared.Enums
+@using WebXemPhim.Client.Components.Icons
+@using WebXemPhim.Client.Components.Common
+@inject IMovieApiClient ApiClient
+@inject NavigationManager Nav
+
+<PageTitle>Khám phá kho phim - CinemaFlow</PageTitle>
+
+<div class="explore-catalog-page">
+    <header class="explore-header-row">
+        <div class="explore-title-block">
+            <p class="explore-kicker">KHÁM PHÁ CINEMAFLOW</p>
+            <h1 class="explore-heading">Tìm phim theo gu của bạn</h1>
+            <p class="explore-subheading">Chọn điều bạn thích. Tìm câu chuyện tiếp theo.</p>
+        </div>
+    </header>
+
+    <section class="discovery-filters" aria-label="Lọc kho phim">
+        <div class="discovery-toolbar">
+            <form class="explore-search-box" @onsubmit="Search" @onsubmit:preventDefault>
+                <div class="search-pill">
+                    <CinemaIcon Name="CinemaIconName.Search" Size="18" Class="search-icon" />
+                    <input type="search" aria-label="Từ khóa khám phá" placeholder="Tên phim, đạo diễn, diễn viên..." @bind="keyword" @bind:event="oninput" maxlength="200" />
+                    <button type="button"
+                            class="discovery-search-filter-btn @(filtersOpen ? "open" : "") @(ActiveCount > 0 ? "has-active" : "")"
+                            aria-expanded="@filtersOpen.ToString().ToLowerInvariant()"
+                            aria-controls="discovery-filter-panel"
+                            @onclick="ToggleFilters"
+                            title="Bộ lọc phim">
+                        <CinemaIcon Name="CinemaIconName.Filter" Size="16" />
+                        @if (ActiveCount > 0)
+                        {
+                            <span class="filter-badge">@ActiveCount</span>
+                        }
+                    </button>
+                </div>
+            </form>
+            <div class="discovery-toolbar-right">
+                <label class="discovery-sort">
+                    <span>Sắp xếp</span>
+                    <select aria-label="Sắp xếp phim" value="@sortBy" @onchange="ChangeSort">
+                        <option value="trending">Đang thịnh hành</option>
+                        <option value="rating">Đánh giá cao</option>
+                        <option value="latest">Mới cập nhật</option>
+                        <option value="views">Xem nhiều nhất</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+        @if (filtersOpen)
+        {
+            <div class="discovery-filter-panel" id="discovery-filter-panel">
+                <header><h2>Bộ lọc phim</h2><p>Chọn nhiều mục trong mỗi nhóm. Kết quả khớp ít nhất một mục của từng nhóm.</p></header>
+                @if (optionsLoading)
+                {
+                    <div class="discovery-filter-skeleton" role="status" aria-label="Đang tải lựa chọn"><i></i><i></i><i></i></div>
+                }
+                else if (optionsError)
+                {
+                    <div class="discovery-options-error" role="alert">Chưa tải được lựa chọn. <button type="button" @onclick="LoadOptions">Thử lại</button></div>
+                }
+                else
+                {
+                    <MultiFilterGroup Title="Thể loại" Options="@options.Genres" Selected="@draftGenres" Changed="@(value => Toggle(draftGenres, value))" />
+                    <MultiFilterGroup Title="Quốc gia" Options="@options.Countries" Selected="@draftCountries" Changed="@(value => Toggle(draftCountries, value))" />
+                    <MultiFilterGroup Title="Năm phát hành" Options="@YearOptions" Selected="@draftYears" Changed="@(value => Toggle(draftYears, value))" />
+                    <MultiFilterGroup Title="Định dạng" Options="@TypeOptions" Selected="@draftTypes" Changed="@(value => Toggle(draftTypes, value))" />
+                }
+                <footer class="discovery-filter-actions">
+                    <button type="button" class="discovery-clear" @onclick="ClearDraft" disabled="@(DraftCount == 0)">Xóa lựa chọn</button>
+                    <span class="discovery-draft-count">@DraftCount lựa chọn</span>
+                    <button type="button" class="discovery-cancel" @onclick="CancelFilters">Hủy</button>
+                    <button type="button" class="discovery-apply" @onclick="ApplyFilters">Áp dụng bộ lọc</button>
+                </footer>
+            </div>
+        }
+        @if (ActiveCount > 0 || !string.IsNullOrWhiteSpace(appliedKeyword))
+        {
+            <div class="discovery-active-filters" aria-label="Bộ lọc đang áp dụng">
+                <span>Đang lọc</span>
+                @if (!string.IsNullOrWhiteSpace(appliedKeyword))
+                {
+                    <button type="button" @onclick="ClearKeyword" aria-label="Bỏ từ khóa @appliedKeyword">“@appliedKeyword”<CinemaIcon Name="CinemaIconName.Close" Size="13" /></button>
+                }
+                @foreach (var chip in ActiveChips)
+                {
+                    <button type="button" @onclick="() => RemoveFilter(chip.Group, chip.Value)" aria-label="@($"Bỏ lọc {chip.Group}: {chip.Value}")">@chip.Value<CinemaIcon Name="CinemaIconName.Close" Size="13" /></button>
+                }
+                <button type="button" class="discovery-clear-all" @onclick="ResetFilters">Xóa tất cả</button>
+            </div>
+        }
+    </section>
+    @if (loading)
+    {
+        <div class="explore-live-grid" aria-label="Đang tải kết quả">
+            @for (var i = 0; i < 12; i++) { <div class="home-card-skeleton skeleton" aria-hidden="true"></div> }
+        </div>
+    }
+    else if (loadError)
+    {
+        <div class="home-empty" role="alert">Không tải được kho phim. <button class="button" @onclick="() => LoadAsync(page)">Thử lại</button></div>
+    }
+    else if (results.Items.Count == 0)
+    {
+        <div class="home-empty"><h2>Chưa có phim khớp lựa chọn</h2><p>Bỏ bớt một điều kiện hoặc thử thể loại khác.</p><button class="button" @onclick="ResetFilters">Xóa bộ lọc</button></div>
+    }
+    else
+    {
+        <div class="explore-live-grid">
+            @foreach (var movie in results.Items) { <MovieCard Movie="movie" @key="movie.Id" /> }
+        </div>
+        @if (results.TotalPages > 0)
+        {
+            <nav class="explore-pagination" aria-label="Phân trang kết quả">
+                <button type="button" class="explore-page-btn" disabled="@(page <= 1)" @onclick="() => NavigateFilters(page - 1)">
+                    <CinemaIcon Name="CinemaIconName.ChevronLeft" Size="16" />
+                    <span>Trang trước</span>
+                </button>
+                <span class="explore-page-indicator">Trang @(page) / @Math.Max(1, results.TotalPages)</span>
+                <button type="button" class="explore-page-btn" disabled="@(page >= results.TotalPages)" @onclick="() => NavigateFilters(page + 1)">
+                    <span>Trang sau</span>
+                    <CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" />
+                </button>
+            </nav>
+        }
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "keyword")] public string? KeywordParam { get; set; }
+    [SupplyParameterFromQuery(Name = "type")] public int? TypeParam { get; set; }
+    [SupplyParameterFromQuery(Name = "genre")] public string? GenreParam { get; set; }
+    [SupplyParameterFromQuery(Name = "country")] public string? CountryParam { get; set; }
+    [SupplyParameterFromQuery(Name = "year")] public int? YearParam { get; set; }
+    [SupplyParameterFromQuery(Name = "sortBy")] public string? SortByParam { get; set; }
+    [SupplyParameterFromQuery(Name = "genres")] public string[]? GenresParam { get; set; }
+    [SupplyParameterFromQuery(Name = "countries")] public string[]? CountriesParam { get; set; }
+    [SupplyParameterFromQuery(Name = "years")] public int[]? YearsParam { get; set; }
+    [SupplyParameterFromQuery(Name = "types")] public int[]? TypesParam { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int? PageParam { get; set; }
+
+    private HashSet<string> genres = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> countries = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> years = [];
+    private HashSet<string> types = [];
+    private HashSet<string> draftGenres = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> draftCountries = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> draftYears = [];
+    private HashSet<string> draftTypes = [];
+    private static readonly List<string> TypeOptions = ["Phim lẻ", "Phim bộ", "Anime"];
+    private MovieFilterOptionsDto options = new();
+    private List<string> YearOptions => options.Years.Select(x => x.ToString()).ToList();
+    private string? keyword;
+    private string? appliedKeyword;
+    private string sortBy = "trending";
+    private bool filtersOpen;
+    private bool optionsLoading = true;
+    private bool optionsError;
+    private PagedResult<MovieDto> results = new();
+    private bool loading = true;
+    private bool loadError;
+    private int page = 1;
+    private int requestVersion;
+    private int ActiveCount => genres.Count + countries.Count + years.Count + types.Count;
+    private int DraftCount => draftGenres.Count + draftCountries.Count + draftYears.Count + draftTypes.Count;
+    private IEnumerable<(string Group, string Value)> ActiveChips =>
+        genres.Select(x => ("Thể loại", x)).Concat(countries.Select(x => ("Quốc gia", x)))
+            .Concat(years.Select(x => ("Năm", x))).Concat(types.Select(x => ("Định dạng", x)));
+
+    protected override async Task OnInitializedAsync() => await LoadOptions();
+
+    private async Task LoadOptions()
+    {
+        optionsLoading = true;
+        optionsError = false;
+        try { options = await ApiClient.GetFilterOptionsAsync(); }
+        catch { optionsError = true; }
+        finally { optionsLoading = false; }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        keyword = appliedKeyword = KeywordParam?.Trim();
+        genres = ReadChoices(GenresParam, GenreParam);
+        countries = ReadChoices(CountriesParam, CountryParam);
+        years = (YearsParam ?? []).Concat(YearParam.HasValue ? [YearParam.Value] : [])
+            .Where(x => x >= 1888 && x <= 2100).Select(x => x.ToString()).ToHashSet();
+        types = (TypesParam ?? []).Concat(TypeParam.HasValue ? [TypeParam.Value] : [])
+            .Where(x => Enum.IsDefined(typeof(MovieType), x)).Select(x => TypeOptions[x - 1]).ToHashSet();
+        sortBy = SortByParam is "rating" or "latest" or "views" ? SortByParam : "trending";
+        filtersOpen = false;
+        CopyDraft();
+        await LoadAsync(Math.Max(1, PageParam ?? 1));
+    }
+
+    private static HashSet<string> ReadChoices(string[]? values, string? legacy) =>
+        (values ?? []).Append(legacy ?? "").Where(x => !string.IsNullOrWhiteSpace(x) && x.Trim() != "all")
+            .Select(x => x.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private async Task LoadAsync(int targetPage)
+    {
+        var version = ++requestVersion;
+        loading = true;
+        loadError = false;
+        page = targetPage;
+        try
+        {
+            var response = await ApiClient.FilterMoviesAsync(new MovieFilterRequest
+            {
+                Keyword = appliedKeyword, Genres = genres.ToList(), Countries = countries.ToList(),
+                Years = years.Select(int.Parse).ToList(), Types = types.Select(x => (MovieType)(TypeOptions.IndexOf(x) + 1)).ToList(),
+                SortBy = sortBy, Page = targetPage, PageSize = 18
+            });
+            if (version != requestVersion) return;
+            results = response;
+        }
+        catch { if (version == requestVersion) loadError = true; }
+        finally { if (version == requestVersion) loading = false; }
+    }
+
+    private void CopyDraft()
+    {
+        draftGenres = new(genres, StringComparer.OrdinalIgnoreCase);
+        draftCountries = new(countries, StringComparer.OrdinalIgnoreCase);
+        draftYears = new(years);
+        draftTypes = new(types);
+    }
+    private void ToggleFilters() { if (!filtersOpen) CopyDraft(); filtersOpen = !filtersOpen; }
+    private void CancelFilters() { CopyDraft(); filtersOpen = false; }
+    private static void Toggle(HashSet<string> set, string value) { if (!set.Add(value)) set.Remove(value); }
+    private void ClearDraft() { draftGenres.Clear(); draftCountries.Clear(); draftYears.Clear(); draftTypes.Clear(); }
+    private async Task ApplyFilters()
+    {
+        genres = new(draftGenres, StringComparer.OrdinalIgnoreCase);
+        countries = new(draftCountries, StringComparer.OrdinalIgnoreCase);
+        years = new(draftYears);
+        types = new(draftTypes);
+        filtersOpen = false;
+        await NavigateFilters(1);
+    }
+    private async Task RemoveFilter(string group, string value)
+    {
+        var set = group switch { "Thể loại" => genres, "Quốc gia" => countries, "Năm" => years, _ => types };
+        set.Remove(value);
+        CopyDraft();
+        await NavigateFilters(1);
+    }
+    private async Task ChangeSort(ChangeEventArgs e) { sortBy = e.Value?.ToString() ?? "trending"; await NavigateFilters(1); }
+    private async Task Search() { appliedKeyword = keyword?.Trim(); await NavigateFilters(1); }
+    private async Task ClearKeyword() { keyword = appliedKeyword = null; await NavigateFilters(1); }
+    private async Task ResetFilters()
+    {
+        genres.Clear(); countries.Clear(); years.Clear(); types.Clear();
+        keyword = appliedKeyword = null;
+        CopyDraft();
+        filtersOpen = false;
+        await NavigateFilters(1);
+    }
+    private async Task NavigateFilters(int targetPage)
+    {
+        var uri = Nav.GetUriWithQueryParameters(new Dictionary<string, object?>
+        {
+            ["genre"] = null, ["country"] = null, ["year"] = null, ["type"] = null,
+            ["genres"] = genres.Count > 0 ? genres.Order().ToArray() : null,
+            ["countries"] = countries.Count > 0 ? countries.Order().ToArray() : null,
+            ["years"] = years.Count > 0 ? years.Select(int.Parse).OrderDescending().ToArray() : null,
+            ["types"] = types.Count > 0 ? types.Select(x => TypeOptions.IndexOf(x) + 1).Order().ToArray() : null,
+            ["keyword"] = string.IsNullOrWhiteSpace(appliedKeyword) ? null : appliedKeyword,
+            ["sortBy"] = sortBy == "trending" ? null : sortBy,
+            ["page"] = targetPage > 1 ? targetPage : null
+        });
+        if (uri == Nav.Uri) await LoadAsync(targetPage);
+        else Nav.NavigateTo(uri);
+    }
+}

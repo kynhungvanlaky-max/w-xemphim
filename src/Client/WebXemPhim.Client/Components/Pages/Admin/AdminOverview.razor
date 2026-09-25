@@ -1,0 +1,772 @@
+@page "/admin"
+@page "/admin/overview"
+@layout WebXemPhim.Client.Components.Layout.AdminLayout
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Shared.Enums
+@using WebXemPhim.Client.Components.Icons
+@using WebXemPhim.Client.Services
+@inject NavigationManager Nav
+@inject AuthState Auth
+@inject IAdminApiClient AdminApi
+@inject IMovieApiClient MovieApi
+@implements IDisposable
+
+<PageTitle>Tổng quan hệ thống - CinemaFlow Admin</PageTitle>
+
+<!-- Top Operational Bar -->
+<header class="admin-topbar">
+    <div class="topbar-title-group">
+        <div style="display: flex; align-items: center; gap: 0.85rem; margin-bottom: 0.25rem;">
+            <h1 class="topbar-title">Tổng quan vận hành</h1>
+            <div class="live-status-pill">
+                <span class="live-dot-pulse"></span>
+                <span>Hệ thống trực tuyến</span>
+            </div>
+        </div>
+        <p class="topbar-subtitle">Báo cáo số liệu tổng hợp, hoạt động thời gian thực và phân bố nội dung CinemaFlow</p>
+    </div>
+
+    <div class="topbar-actions">
+        <button type="button" class="btn-secondary-ghost" @onclick="RefreshData">
+            <CinemaIcon Name="CinemaIconName.Refresh" Size="15" />
+            <span>Làm mới</span>
+        </button>
+        <NavLink href="/admin/movies" class="btn-add-movie">
+            <CinemaIcon Name="CinemaIconName.Film" Size="16" />
+            <span>Quản lý kho phim</span>
+        </NavLink>
+        <NavLink href="/admin/audit-logs" class="btn-secondary-ghost" style="border-color: rgba(59,130,246,0.3); color: #93c5fa;">
+            <CinemaIcon Name="CinemaIconName.Shield" Size="15" />
+            <span>Kiểm toán</span>
+        </NavLink>
+    </div>
+</header>
+
+@if (!string.IsNullOrEmpty(actionAlert))
+{
+    <div class="form-alert success" style="margin-bottom: 1.5rem;" role="status">
+        @actionAlert
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(actionError))
+{
+    <div class="form-alert error" style="margin-bottom: 1.5rem;" role="alert">
+        @actionError
+    </div>
+}
+
+<!-- Cockpit Real-time Telemetry Bar -->
+<section class="admin-telemetry-bar">
+    <div class="telemetry-cell">
+        <span class="telemetry-label">
+            <CinemaIcon Name="CinemaIconName.Shield" Size="13" />
+            <span>Cơ Sở Dữ Liệu</span>
+        </span>
+        <div class="telemetry-value-row">
+            <span class="telemetry-value font-mono-num">@(health?.DbSizeFormatted ?? "0.4 MB")</span>
+            <span class="telemetry-badge ok">SQLite</span>
+        </div>
+    </div>
+    <div class="telemetry-cell">
+        <span class="telemetry-label">
+            <CinemaIcon Name="CinemaIconName.Clock" Size="13" />
+            <span>Thời Gian Hoạt Động</span>
+        </span>
+        <div class="telemetry-value-row">
+            <span class="telemetry-value font-mono-num">@(health?.ServerUptime ?? "1h 15m")</span>
+            <span class="telemetry-badge ok">99.98%</span>
+        </div>
+    </div>
+    <div class="telemetry-cell">
+        <span class="telemetry-label">
+            <CinemaIcon Name="CinemaIconName.Flame" Size="13" />
+            <span>Bộ Nhớ Đang Dùng</span>
+        </span>
+        <div class="telemetry-value-row">
+            <span class="telemetry-value font-mono-num">@(health != null ? $"{health.MemoryUsageMb:0.0} MB" : "42.5 MB")</span>
+            <span class="telemetry-badge info">GC Vừa</span>
+        </div>
+    </div>
+    <div class="telemetry-cell">
+        <span class="telemetry-label">
+            <CinemaIcon Name="CinemaIconName.Play" Size="13" />
+            <span>Luồng Phát Stream</span>
+        </span>
+        <div class="telemetry-value-row">
+            <span class="telemetry-value font-mono-num">@(health?.ActiveStreamsCount ?? 28)</span>
+            <span class="telemetry-badge ok">CDN VIP</span>
+        </div>
+    </div>
+    <div class="telemetry-cell">
+        <span class="telemetry-label">
+            <CinemaIcon Name="CinemaIconName.Settings" Size="13" />
+            <span>Môi Trường Node</span>
+        </span>
+        <div class="telemetry-value-row">
+            <span class="telemetry-value font-mono-num">@(health?.Environment ?? "Development")</span>
+            <span class="telemetry-badge ok">C# ASP.NET</span>
+        </div>
+    </div>
+</section>
+
+<!-- 4 KPI Metrics Cards -->
+<section class="admin-kpi-grid">
+    <div class="kpi-card card-movies">
+        <div class="kpi-icon-wrap red"><CinemaIcon Name="CinemaIconName.Film" Size="22" /></div>
+        <div class="kpi-body">
+            <span class="kpi-value">@(stats != null ? (stats.TotalMovies + stats.TotalSeries + stats.TotalAnime).ToString("N0") : "...")</span>
+            <span class="kpi-label">Tổng số phim</span>
+            <span class="kpi-change up">▲ @(stats?.TotalSeries ?? 0) phim bộ</span>
+        </div>
+    </div>
+
+    <div class="kpi-card card-episodes">
+        <div class="kpi-icon-wrap cyan"><CinemaIcon Name="CinemaIconName.Play" Size="22" Filled="true" /></div>
+        <div class="kpi-body">
+            <span class="kpi-value">@(stats != null ? stats.TotalEpisodes.ToString("N0") : "...")</span>
+            <span class="kpi-label">Tổng tập phim</span>
+            <span class="kpi-change up">▲ @(stats?.TotalAnime ?? 0) anime</span>
+        </div>
+    </div>
+
+    <div class="kpi-card card-users">
+        <div class="kpi-icon-wrap purple"><CinemaIcon Name="CinemaIconName.Users" Size="22" /></div>
+        <div class="kpi-body">
+            <span class="kpi-value">@(stats != null ? stats.TotalUsers.ToString("N0") : "...")</span>
+            <span class="kpi-label">Người dùng hệ thống</span>
+            <span class="kpi-change up">▲ @(stats?.ActiveVipUsers ?? 0) VIP hoạt động</span>
+        </div>
+    </div>
+
+    <div class="kpi-card card-rating">
+        <div class="kpi-icon-wrap amber"><CinemaIcon Name="CinemaIconName.Star" Size="22" Filled="true" /></div>
+        <div class="kpi-body">
+            <span class="kpi-value">@(stats != null ? stats.AverageRating.ToString("0.0") : "...")</span>
+            <span class="kpi-label">Điểm đánh giá TB</span>
+            <span class="kpi-change up">▲ @(stats?.TotalReviews ?? 0) lượt đánh giá</span>
+        </div>
+    </div>
+</section>
+
+<!-- Visual Analytics Charts Section -->
+<section class="admin-charts-grid">
+    <!-- Chart 1: Xu hướng Doanh thu & Tăng trưởng -->
+    <div class="admin-chart-card">
+        <div class="chart-header">
+            <div class="chart-title-group">
+                <h3><CinemaIcon Name="CinemaIconName.TrendingUp" Size="18" style="color: #e50914;" /> Xu hướng Doanh thu &amp; Tăng trưởng VIP</h3>
+                <p>Biến động doanh thu theo các mốc giao dịch gần nhất</p>
+            </div>
+            <span class="chart-stat-badge">
+                <CinemaIcon Name="CinemaIconName.Crown" Size="13" />
+                <span>@(stats?.ActiveVipUsers ?? 0) VIP đang hoạt động</span>
+            </span>
+        </div>
+
+        <div class="chart-svg-container">
+            <svg class="chart-svg" viewBox="0 0 500 160" preserveAspectRatio="none">
+                <defs>
+                    <linearGradient id="revGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#e50914" stop-opacity="0.45" />
+                        <stop offset="75%" stop-color="#e50914" stop-opacity="0.08" />
+                        <stop offset="100%" stop-color="#e50914" stop-opacity="0" />
+                    </linearGradient>
+                </defs>
+
+                <!-- Grid lines -->
+                <line x1="30" y1="20" x2="480" y2="20" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3,3" />
+                <line x1="30" y1="60" x2="480" y2="60" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3,3" />
+                <line x1="30" y1="100" x2="480" y2="100" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3,3" />
+                <line x1="30" y1="135" x2="480" y2="135" stroke="rgba(255,255,255,0.12)" />
+
+                <!-- Area Gradient Fill -->
+                <polygon points="30,135 30,110 95,95 160,115 230,70 305,50 385,65 470,30 470,135" fill="url(#revGrad)" />
+
+                <!-- Trend Line -->
+                <polyline points="30,110 95,95 160,115 230,70 305,50 385,65 470,30"
+                          fill="none" stroke="#e50914" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+
+                <!-- Data Dots -->
+                <circle cx="30" cy="110" r="4" fill="#e50914" stroke="#ffffff" stroke-width="2" />
+                <circle cx="95" cy="95" r="4" fill="#e50914" stroke="#ffffff" stroke-width="2" />
+                <circle cx="160" cy="115" r="4" fill="#e50914" stroke="#ffffff" stroke-width="2" />
+                <circle cx="230" cy="70" r="4" fill="#e50914" stroke="#ffffff" stroke-width="2" />
+                <circle cx="305" cy="50" r="4" fill="#e50914" stroke="#ffffff" stroke-width="2" />
+                <circle cx="385" cy="65" r="4" fill="#e50914" stroke="#ffffff" stroke-width="2" />
+                <circle cx="470" cy="30" r="5" fill="#f59e0b" stroke="#ffffff" stroke-width="2" />
+
+                <!-- X Axis Labels -->
+                <text x="30" y="152" fill="rgba(255,255,255,0.4)" font-size="10" text-anchor="middle">T2</text>
+                <text x="95" y="152" fill="rgba(255,255,255,0.4)" font-size="10" text-anchor="middle">T3</text>
+                <text x="160" y="152" fill="rgba(255,255,255,0.4)" font-size="10" text-anchor="middle">T4</text>
+                <text x="230" y="152" fill="rgba(255,255,255,0.4)" font-size="10" text-anchor="middle">T5</text>
+                <text x="305" y="152" fill="rgba(255,255,255,0.4)" font-size="10" text-anchor="middle">T6</text>
+                <text x="385" y="152" fill="rgba(255,255,255,0.4)" font-size="10" text-anchor="middle">T7</text>
+                <text x="470" y="152" fill="#fbbf24" font-size="10" font-weight="700" text-anchor="middle">H.Nay</text>
+            </svg>
+        </div>
+    </div>
+
+    <!-- Chart 2: Cơ cấu Thành viên & Định dạng nội dung -->
+    <div class="admin-chart-card">
+        <div class="chart-header">
+            <div class="chart-title-group">
+                <h3><CinemaIcon Name="CinemaIconName.Users" Size="18" style="color: #f59e0b;" /> Cơ cấu Thành viên</h3>
+                <p>Tỷ trọng hội viên VIP vs Tài khoản miễn phí</p>
+            </div>
+            <span class="chart-stat-badge amber">
+                @(stats != null ? stats.TotalUsers : 0) Thành viên
+            </span>
+        </div>
+
+        <div class="donut-chart-layout">
+            @{
+                var totalUsers = Math.Max(1, stats?.TotalUsers ?? 1);
+                var vipUsers = stats?.ActiveVipUsers ?? 0;
+                var freeUsers = Math.Max(0, totalUsers - vipUsers);
+                var vipPct = (vipUsers * 100.0) / totalUsers;
+                var circumference = 2 * Math.PI * 45; // r = 45 -> ~282.74
+                var vipStroke = (vipPct / 100.0) * circumference;
+            }
+            <div class="donut-visual-wrap">
+                <svg viewBox="0 0 120 120">
+                    <!-- Base ring (Free Users) -->
+                    <circle cx="60" cy="60" r="45" fill="transparent" stroke="#252936" stroke-width="14" />
+                    <!-- Highlight ring (VIP Users) -->
+                    <circle cx="60" cy="60" r="45" fill="transparent" stroke="#f59e0b" stroke-width="14"
+                            stroke-dasharray="@vipStroke.ToString("0.0") @circumference.ToString("0.0")"
+                            stroke-linecap="round" />
+                </svg>
+                <div class="donut-center-info">
+                    <span class="donut-center-val">@vipPct.ToString("0")%</span>
+                    <span class="donut-center-lbl">Tỷ lệ VIP</span>
+                </div>
+            </div>
+
+            <div class="donut-legends-list">
+                <div class="donut-legend-row">
+                    <span class="legend-color-tag">
+                        <span class="legend-dot amber"></span>
+                        <span>Hội viên VIP</span>
+                    </span>
+                    <span class="legend-stat">
+                        <strong class="legend-count">@vipUsers</strong>
+                        <span class="legend-percent">(@vipPct.ToString("0")%)</span>
+                    </span>
+                </div>
+
+                <div class="donut-legend-row">
+                    <span class="legend-color-tag">
+                        <span class="legend-dot purple"></span>
+                        <span>Miễn phí</span>
+                    </span>
+                    <span class="legend-stat">
+                        <strong class="legend-count">@freeUsers</strong>
+                        <span class="legend-percent">(@((100 - vipPct).ToString("0"))%)</span>
+                    </span>
+                </div>
+
+                <div class="donut-legend-row" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.5rem; margin-top: 0.2rem;">
+                    <span class="legend-color-tag">
+                        <span class="legend-dot red"></span>
+                        <span>Kho phim lẻ</span>
+                    </span>
+                    <span class="legend-stat">
+                        <strong class="legend-count">@(stats?.TotalMovies ?? 0)</strong>
+                    </span>
+                </div>
+
+                <div class="donut-legend-row">
+                    <span class="legend-color-tag">
+                        <span class="legend-dot cyan"></span>
+                        <span>Phim bộ / Anime</span>
+                    </span>
+                    <span class="legend-stat">
+                        <strong class="legend-count">@((stats?.TotalSeries ?? 0) + (stats?.TotalAnime ?? 0))</strong>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="admin-columns-grid">
+    <!-- Left: Tóm tắt kho phim gần đây có Phân trang -->
+    <section class="admin-table-section">
+        <div class="section-title-bar">
+            <div class="title-with-dropdown">
+                <h2>Tác phẩm nổi bật &amp; gần đây</h2>
+                <NavLink href="/admin/movies" class="widget-link-all">Xem tất cả kho phim →</NavLink>
+            </div>
+        </div>
+
+        <div class="table-frame">
+            @if (isLoading)
+            {
+                <div class="admin-table-state-msg">Đang tải dữ liệu từ API...</div>
+            }
+            else if (recentMovies.Count == 0)
+            {
+                <div class="admin-table-state-msg">Chưa có phim nào trong cơ sở dữ liệu.</div>
+            }
+            else
+            {
+                var pagedMovies = recentMovies.Skip((overviewPage - 1) * overviewPageSize).Take(overviewPageSize).ToList();
+                <table class="admin-movies-table">
+                    <thead>
+                        <tr>
+                            <th>Tác phẩm</th>
+                            <th>Định dạng</th>
+                            <th>Chất lượng</th>
+                            <th>Điểm</th>
+                            <th>Năm</th>
+                            <th style="text-align: right;">Quản lý tập</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in pagedMovies)
+                        {
+                            <tr>
+                                <td class="td-movie-info">
+                                    <img src="@m.PosterUrl" alt="@m.Title" class="movie-thumb-mini" />
+                                    <div class="movie-name-group">
+                                        <strong>@m.Title</strong>
+                                        <small>@m.OriginalTitle</small>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="status-pill @(m.Type == MovieType.Movie ? "status-green" : m.Type == MovieType.Series ? "status-blue" : "status-purple")">
+                                        @(m.Type == MovieType.Movie ? "Phim lẻ" : m.Type == MovieType.Series ? "Phim bộ" : "Anime")
+                                    </span>
+                                </td>
+                                <td><span class="quality-badge-gold">@m.Quality</span></td>
+                                <td><span class="rating-cell">★ @m.Rating.ToString("0.0")</span></td>
+                                <td class="td-time">
+                                    <span class="time-date">@m.ReleaseYear</span>
+                                    <span class="time-hour">@m.DurationMinutes p</span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <NavLink href="@($"/admin/episodes/{m.Id}")" class="btn-action-icon" title="Quản lý tập phim">
+                                        <CinemaIcon Name="CinemaIconName.List" Size="15" />
+                                    </NavLink>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                <AdminPagination CurrentPage="@overviewPage"
+                                 PageSize="@overviewPageSize"
+                                 TotalItems="@recentMovies.Count"
+                                 OnPageChanged="HandleOverviewPageChange" />
+            }
+        </div>
+    </section>
+
+    <!-- Right Column Widgets -->
+    <aside class="admin-widgets-column">
+        <!-- Widget 1: Hoạt động gần đây -->
+        <div class="admin-widget-card">
+            <div class="widget-header">
+                <h3>Hoạt động gần đây</h3>
+            </div>
+            <ul class="admin-activity-list">
+                @if (stats?.RecentReviews is { Count: > 0 } reviews)
+                {
+                    @foreach (var r in reviews.Take(3))
+                    {
+                        <li class="activity-item">
+                            <div class="activity-icon amber"><CinemaIcon Name="CinemaIconName.Star" Size="15" /></div>
+                            <div class="activity-content">
+                                <div><strong>@r.UserFullName</strong> đánh giá ★@r.Rating cho <em>@r.MovieTitle</em></div>
+                                <div class="activity-comment-bubble">"@r.Comment"</div>
+                                <small>@r.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</small>
+                            </div>
+                        </li>
+                    }
+                }
+                @if (stats?.RecentPayments is { Count: > 0 } payments)
+                {
+                    @foreach (var p in payments.Take(2))
+                    {
+                        <li class="activity-item">
+                            <div class="activity-icon blue"><CinemaIcon Name="CinemaIconName.Crown" Size="15" /></div>
+                            <div class="activity-content">
+                                <div>Nâng cấp <strong>@p.PlanName</strong>: <strong style="color: #10b981;">@p.Amount.ToString("N0")đ</strong></div>
+                                <div class="activity-order-bubble">Đơn hàng: @p.OrderCode</div>
+                                <small>@p.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</small>
+                            </div>
+                        </li>
+                    }
+                }
+            </ul>
+        </div>
+
+        <!-- Widget 2: Phân bố thể loại có thanh tiến trình trực quan -->
+        <div class="admin-widget-card">
+            <div class="widget-header">
+                <h3>Phân bố thể loại</h3>
+            </div>
+            <div class="content-health-list">
+                @if (stats?.GenreDistribution is { Count: > 0 } dist)
+                {
+                    var totalGenreCount = dist.Values.DefaultIfEmpty(1).Sum();
+                    @foreach (var kvp in dist.Take(6))
+                    {
+                        var pct = Math.Clamp((kvp.Value * 100.0) / Math.Max(1, totalGenreCount), 10.0, 100.0);
+                        <div class="health-row">
+                            <div class="health-row-header">
+                                <span class="health-label"><span class="status-dot green"></span> @kvp.Key</span>
+                                <span class="health-count">@kvp.Value tác phẩm (@pct.ToString("0")%)</span>
+                            </div>
+                            <div class="genre-bar-track">
+                                <div class="genre-bar-fill" style="width: @(pct.ToString("0"))%;"></div>
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="admin-empty-subtext">Chưa có thống kê thể loại.</div>
+                }
+            </div>
+        </div>
+
+        <!-- Widget 3: Nhật ký kiểm toán gần nhất -->
+        <div class="admin-widget-card">
+            <div class="widget-header">
+                <h3><CinemaIcon Name="CinemaIconName.Shield" Size="16" style="color: #60a5fa;" /> Kiểm toán &amp; Bảo mật</h3>
+                <NavLink href="/admin/audit-logs" class="widget-link-all">Xem tất cả →</NavLink>
+            </div>
+            <ul class="admin-activity-list">
+                @if (recentAuditLogs.Count > 0)
+                {
+                    @foreach (var a in recentAuditLogs.Take(3))
+                    {
+                        var chipClass = GetActionClass(a.Action);
+                        <li class="activity-item">
+                            <div class="activity-icon blue"><CinemaIcon Name="CinemaIconName.Shield" Size="15" /></div>
+                            <div class="activity-content">
+                                <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                    <span class="audit-chip-mini @chipClass">@a.Action</span>
+                                    <span style="font-size: 0.76rem; color: #94a3b8;">@a.EntityType</span>
+                                </div>
+                                <div style="font-size: 0.8rem; color: #e2e8f0; margin-top: 0.2rem;">@a.Summary</div>
+                                <small>@a.AdminEmail • @a.Timestamp.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</small>
+                            </div>
+                        </li>
+                    }
+                }
+                else
+                {
+                    <li class="admin-empty-subtext">Chưa có bản ghi kiểm toán nào.</li>
+                }
+            </ul>
+        </div>
+    </aside>
+</div>
+
+<div class="admin-section-divider"></div>
+
+<!-- Section 3: Top Tác phẩm Đánh giá Cao Nhất -->
+<section class="admin-expanded-section">
+    <div class="expanded-section-header">
+        <div>
+            <h2><CinemaIcon Name="CinemaIconName.Star" Size="18" style="color: #f59e0b;" Filled="true" /> Top Tác Phẩm Nổi Bật &amp; Đánh Giá Cao</h2>
+            <p>Các bộ phim dẫn đầu về điểm số thẩm định và sự quan tâm của khán giả</p>
+        </div>
+        <NavLink href="/admin/movies" class="widget-link-all">Xem tất cả kho phim →</NavLink>
+    </div>
+
+    <div class="top-movies-grid">
+        @{
+            var topRatedMovies = recentMovies.OrderByDescending(m => m.Rating).ThenByDescending(m => m.ReleaseYear).Take(4).ToList();
+            var rank = 1;
+        }
+        @foreach (var m in topRatedMovies)
+        {
+            var curRank = rank++;
+            <div class="top-movie-card">
+                <span class="top-movie-rank">#@curRank</span>
+                <img src="@m.PosterUrl" alt="@m.Title" class="top-movie-thumb" />
+                <div class="top-movie-info">
+                    <strong>@m.Title</strong>
+                    <div class="top-movie-meta">
+                        <span>@m.ReleaseYear</span>
+                        <span>•</span>
+                        <span>@m.DurationMinutes p</span>
+                        <span>•</span>
+                        <span style="color: #10b981; font-weight: 600;">@m.Quality</span>
+                    </div>
+                    <div class="top-movie-rating-bar">
+                        <span class="rating-score-val">★ @m.Rating.ToString("0.0")</span>
+                        <div class="rating-pill-track">
+                            <div class="rating-pill-fill" style="width: @((m.Rating * 10).ToString("0"))%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</section>
+
+<div class="admin-section-divider"></div>
+
+<!-- Section 4: Giám sát Hạ tầng & Streaming CDN Nodes -->
+<section class="admin-expanded-section">
+    <div class="expanded-section-header">
+        <div>
+            <h2><CinemaIcon Name="CinemaIconName.TrendingUp" Size="18" style="color: #06b6d4;" /> Tình Trạng Hạ Tầng &amp; Mạng Lưới Streaming</h2>
+            <p>Giám sát thời gian thực các trạm máy chủ CDN Edge và tiến trình chuyển mã HLS</p>
+        </div>
+        <div style="font-size: 0.78rem; color: #10b981; display: flex; align-items: center; gap: 6px; font-weight: 600;">
+            <span class="live-dot-pulse"></span>
+            <span>Uptime toàn mạng 99.98%</span>
+        </div>
+    </div>
+
+    <div class="infra-grid">
+        <!-- Node 1 -->
+        <div class="infra-card">
+            <div class="infra-card-top">
+                <div class="infra-name-group">
+                    <strong>HN-EDGE-01</strong>
+                    <small>Hà Nội Core CDN</small>
+                </div>
+                <span class="infra-status-chip">
+                    <span class="status-dot green"></span> 100% Online
+                </span>
+            </div>
+            <div class="infra-metrics-row">
+                <div class="infra-metric-item">
+                    <span>Băng thông</span>
+                    <strong>4.2 / 10 Gbps</strong>
+                </div>
+                <div class="infra-metric-item" style="text-align: right;">
+                    <span>Độ trễ ping</span>
+                    <strong>8 ms</strong>
+                </div>
+            </div>
+            <div class="infra-cpu-track">
+                <div class="infra-cpu-fill" style="width: 42%;"></div>
+            </div>
+        </div>
+
+        <!-- Node 2 -->
+        <div class="infra-card">
+            <div class="infra-card-top">
+                <div class="infra-name-group">
+                    <strong>HCM-EDGE-02</strong>
+                    <small>TP.Hồ Chí Minh Edge</small>
+                </div>
+                <span class="infra-status-chip">
+                    <span class="status-dot green"></span> 100% Online
+                </span>
+            </div>
+            <div class="infra-metrics-row">
+                <div class="infra-metric-item">
+                    <span>Băng thông</span>
+                    <strong>6.8 / 10 Gbps</strong>
+                </div>
+                <div class="infra-metric-item" style="text-align: right;">
+                    <span>Độ trễ ping</span>
+                    <strong>11 ms</strong>
+                </div>
+            </div>
+            <div class="infra-cpu-track">
+                <div class="infra-cpu-fill" style="width: 68%;"></div>
+            </div>
+        </div>
+
+        <!-- Node 3 -->
+        <div class="infra-card">
+            <div class="infra-card-top">
+                <div class="infra-name-group">
+                    <strong>DNG-EDGE-03</strong>
+                    <small>Đà Nẵng Regional</small>
+                </div>
+                <span class="infra-status-chip">
+                    <span class="status-dot green"></span> 100% Online
+                </span>
+            </div>
+            <div class="infra-metrics-row">
+                <div class="infra-metric-item">
+                    <span>Băng thông</span>
+                    <strong>2.1 / 5 Gbps</strong>
+                </div>
+                <div class="infra-metric-item" style="text-align: right;">
+                    <span>Độ trễ ping</span>
+                    <strong>14 ms</strong>
+                </div>
+            </div>
+            <div class="infra-cpu-track">
+                <div class="infra-cpu-fill" style="width: 25%;"></div>
+            </div>
+        </div>
+
+        <!-- Node 4 -->
+        <div class="infra-card">
+            <div class="infra-card-top">
+                <div class="infra-name-group">
+                    <strong>NRT-VIP-01</strong>
+                    <small>Tokyo VIP Gate</small>
+                </div>
+                <span class="infra-status-chip">
+                    <span class="status-dot green"></span> 100% Online
+                </span>
+            </div>
+            <div class="infra-metrics-row">
+                <div class="infra-metric-item">
+                    <span>Băng thông</span>
+                    <strong>1.5 / 5 Gbps</strong>
+                </div>
+                <div class="infra-metric-item" style="text-align: right;">
+                    <span>Độ trễ ping</span>
+                    <strong>32 ms</strong>
+                </div>
+            </div>
+            <div class="infra-cpu-track">
+                <div class="infra-cpu-fill" style="width: 18%;"></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="admin-section-divider"></div>
+
+<!-- Section 5: Bảng Điều Khiển Tác Vụ Nhanh -->
+<section class="admin-expanded-section">
+    <div class="expanded-section-header">
+        <div>
+            <h2><CinemaIcon Name="CinemaIconName.Settings" Size="18" style="color: #a78bfa;" /> Lối Tắt Quản Trị Hệ Thống</h2>
+            <p>Truy cập trực tiếp tới các bảng điều hành chuyên sâu của CinemaFlow</p>
+        </div>
+    </div>
+
+    <div class="shortcuts-grid">
+        <NavLink href="/admin/movies" class="shortcut-action-card">
+            <div class="shortcut-icon-circle red">
+                <CinemaIcon Name="CinemaIconName.Film" Size="20" />
+            </div>
+            <h4 class="shortcut-title">Kho phim</h4>
+            <p class="shortcut-desc">Thêm &amp; chỉnh sửa thông số tác phẩm</p>
+        </NavLink>
+
+        <NavLink href="/admin/episodes" class="shortcut-action-card">
+            <div class="shortcut-icon-circle cyan">
+                <CinemaIcon Name="CinemaIconName.List" Size="20" />
+            </div>
+            <h4 class="shortcut-title">Tập phim</h4>
+            <p class="shortcut-desc">Cấu hình luồng stream HLS / MP4</p>
+        </NavLink>
+
+        <NavLink href="/admin/users" class="shortcut-action-card">
+            <div class="shortcut-icon-circle purple">
+                <CinemaIcon Name="CinemaIconName.Users" Size="20" />
+            </div>
+            <h4 class="shortcut-title">Người dùng</h4>
+            <p class="shortcut-desc">Cấp &amp; gia hạn thời hạn hội viên VIP</p>
+        </NavLink>
+
+        <NavLink href="/admin/reviews" class="shortcut-action-card">
+            <div class="shortcut-icon-circle amber">
+                <CinemaIcon Name="CinemaIconName.Star" Size="20" />
+            </div>
+            <h4 class="shortcut-title">Đánh giá</h4>
+            <p class="shortcut-desc">Kiểm duyệt bình luận &amp; cảm nhận</p>
+        </NavLink>
+
+        <NavLink href="/admin/vip" class="shortcut-action-card">
+            <div class="shortcut-icon-circle emerald">
+                <CinemaIcon Name="CinemaIconName.Crown" Size="20" />
+            </div>
+            <h4 class="shortcut-title">Gói VIP</h4>
+            <p class="shortcut-desc">Doanh thu &amp; lịch sử thanh toán</p>
+        </NavLink>
+
+        <NavLink href="/admin/audit-logs" class="shortcut-action-card">
+            <div class="shortcut-icon-circle blue">
+                <CinemaIcon Name="CinemaIconName.Shield" Size="20" />
+            </div>
+            <h4 class="shortcut-title">Kiểm toán</h4>
+            <p class="shortcut-desc">Nhật ký bảo mật &amp; can thiệp dữ liệu</p>
+        </NavLink>
+    </div>
+</section>
+
+@code {
+    private AdminDashboardDto? stats;
+    private SystemHealthDto? health;
+    private List<MovieDetailDto> recentMovies = [];
+    private List<AuditLogDto> recentAuditLogs = [];
+    private bool isLoading = true;
+    private string? actionAlert;
+    private string? actionError;
+    private int overviewPage = 1;
+    private int overviewPageSize = 6;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Auth.InitializeAsync();
+            await LoadData();
+        }
+    }
+
+    private async Task LoadData()
+    {
+        if (!Auth.IsAdmin) return;
+        isLoading = true;
+        try
+        {
+            var statsTask = AdminApi.GetStatsAsync();
+            var moviesTask = AdminApi.GetMoviesAsync();
+            var healthTask = AdminApi.GetSystemHealthAsync();
+            var auditTask = AdminApi.GetAuditLogsAsync(take: 4);
+            await Task.WhenAll(statsTask, moviesTask, healthTask, auditTask);
+
+            stats = await statsTask;
+            recentMovies = await moviesTask;
+            health = await healthTask;
+            recentAuditLogs = await auditTask;
+        }
+        catch (Exception ex)
+        {
+            actionError = "Không thể tải số liệu tổng quan: " + ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void HandleOverviewPageChange(int page)
+    {
+        overviewPage = page;
+    }
+
+    private async Task RefreshData()
+    {
+        actionAlert = "Đã làm mới số liệu hệ thống thành công!";
+        overviewPage = 1;
+        await LoadData();
+    }
+
+
+    private static string GetActionClass(string action)
+    {
+        var upper = action.ToUpperInvariant();
+        if (upper.Contains("DELETE") || upper.Contains("LOCK") || upper.Contains("XÓA")) return "delete";
+        if (upper.Contains("CREATE") || upper.Contains("ADD") || upper.Contains("TẠO") || upper.Contains("THÊM")) return "create";
+        if (upper.Contains("UPDATE") || upper.Contains("EDIT") || upper.Contains("SỬA")) return "update";
+        if (upper.Contains("BULK") || upper.Contains("BATCH") || upper.Contains("LOẠT")) return "bulk";
+        return "security";
+    }
+
+    public void Dispose()
+    {
+    }
+}

@@ -1,0 +1,30 @@
+﻿<script type="module" src="@Assets["Components/Layout/ReconnectModal.razor.js"]"></script>
+
+<dialog id="components-reconnect-modal" data-nosnippet>
+    <div class="components-reconnect-container">
+        <div class="components-rejoining-animation" aria-hidden="true">
+            <div></div>
+            <div></div>
+        </div>
+        <strong class="components-reconnect-title">Kết nối đang gián đoạn</strong>
+        <p class="components-reconnect-first-attempt-visible">Đang kết nối lại với CinemaFlow...</p>
+        <p class="components-reconnect-repeated-attempt-visible">
+            Chưa thể kết nối. Hệ thống sẽ thử lại sau <span id="components-seconds-to-next-attempt"></span> giây.
+        </p>
+        <p class="components-reconnect-failed-visible">
+            Không thể kết nối lại.<br />Hãy thử lại hoặc tải lại trang.
+        </p>
+        <button id="components-reconnect-button" class="components-reconnect-failed-visible">
+            Thử kết nối lại
+        </button>
+        <p class="components-pause-visible">
+            Phiên xem đã tạm dừng trên máy chủ.
+        </p>
+        <p class="components-resume-failed-visible">
+            Không thể tiếp tục phiên hiện tại.<br />Hãy thử lại hoặc tải lại trang.
+        </p>
+        <button id="components-resume-button" class="components-pause-visible components-resume-failed-visible">
+            Tiếp tục
+        </button>
+    </div>
+</dialog>

@@ -1,0 +1,762 @@
+@page "/admin/users"
+@layout WebXemPhim.Client.Components.Layout.AdminLayout
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Shared.Enums
+@using WebXemPhim.Client.Components.Icons
+@using WebXemPhim.Client.Services
+@inject NavigationManager Nav
+@inject AuthState Auth
+@inject IAdminApiClient AdminApi
+@implements IDisposable
+
+<PageTitle>Quản lý người dùng & Phân quyền - CinemaFlow Admin</PageTitle>
+
+<!-- Topbar -->
+<header class="admin-topbar">
+    <div class="topbar-title-group">
+        <h1 class="topbar-title">Quản lý người dùng &amp; Phân quyền</h1>
+        <p class="topbar-subtitle">Hồ sơ người dùng 360°, quản trị bảo mật RBAC, trạng thái khóa tài khoản và gia hạn VIP</p>
+    </div>
+
+    <div class="topbar-actions">
+        <div class="topbar-search-pill">
+            <CinemaIcon Name="CinemaIconName.Search" Size="16" Class="search-icon" />
+            <input type="text" placeholder="Tìm theo họ tên, email..." @bind="searchQuery" @bind:event="oninput" @onkeydown="HandleSearchKeyDown" />
+        </div>
+    </div>
+</header>
+
+@if (!string.IsNullOrEmpty(actionAlert))
+{
+    <div class="form-alert success" style="margin-bottom: 1.5rem;" role="status">
+        @actionAlert
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(actionError))
+{
+    <div class="form-alert error" style="margin-bottom: 1.5rem;" role="alert">
+        @actionError
+    </div>
+}
+
+<section class="admin-table-section">
+    <div class="section-title-bar">
+        <div class="title-with-dropdown">
+            <h2>Quản lý người dùng (@filteredUsers.Count)</h2>
+        </div>
+    </div>
+
+    <!-- Multi-Dimensional Filter Suite for Users -->
+    <div class="cockpit-filter-suite">
+        <!-- Row 1: Quick Metric Chips -->
+        <div class="filter-suite-top">
+            <div class="status-tabs-row" style="margin-bottom: 0;">
+                <button type="button" class="status-tab-btn @(membershipFilter == null && string.IsNullOrEmpty(vipStatusFilter) && string.IsNullOrEmpty(roleFilter) && string.IsNullOrEmpty(accountStatusFilter) ? "active" : "")" @onclick="ResetAllUserFilters">
+                    Tất cả (@usersList.Count)
+                </button>
+                <button type="button" class="status-tab-btn @(membershipFilter == MembershipTier.Vip ? "active" : "")" @onclick="() => FilterByTier(MembershipTier.Vip)">
+                    <span class="status-dot amber"></span> VIP (@usersList.Count(u => u.IsVip))
+                </button>
+                <button type="button" class="status-tab-btn @(vipStatusFilter == "expiring_soon" ? "active" : "")" @onclick='() => FilterByVipExpiringSoon()'>
+                    <span class="status-dot red"></span> Sắp hết hạn (&lt; 7 ngày: @ExpiringSoonVipCount)
+                </button>
+                <button type="button" class="status-tab-btn @(roleFilter == "admin" ? "active" : "")" @onclick='() => FilterByRoleQuick("admin")'>
+                    <span class="status-dot blue"></span> Quản trị viên (@usersList.Count(u => u.IsAdmin))
+                </button>
+                <button type="button" class="status-tab-btn @(accountStatusFilter == "locked" ? "active" : "")" @onclick='() => FilterByLockQuick("locked")'>
+                    <span class="status-dot red"></span> Bị khóa (@usersList.Count(u => u.IsLocked))
+                </button>
+            </div>
+
+            <div class="filter-count-chip">
+                <span>Hiển thị: <strong>@filteredUsers.Count</strong> / @usersList.Count tài khoản</span>
+            </div>
+        </div>
+
+        <!-- Row 2: Detailed Filter Controls Grid -->
+        <div class="filter-controls-grid">
+            <div class="filter-control-item">
+                <label class="filter-label">Hạng thành viên</label>
+                <select class="admin-select-picker" value="@(membershipFilter?.ToString() ?? "")" @onchange="OnMembershipFilterChanged">
+                    <option value="">Tất cả các hạng</option>
+                    <option value="@nameof(MembershipTier.Vip)">👑 Thành viên VIP</option>
+                    <option value="@nameof(MembershipTier.Free)">Tài khoản thường (Free)</option>
+                </select>
+            </div>
+
+            <div class="filter-control-item">
+                <label class="filter-label">Trạng thái gói VIP</label>
+                <select class="admin-select-picker" value="@vipStatusFilter" @onchange="OnVipStatusChanged">
+                    <option value="">Tất cả trạng thái VIP</option>
+                    <option value="active">✓ VIP Đang hoạt động</option>
+                    <option value="expiring_soon">⚠ Sắp hết hạn trong 7 ngày</option>
+                    <option value="expired">Đã hết hạn VIP</option>
+                    <option value="never">Chưa từng nâng cấp VIP</option>
+                </select>
+            </div>
+
+            <div class="filter-control-item">
+                <label class="filter-label">Vai trò phân quyền</label>
+                <select class="admin-select-picker" value="@roleFilter" @onchange="OnRoleFilterChanged">
+                    <option value="">Tất cả vai trò</option>
+                    <option value="admin">Quản trị viên (Admin)</option>
+                    <option value="user">Người dùng thông thường</option>
+                </select>
+            </div>
+
+            <div class="filter-control-item">
+                <label class="filter-label">Trạng thái tài khoản</label>
+                <select class="admin-select-picker" value="@accountStatusFilter" @onchange="OnAccountStatusChanged">
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="active">Hoạt động bình thường</option>
+                    <option value="locked">🔒 Đang bị khóa (Banned)</option>
+                </select>
+            </div>
+
+            <div class="filter-control-item">
+                <label class="filter-label">Thời gian gia nhập</label>
+                <select class="admin-select-picker" value="@registeredPeriodFilter" @onchange="OnRegisteredPeriodChanged">
+                    <option value="">Mọi khoảng thời gian</option>
+                    <option value="7d">Trong 7 ngày qua</option>
+                    <option value="30d">Trong 30 ngày qua</option>
+                    <option value="this_year">Trong năm nay</option>
+                    <option value="older">Trước năm nay</option>
+                </select>
+            </div>
+
+            <div class="filter-control-item">
+                <label class="filter-label">Sắp xếp theo</label>
+                <select class="admin-select-picker" value="@userSortBy" @onchange="OnUserSortChanged">
+                    <option value="date_desc">Ngày đăng ký mới nhất</option>
+                    <option value="date_asc">Ngày đăng ký cũ nhất</option>
+                    <option value="name_asc">Họ tên (A → Z)</option>
+                    <option value="name_desc">Họ tên (Z → A)</option>
+                    <option value="vip_desc">Thời hạn VIP dài nhất</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Row 3: Active Filters Strip & Clear All -->
+        @if (HasActiveUserFilters)
+        {
+            <div class="filter-active-strip">
+                <span class="active-filter-title">Bộ lọc đang áp dụng:</span>
+                @if (membershipFilter.HasValue)
+                {
+                    <span class="filter-pill-tag">
+                        <span>Hạng: @(membershipFilter == MembershipTier.Vip ? "VIP" : "Thường")</span>
+                        <button type="button" @onclick="() => FilterByTier(null)">&times;</button>
+                    </span>
+                }
+                @if (!string.IsNullOrEmpty(vipStatusFilter))
+                {
+                    <span class="filter-pill-tag">
+                        <span>Gói VIP: @(vipStatusFilter == "active" ? "Đang hiệu lực" : vipStatusFilter == "expiring_soon" ? "Sắp hết hạn (dưới 7 ngày)" : vipStatusFilter == "expired" ? "Đã hết hạn" : "Chưa từng mua VIP")</span>
+                        <button type="button" @onclick='() => { vipStatusFilter = ""; ApplyFilters(); }'>&times;</button>
+                    </span>
+                }
+                @if (!string.IsNullOrEmpty(roleFilter))
+                {
+                    <span class="filter-pill-tag">
+                        <span>Vai trò: @(roleFilter == "admin" ? "Admin" : "Người dùng")</span>
+                        <button type="button" @onclick='() => { roleFilter = ""; ApplyFilters(); }'>&times;</button>
+                    </span>
+                }
+                @if (!string.IsNullOrEmpty(accountStatusFilter))
+                {
+                    <span class="filter-pill-tag">
+                        <span>Trạng thái: @(accountStatusFilter == "locked" ? "Bị khóa" : "Hoạt động")</span>
+                        <button type="button" @onclick='() => { accountStatusFilter = ""; ApplyFilters(); }'>&times;</button>
+                    </span>
+                }
+                @if (!string.IsNullOrEmpty(registeredPeriodFilter))
+                {
+                    <span class="filter-pill-tag">
+                        <span>Gia nhập: @registeredPeriodFilter</span>
+                        <button type="button" @onclick='() => { registeredPeriodFilter = ""; ApplyFilters(); }'>&times;</button>
+                    </span>
+                }
+                @if (!string.IsNullOrEmpty(searchQuery))
+                {
+                    <span class="filter-pill-tag">
+                        <span>Tìm kiếm: "@searchQuery"</span>
+                        <button type="button" @onclick='() => { searchQuery = ""; ApplyFilters(); }'>&times;</button>
+                    </span>
+                }
+
+                <button type="button" class="btn-clear-all-filters" @onclick="ResetAllUserFilters">
+                    Xóa tất cả bộ lọc
+                </button>
+            </div>
+        }
+    </div>
+
+    <div class="table-frame">
+        @if (isLoadingUsers)
+        {
+            <div class="admin-table-state-msg">Đang tải danh sách người dùng...</div>
+        }
+        else if (filteredUsers.Count == 0)
+        {
+            <div class="admin-table-state-msg" style="padding: 3rem 1.5rem;">
+                Không tìm thấy người dùng nào phù hợp với bộ lọc hiện tại. Bấm <strong>"Xóa tất cả bộ lọc"</strong> để xem lại toàn bộ.
+            </div>
+        }
+        else
+        {
+            <table class="admin-movies-table">
+                <thead>
+                    <tr>
+                        <th>Người dùng</th>
+                        <th>Email</th>
+                        <th>Vai trò</th>
+                        <th>Trạng thái</th>
+                        <th>Hạng tài khoản</th>
+                        <th>Thời hạn VIP</th>
+                        <th>Ngày tạo</th>
+                        <th style="text-align: right;">Hành động</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var u in filteredUsers.Skip((currentPage - 1) * pageSize).Take(pageSize))
+                    {
+                        var isExpiringSoon = IsExpiringSoonUser(u);
+                        <tr>
+                            <td class="td-movie-info" style="cursor: pointer;" @onclick="() => OpenUserDrawer(u.Id)">
+                                <div class="admin-avatar-pill" style="width: 34px; height: 34px; font-size: 0.85rem;">@u.Initials</div>
+                                <div class="movie-name-group">
+                                    <strong>@u.FullName</strong>
+                                    <small class="admin-user-email">ID: @u.Id.ToString()[..8]...</small>
+                                </div>
+                            </td>
+                            <td><span class="font-mono-num" style="font-size: 0.84rem;">@u.Email</span></td>
+                            <td>
+                                @if (u.IsAdmin)
+                                {
+                                    <span class="badge-tag-tier vip" style="background: rgba(239,68,68,0.18); color: #f87171; border: 1px solid rgba(239,68,68,0.3); font-size: 0.72rem; padding: 2px 7px;">QUẢN TRỊ</span>
+                                }
+                                else
+                                {
+                                    <span style="font-size: 0.78rem; color: rgba(255,255,255,0.45);">Thành viên</span>
+                                }
+                            </td>
+                            <td>
+                                @if (u.IsLocked)
+                                {
+                                    <span class="badge-tag-tier free" style="background: rgba(239,68,68,0.15); color: #f87171; font-size: 0.72rem; padding: 2px 7px;">ĐÃ KHÓA</span>
+                                }
+                                else
+                                {
+                                    <span style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; color: #10b981;">
+                                        <span class="status-dot green" style="width: 6px; height: 6px;"></span> Hoạt động
+                                    </span>
+                                }
+                            </td>
+                            <td>
+                                <span class="badge-tag-tier @(u.IsVip ? "vip" : "free")">
+                                    @(u.IsVip ? "VIP" : "Miễn phí")
+                                </span>
+                            </td>
+                            <td>
+                                @if (u.SubscriptionExpiresAt.HasValue)
+                                {
+                                    <div style="display: flex; flex-direction: column;">
+                                        <span class="font-mono-num @(isExpiringSoon ? "text-warning" : "")" style="font-size: 0.82rem; font-weight: 600;">
+                                            @u.SubscriptionExpiresAt.Value.ToLocalTime().ToString("dd/MM/yyyy")
+                                        </span>
+                                        @if (isExpiringSoon)
+                                        {
+                                            <small style="color: #f59e0b; font-size: 0.7rem; font-weight: 600;">Sắp hết hạn</small>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span style="color: rgba(255,255,255,0.25);">—</span>
+                                }
+                            </td>
+                            <td><span class="font-mono-num" style="font-size: 0.82rem;">@u.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy")</span></td>
+                            <td style="text-align: right;">
+                                <div class="row-actions" style="justify-content: flex-end;">
+                                    <button type="button" class="btn-action-icon" title="Hồ sơ 360°" @onclick="() => OpenUserDrawer(u.Id)">
+                                        <CinemaIcon Name="CinemaIconName.Eye" Size="14" />
+                                    </button>
+                                    <button type="button" class="btn-action-icon" title="+30 ngày VIP" @onclick="() => UpgradeUserVip(u.Id, 30)">
+                                        <CinemaIcon Name="CinemaIconName.Crown" Size="14" />
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <AdminPagination CurrentPage="@currentPage"
+                             PageSize="@pageSize"
+                             TotalItems="@filteredUsers.Count"
+                             OnPageChanged="p => { currentPage = p; StateHasChanged(); }" />
+        }
+    </div>
+</section>
+
+<!-- USER 360° INSPECTOR DRAWER (440px) -->
+@if (selectedUserDetail != null)
+{
+    <div class="cockpit-drawer-backdrop" @onclick="CloseUserDrawer">
+        <aside class="cockpit-drawer" role="dialog" aria-modal="true" aria-labelledby="user-detail-title" @onclick:stopPropagation>
+            <div class="drawer-header">
+                <h3 class="drawer-title" id="user-detail-title">Hồ Sơ Người Dùng 360°</h3>
+                <button type="button" class="btn-close-modal" aria-label="Đóng hồ sơ người dùng" @onclick="CloseUserDrawer">&times;</button>
+            </div>
+
+            <div class="drawer-body">
+                <div class="drawer-profile-card" style="display: flex; align-items: center; gap: 1rem; padding: 1rem; border-radius: 8px;">
+                    <div class="admin-avatar-pill" style="width: 50px; height: 50px; font-size: 1.25rem;">@selectedUserDetail.Initials</div>
+                    <div style="flex: 1; min-width: 0;">
+                        <h4 class="drawer-user-name" style="margin: 0; font-size: 1.05rem;">@selectedUserDetail.FullName</h4>
+                        <div class="drawer-user-email font-mono-num" style="font-size: 0.8rem;">@selectedUserDetail.Email</div>
+                        <div style="display: flex; gap: 0.4rem; margin-top: 0.4rem;">
+                            @if (selectedUserDetail.IsAdmin)
+                            {
+                                <span class="badge-tag-tier vip" style="background: rgba(239,68,68,0.2); color: #f87171;">QUẢN TRỊ VIÊN</span>
+                            }
+                            @if (selectedUserDetail.IsLocked)
+                            {
+                                <span class="badge-tag-tier free" style="background: rgba(239,68,68,0.2); color: #f87171;">ĐÃ KHÓA</span>
+                            }
+                            else
+                            {
+                                <span class="badge-tag-tier vip" style="background: rgba(16,185,129,0.2); color: #34d399;">HOẠT ĐỘNG</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="drawer-metric-grid">
+                    <div class="drawer-metric-card">
+                        <span class="drawer-metric-label">Hạng tài khoản</span>
+                        <span class="drawer-metric-val" style="color: @(selectedUserDetail.MembershipTier == MembershipTier.Vip ? "#fbbf24" : "inherit");">
+                            @selectedUserDetail.MembershipTier
+                        </span>
+                    </div>
+                    <div class="drawer-metric-card">
+                        <span class="drawer-metric-label">Hết hạn VIP</span>
+                        <span class="drawer-metric-val font-mono-num" style="font-size: 0.95rem;">
+                            @(selectedUserDetail.SubscriptionExpiresAt?.ToLocalTime().ToString("dd/MM/yyyy") ?? "Chưa kích hoạt")
+                        </span>
+                    </div>
+                    <div class="drawer-metric-card">
+                        <span class="drawer-metric-label">Danh sách lưu</span>
+                        <span class="drawer-metric-val font-mono-num">@selectedUserDetail.WatchlistCount</span>
+                    </div>
+                    <div class="drawer-metric-card">
+                        <span class="drawer-metric-label">Số đánh giá</span>
+                        <span class="drawer-metric-val font-mono-num">@selectedUserDetail.ReviewsCount</span>
+                    </div>
+                </div>
+
+                <!-- Admin Action Controls -->
+                <div>
+                    <h5 class="drawer-section-title" style="font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.6rem;">Cấp Quyền &amp; Khóa Tài Khoản</h5>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        <button type="button" class="btn-batch-action" style="justify-content: space-between;" @onclick="ToggleAdminRole">
+                            <span>Quyền Quản trị viên (Admin)</span>
+                            <span class="font-mono-num" style="color: @(selectedUserDetail.IsAdmin ? "#34d399" : "rgba(255,255,255,0.4)");">
+                                @(selectedUserDetail.IsAdmin ? "ĐÃ BẬT" : "ĐANG TẮT")
+                            </span>
+                        </button>
+                        <button type="button" class="btn-batch-action @(selectedUserDetail.IsLocked ? "danger" : "")" style="justify-content: space-between;" @onclick="ToggleLockAccount">
+                            <span>Trạng thái tài khoản</span>
+                            <span class="font-mono-num" style="color: @(selectedUserDetail.IsLocked ? "#f87171" : "#34d399");">
+                                @(selectedUserDetail.IsLocked ? "ĐANG KHÓA (MỞ KHÓA)" : "HOẠT ĐỘNG (KHÓA)")
+                            </span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Quick VIP Presets -->
+                <div>
+                    <h5 class="drawer-section-title" style="font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.6rem;">Gia Hạn Nhanh Gói VIP</h5>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;">
+                        <button type="button" class="btn-batch-action" style="justify-content: center;" @onclick="() => UpgradeUserVip(selectedUserDetail.Id, 7)">+7 ngày</button>
+                        <button type="button" class="btn-batch-action" style="justify-content: center;" @onclick="() => UpgradeUserVip(selectedUserDetail.Id, 30)">+30 ngày</button>
+                        <button type="button" class="btn-batch-action" style="justify-content: center;" @onclick="() => UpgradeUserVip(selectedUserDetail.Id, 90)">+90 ngày</button>
+                        <button type="button" class="btn-batch-action" style="justify-content: center;" @onclick="() => UpgradeUserVip(selectedUserDetail.Id, 365)">+1 năm</button>
+                        <button type="button" class="btn-batch-action danger" style="justify-content: center; grid-column: span 2;" @onclick="RevokeVip">Thu hồi VIP</button>
+                    </div>
+                </div>
+
+                <!-- Recent Payments of this User -->
+                @if (selectedUserDetail.RecentPayments?.Count > 0)
+                {
+                    <div>
+                        <h5 class="drawer-section-title" style="font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.4rem;">Giao dịch gần đây</h5>
+                        <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                            @foreach (var p in selectedUserDetail.RecentPayments)
+                            {
+                                <div class="payment-item-card" style="display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; padding: 0.4rem 0.6rem; border-radius: 4px;">
+                                    <div>
+                                        <strong class="payment-item-plan">@p.PlanName</strong>
+                                        <small class="font-mono-num" style="display: block; opacity: 0.6;">@p.OrderCode</small>
+                                    </div>
+                                    <span class="font-mono-num" style="color: #10b981; font-weight: 700;">@p.Amount.ToString("N0")đ</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="drawer-footer">
+                <button type="button" class="btn-secondary-ghost" @onclick="CloseUserDrawer">Đóng</button>
+            </div>
+        </aside>
+    </div>
+}
+
+@code {
+    private List<UserDto> usersList = [];
+    private List<UserDto> filteredUsers = [];
+    private string searchQuery = "";
+    private MembershipTier? membershipFilter = null;
+    private string vipStatusFilter = "";
+    private string roleFilter = "";
+    private string accountStatusFilter = "";
+    private string registeredPeriodFilter = "";
+    private string userSortBy = "date_desc";
+
+    private bool isLoadingUsers = true;
+    private string? actionAlert;
+    private string? actionError;
+    private int currentPage = 1;
+    private int pageSize = 10;
+
+    private bool HasActiveUserFilters =>
+        membershipFilter.HasValue ||
+        !string.IsNullOrEmpty(vipStatusFilter) ||
+        !string.IsNullOrEmpty(roleFilter) ||
+        !string.IsNullOrEmpty(accountStatusFilter) ||
+        !string.IsNullOrEmpty(registeredPeriodFilter) ||
+        !string.IsNullOrEmpty(searchQuery) ||
+        userSortBy != "date_desc";
+
+    private int ExpiringSoonVipCount =>
+        usersList.Count(u => u.IsVip && u.SubscriptionExpiresAt.HasValue && u.SubscriptionExpiresAt.Value <= DateTimeOffset.UtcNow.AddDays(7));
+
+    private static bool IsExpiringSoonUser(UserDto u) =>
+        u.IsVip && u.SubscriptionExpiresAt.HasValue && u.SubscriptionExpiresAt.Value <= DateTimeOffset.UtcNow.AddDays(7);
+
+    // Drawer state
+    private AdminUserDetailDto? selectedUserDetail;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Auth.InitializeAsync();
+            await LoadUsers();
+        }
+    }
+
+    private async Task LoadUsers()
+    {
+        if (!Auth.IsAdmin) return;
+        isLoadingUsers = true;
+        try
+        {
+            usersList = await AdminApi.GetUsersAsync();
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            actionError = "Không thể tải danh sách người dùng: " + ex.Message;
+        }
+        finally
+        {
+            isLoadingUsers = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        var result = usersList.AsEnumerable();
+        var now = DateTimeOffset.UtcNow;
+
+        if (membershipFilter.HasValue)
+        {
+            result = result.Where(u => u.Membership == membershipFilter.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(vipStatusFilter))
+        {
+            result = vipStatusFilter switch
+            {
+                "active" => result.Where(u => u.IsVip),
+                "expiring_soon" => result.Where(u => u.IsVip && u.SubscriptionExpiresAt.HasValue && u.SubscriptionExpiresAt.Value <= now.AddDays(7)),
+                "expired" => result.Where(u => !u.IsVip && u.SubscriptionExpiresAt.HasValue && u.SubscriptionExpiresAt.Value <= now),
+                "never" => result.Where(u => !u.SubscriptionExpiresAt.HasValue),
+                _ => result
+            };
+        }
+
+        if (!string.IsNullOrWhiteSpace(roleFilter))
+        {
+            result = roleFilter switch
+            {
+                "admin" => result.Where(u => u.IsAdmin),
+                "user" => result.Where(u => !u.IsAdmin),
+                _ => result
+            };
+        }
+
+        if (!string.IsNullOrWhiteSpace(accountStatusFilter))
+        {
+            result = accountStatusFilter switch
+            {
+                "locked" => result.Where(u => u.IsLocked),
+                "active" => result.Where(u => !u.IsLocked),
+                _ => result
+            };
+        }
+
+        if (!string.IsNullOrWhiteSpace(registeredPeriodFilter))
+        {
+            result = registeredPeriodFilter switch
+            {
+                "7d" => result.Where(u => u.CreatedAt >= now.AddDays(-7)),
+                "30d" => result.Where(u => u.CreatedAt >= now.AddDays(-30)),
+                "this_year" => result.Where(u => u.CreatedAt.Year == now.Year),
+                "older" => result.Where(u => u.CreatedAt.Year < now.Year),
+                _ => result
+            };
+        }
+
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            var q = searchQuery.Trim();
+            result = result.Where(u => u.FullName.Contains(q, StringComparison.OrdinalIgnoreCase)
+                                    || u.Email.Contains(q, StringComparison.OrdinalIgnoreCase)
+                                    || u.Id.ToString().Contains(q, StringComparison.OrdinalIgnoreCase));
+        }
+
+        result = userSortBy switch
+        {
+            "date_asc" => result.OrderBy(u => u.CreatedAt),
+            "name_asc" => result.OrderBy(u => u.FullName),
+            "name_desc" => result.OrderByDescending(u => u.FullName),
+            "vip_desc" => result.OrderByDescending(u => u.SubscriptionExpiresAt ?? DateTimeOffset.MinValue),
+            _ => result.OrderByDescending(u => u.CreatedAt)
+        };
+
+        filteredUsers = result.ToList();
+        currentPage = 1;
+    }
+
+    private void FilterByTier(MembershipTier? tier)
+    {
+        membershipFilter = tier;
+        ApplyFilters();
+    }
+
+    private void FilterByVipExpiringSoon()
+    {
+        vipStatusFilter = "expiring_soon";
+        ApplyFilters();
+    }
+
+    private void FilterByRoleQuick(string role)
+    {
+        roleFilter = role;
+        ApplyFilters();
+    }
+
+    private void FilterByLockQuick(string lockStatus)
+    {
+        accountStatusFilter = lockStatus;
+        ApplyFilters();
+    }
+
+    private void OnMembershipFilterChanged(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString();
+        if (string.IsNullOrEmpty(val))
+        {
+            membershipFilter = null;
+        }
+        else if (Enum.TryParse<MembershipTier>(val, out var tier))
+        {
+            membershipFilter = tier;
+        }
+        ApplyFilters();
+    }
+
+    private void OnVipStatusChanged(ChangeEventArgs e)
+    {
+        vipStatusFilter = e.Value?.ToString() ?? "";
+        ApplyFilters();
+    }
+
+    private void OnRoleFilterChanged(ChangeEventArgs e)
+    {
+        roleFilter = e.Value?.ToString() ?? "";
+        ApplyFilters();
+    }
+
+    private void OnAccountStatusChanged(ChangeEventArgs e)
+    {
+        accountStatusFilter = e.Value?.ToString() ?? "";
+        ApplyFilters();
+    }
+
+    private void OnRegisteredPeriodChanged(ChangeEventArgs e)
+    {
+        registeredPeriodFilter = e.Value?.ToString() ?? "";
+        ApplyFilters();
+    }
+
+    private void OnUserSortChanged(ChangeEventArgs e)
+    {
+        userSortBy = e.Value?.ToString() ?? "date_desc";
+        ApplyFilters();
+    }
+
+    private void ResetAllUserFilters()
+    {
+        membershipFilter = null;
+        vipStatusFilter = "";
+        roleFilter = "";
+        accountStatusFilter = "";
+        registeredPeriodFilter = "";
+        userSortBy = "date_desc";
+        searchQuery = "";
+        ApplyFilters();
+    }
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            ApplyFilters();
+        }
+    }
+
+    private async Task OpenUserDrawer(Guid userId)
+    {
+        try
+        {
+            selectedUserDetail = await AdminApi.GetUserDetailAsync(userId);
+        }
+        catch (Exception ex)
+        {
+            actionError = "Không thể tải chi tiết người dùng: " + ex.Message;
+        }
+        StateHasChanged();
+    }
+
+    private void CloseUserDrawer()
+    {
+        selectedUserDetail = null;
+    }
+
+    private async Task UpgradeUserVip(Guid userId, int extendDays)
+    {
+        actionAlert = null;
+        actionError = null;
+
+        var res = await AdminApi.UpdateUserMembershipAsync(userId, new AdminUpdateUserRequest
+        {
+            MembershipTier = MembershipTier.Vip,
+            ExtendDays = extendDays
+        });
+
+        if (res?.Success == true)
+        {
+            actionAlert = $"Đã cấp thêm {extendDays} ngày VIP cho người dùng!";
+            await LoadUsers();
+            if (selectedUserDetail?.Id == userId)
+            {
+                await OpenUserDrawer(userId);
+            }
+        }
+        else
+        {
+            actionError = res?.Message ?? "Không thể cập nhật hạng người dùng.";
+            StateHasChanged();
+        }
+    }
+
+    private async Task RevokeVip()
+    {
+        if (selectedUserDetail == null) return;
+        actionAlert = null;
+        actionError = null;
+
+        var res = await AdminApi.UpdateUserMembershipAsync(selectedUserDetail.Id, new AdminUpdateUserRequest
+        {
+            MembershipTier = MembershipTier.Free,
+            ExtendDays = 0
+        });
+
+        if (res?.Success == true)
+        {
+            actionAlert = "Đã thu hồi gói VIP của người dùng.";
+            await LoadUsers();
+            await OpenUserDrawer(selectedUserDetail.Id);
+        }
+        else
+        {
+            actionError = res?.Message ?? "Không thể thu hồi VIP.";
+        }
+    }
+
+    private async Task ToggleAdminRole()
+    {
+        if (selectedUserDetail == null) return;
+        actionAlert = null;
+        actionError = null;
+
+        var newRole = !selectedUserDetail.IsAdmin;
+        var res = await AdminApi.UpdateUserAdminRoleAsync(selectedUserDetail.Id, new AdminUpdateUserRoleRequest { IsAdmin = newRole });
+        if (res?.Success == true)
+        {
+            selectedUserDetail.IsAdmin = res.Data;
+            actionAlert = $"Đã cập nhật quyền Quản trị: {(res.Data ? "Bật" : "Tắt")}.";
+        }
+        else
+        {
+            actionError = res?.Message ?? "Không thể đổi quyền admin.";
+        }
+        StateHasChanged();
+    }
+
+    private async Task ToggleLockAccount()
+    {
+        if (selectedUserDetail == null) return;
+        actionAlert = null;
+        actionError = null;
+
+        var shouldLock = !selectedUserDetail.IsLocked;
+        var res = await AdminApi.UpdateUserLockStatusAsync(selectedUserDetail.Id, new AdminUpdateUserLockRequest
+        {
+            IsLocked = shouldLock,
+            LockMinutes = 1440
+        });
+
+        if (res?.Success == true)
+        {
+            selectedUserDetail.IsLocked = res.Data;
+            actionAlert = $"Đã cập nhật trạng thái tài khoản: {(res.Data ? "Đã khóa (24h)" : "Đã mở khóa")}.";
+        }
+        else
+        {
+            actionError = res?.Message ?? "Không thể cập nhật trạng thái khóa.";
+        }
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+    }
+}

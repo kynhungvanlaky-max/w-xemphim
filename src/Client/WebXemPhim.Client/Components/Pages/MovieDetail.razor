@@ -1,0 +1,459 @@
+@page "/movie/{Id:int}"
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Shared.Enums
+@using WebXemPhim.Client.Components.Icons
+@using WebXemPhim.Client.Components.Common
+@using WebXemPhim.Client.Services
+@inject IMovieApiClient ApiClient
+@inject WatchlistState Watchlist
+@inject AuthState Auth
+@inject NavigationManager Navigation
+
+<PageTitle>@DisplayTitle - CinemaFlow</PageTitle>
+
+<div class="movie-detail-container">
+    <!-- 1. Hero Section -->
+    <header class="detail-hero-stage">
+        <div class="detail-backdrop-wrap">
+            <img src="@BackdropUrl"
+                 alt="@DisplayTitle"
+                 @onerror="HandleBackdropError"
+                 class="detail-backdrop-img" />
+            <div class="detail-backdrop-gradient-left"></div>
+            <div class="detail-backdrop-gradient-right"></div>
+            <div class="detail-backdrop-gradient-bottom"></div>
+        </div>
+
+        <div class="detail-hero-content">
+            <!-- Floating Poster Card -->
+            <div class="detail-poster-column">
+                <div class="poster-card-frame">
+                    <img src="@PosterUrl"
+                         alt="Poster @DisplayTitle"
+                         class="poster-card-img" />
+                </div>
+            </div>
+
+            <!-- Movie Metadata & Action Buttons -->
+            <div class="detail-info-column">
+                <div class="detail-title-group">
+                    <span class="detail-original-label">CinemaFlow Original</span>
+                    <h1 class="detail-main-title">@DisplayTitle</h1>
+                    @if (!string.IsNullOrWhiteSpace(movie?.OriginalTitle))
+                    {
+                        <p class="detail-original-title">@movie.OriginalTitle</p>
+                    }
+                </div>
+
+                <p class="detail-hero-synopsis">
+                    @(string.IsNullOrWhiteSpace(movie?.Overview)
+                        ? "Một câu chuyện điện ảnh đang chờ bạn khám phá trên CinemaFlow."
+                        : movie.Overview)
+                </p>
+
+                <div class="detail-badges-row">
+                    <span class="detail-rating-pill">
+                        <CinemaIcon Name="CinemaIconName.Star" Size="14" Filled="true" />
+                        <strong>@(movie?.Rating.ToString("0.0") ?? "-")</strong>
+                    </span>
+                    <span class="badge-dot" aria-hidden="true">•</span>
+                    <span class="badge-text">@(movie?.ReleaseYear.ToString() ?? "Đang cập nhật")</span>
+                    <span class="badge-dot" aria-hidden="true">•</span>
+                    <span class="badge-pill-outline">@(movie?.AgeRating ?? "Chưa phân loại")</span>
+                    <span class="badge-dot" aria-hidden="true">•</span>
+                    <span class="badge-text">@(movie is null ? "Đang cập nhật" : $"{movie.DurationMinutes} phút")</span>
+                    <span class="badge-dot" aria-hidden="true">•</span>
+                    <span class="badge-pill-outline">@(movie?.Quality ?? "Đang cập nhật")</span>
+                </div>
+
+                @if (movie?.Genres is { Count: > 0 })
+                {
+                    <div class="detail-genres-row" aria-label="Thể loại">
+                        @foreach (var genre in movie.Genres)
+                        {
+                            <a href="@($"/explore?genre={Uri.EscapeDataString(genre)}")" class="detail-genre-tag" title="Khám phá thể loại @genre">@genre</a>
+                        }
+                    </div>
+                }
+
+                <div class="detail-cta-group">
+                    <a href="@($"/watch/{Id}")" class="btn-detail-play" title="Xem phim ngay">
+                        <CinemaIcon Name="CinemaIconName.Play" Size="16" Filled="true" />
+                        <span>Xem phim</span>
+                    </a>
+
+                    <button type="button"
+                            class="btn-detail-watchlist @(isInWatchlist ? "is-saved" : "")"
+                            @onclick="ToggleWatchlist"
+                            title="@(isInWatchlist ? "Xoá khỏi tủ phim" : "Thêm vào tủ phim")"
+                            aria-pressed="@isInWatchlist">
+                        <CinemaIcon Name="@(isInWatchlist ? CinemaIconName.BookmarkCheck : CinemaIconName.BookmarkPlus)" Size="17" />
+                        <span>@(isInWatchlist ? "Đã trong tủ phim" : "Thêm vào tủ")</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 2. Navigation Tabs -->
+    <div class="detail-tabs-header-wrap">
+        <nav class="detail-tabs-bar" role="tablist" aria-label="Mục chi tiết phim">
+            <button type="button" class="tab-item @(activeTab == "overview" ? "active" : "")" @onclick='() => activeTab = "overview"'>Tổng quan</button>
+            @if (movie?.TotalEpisodes > 1)
+            {
+                <button type="button" class="tab-item @(activeTab == "episodes" ? "active" : "")" @onclick='() => activeTab = "episodes"'>Danh sách tập</button>
+            }
+            <button type="button" class="tab-item @(activeTab == "trailer" ? "active" : "")" @onclick='() => activeTab = "trailer"'>Trailer</button>
+            <button type="button" class="tab-item @(activeTab == "reviews" ? "active" : "")" @onclick='() => activeTab = "reviews"'>Bình luận</button>
+            <button type="button" class="tab-item @(activeTab == "related" ? "active" : "")" @onclick='() => activeTab = "related"'>Phim tương tự</button>
+        </nav>
+    </div>
+
+    <!-- 3. Tab Content Section -->
+    <div class="tab-body-container">
+        @if (activeTab == "overview")
+        {
+            <div class="overview-two-columns">
+                <!-- Left: Synopsis + Cast Showcase -->
+                <div class="overview-left-col">
+                    <section class="synopsis-block">
+                        <h2 class="section-sub-heading">Nội dung phim</h2>
+                        <p class="synopsis-para">
+                            @(string.IsNullOrWhiteSpace(movie?.Overview)
+                                ? "Nội dung phim đang được cập nhật."
+                                : movie.Overview)
+                        </p>
+                    </section>
+
+                    <section class="cast-showcase-block">
+                        <h2 class="section-sub-heading">Giới thiệu diễn viên</h2>
+                        @if (movie?.Cast is { Count: > 0 })
+                        {
+                            <div class="cast-cards-row">
+                                @for (var index = 0; index < movie.Cast.Count; index++)
+                                {
+                                    var actor = movie.Cast[index];
+                                    <article class="cast-card">
+                                        <img src="@CastImage(index)" alt="@actor" />
+                                        <div class="cast-info">
+                                            <strong>@actor</strong>
+                                            <small>Diễn viên chính</small>
+                                        </div>
+                                    </article>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="synopsis-para">Danh sách diễn viên đang được cập nhật.</p>
+                        }
+                    </section>
+                </div>
+
+                <!-- Right: Specs Table -->
+                <div class="overview-right-col">
+                    <aside class="specs-table-card">
+                        <h2 class="section-sub-heading">Thông tin phim</h2>
+                        <dl class="specs-key-values">
+                            <div class="spec-row"><dt>Đạo diễn</dt><dd>@TextOrPending(movie?.Director)</dd></div>
+                            <div class="spec-row"><dt>Diễn viên</dt><dd>@(movie?.Cast is { Count: > 0 } ? string.Join(", ", movie.Cast) : "Đang cập nhật")</dd></div>
+                            <div class="spec-row"><dt>Thể loại</dt><dd>@(movie?.Genres is { Count: > 0 } ? string.Join(", ", movie.Genres) : "Đang cập nhật")</dd></div>
+                            <div class="spec-row"><dt>Quốc gia</dt><dd>@TextOrPending(movie?.Country)</dd></div>
+                            <div class="spec-row"><dt>Năm sản xuất</dt><dd>@(movie?.ReleaseYear.ToString() ?? "Đang cập nhật")</dd></div>
+                            <div class="spec-row"><dt>Thời lượng</dt><dd>@(movie is null ? "Đang cập nhật" : $"{movie.DurationMinutes} phút")</dd></div>
+                            <div class="spec-row"><dt>Độ tuổi</dt><dd>@TextOrPending(movie?.AgeRating)</dd></div>
+                            <div class="spec-row"><dt>Định dạng</dt><dd>@TextOrPending(movie?.Quality)</dd></div>
+                        </dl>
+                    </aside>
+                </div>
+            </div>
+
+            @if (movie?.SimilarMovies is { Count: > 0 })
+            {
+                <section class="overview-related-strip" aria-labelledby="overview-related-title">
+                    <div class="related-strip-heading">
+                        <h2 id="overview-related-title" class="section-sub-heading">Phim tương tự</h2>
+                        <button type="button" class="related-view-all" @onclick='() => activeTab = "related"'>Xem tất cả <span aria-hidden="true">→</span></button>
+                    </div>
+                    <div class="related-strip-track">
+                        @foreach (var related in movie.SimilarMovies.Take(6))
+                        {
+                            <a href="@($"/movie/{related.Id}")" class="related-strip-card">
+                                <img src="@related.BackdropUrl" alt="@related.Title" />
+                                <span>@related.Title</span>
+                            </a>
+                        }
+                    </div>
+                </section>
+            }
+        }
+        else if (activeTab == "episodes")
+        {
+            <div class="episodes-tab-view">
+                <h2 class="section-sub-heading">Danh sách tập</h2>
+                <div class="episodes-simple-grid">
+                    @for (var ep = 1; ep <= (movie?.TotalEpisodes > 1 ? movie.TotalEpisodes : 12); ep++)
+                    {
+                        var epNum = ep;
+                        <a href="@($"/watch/{Id}?ep={epNum}")" class="episode-pill-link">
+                            <span>Tập @epNum.ToString("00")</span>
+                            <small>45 phút</small>
+                        </a>
+                    }
+                </div>
+            </div>
+        }
+        else if (activeTab == "trailer")
+        {
+            <div class="trailer-tab-view">
+                <div class="trailer-header-row">
+                    <div class="trailer-title-wrap">
+                        <h2 class="section-sub-heading">Trailer chính thức</h2>
+                        <p class="trailer-sub-note">Trải nghiệm trailer sắc nét với chất lượng âm thanh điện ảnh</p>
+                    </div>
+                    <div class="trailer-badges">
+                        <span class="trailer-badge-pill">Full HD</span>
+                        <span class="trailer-badge-pill">Cinema Surround</span>
+                    </div>
+                </div>
+
+                <div class="trailer-video-frame">
+                    @if (IsDirectVideoTrailer)
+                    {
+                        <video class="trailer-media-element"
+                               src="@movie?.TrailerUrl"
+                               controls
+                               playsinline
+                               poster="@BackdropUrl">
+                            Trình duyệt của bạn không hỗ trợ phát video HTML5.
+                        </video>
+                    }
+                    else
+                    {
+                        <iframe class="trailer-media-element"
+                                src="@TrailerEmbedUrl"
+                                title="Trailer phim @DisplayTitle"
+                                allowfullscreen
+                                referrerpolicy="strict-origin-when-cross-origin"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share">
+                        </iframe>
+                    }
+                </div>
+
+                <div class="trailer-action-bar">
+                    <a href="@($"/watch/{Id}")" class="btn-trailer-watch-full" title="Xem phim bản đầy đủ">
+                        <CinemaIcon Name="CinemaIconName.Play" Size="16" Filled="true" />
+                        <span>Xem phim ngay</span>
+                    </a>
+                    <button type="button"
+                            class="btn-trailer-quick-save @(isInWatchlist ? "is-saved" : "")"
+                            @onclick="ToggleWatchlist"
+                            title="@(isInWatchlist ? "Xoá khỏi tủ phim" : "Thêm vào tủ phim")">
+                        <CinemaIcon Name="@(isInWatchlist ? CinemaIconName.BookmarkCheck : CinemaIconName.BookmarkPlus)" Size="16" />
+                        <span>@(isInWatchlist ? "Đã trong tủ phim" : "Thêm vào tủ")</span>
+                    </button>
+                </div>
+            </div>
+        }
+        else if (activeTab == "reviews")
+        {
+            <div class="reviews-tab-view">
+                <ReviewPanel MovieId="@Id" />
+            </div>
+        }
+        else
+        {
+            <div class="related-tab-view">
+                <h2 class="section-sub-heading">Phim cùng thể loại</h2>
+                @if (movie?.SimilarMovies is { Count: > 0 })
+                {
+                    <div class="related-cards-grid">
+                        @foreach (var related in movie.SimilarMovies)
+                        {
+                            <a href="@($"/movie/{related.Id}")" class="related-thumb"><img src="@related.BackdropUrl" alt="@related.Title" /><span>@related.Title</span></a>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="synopsis-para">Danh sách phim liên quan đang được cập nhật.</p>
+                }
+            </div>
+        }
+    </div>
+
+    <!-- 4. Watchlist Login Confirmation Modal -->
+    @if (showLoginPrompt)
+    {
+        <div class="watchlist-login-modal-backdrop" @onclick="CloseLoginPrompt">
+            <div class="watchlist-login-modal-content"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="watchlist-login-title"
+                 @onclick:stopPropagation="true">
+                <div class="watchlist-modal-header">
+                    <div class="modal-header-icon-title">
+                        <span class="modal-auth-icon" aria-hidden="true">
+                            <CinemaIcon Name="CinemaIconName.Login" Size="20" />
+                        </span>
+                        <h3 id="watchlist-login-title">Yêu cầu đăng nhập</h3>
+                    </div>
+                    <button type="button" class="btn-close-modal" aria-label="Đóng thông báo" @onclick="CloseLoginPrompt">
+                        <CinemaIcon Name="CinemaIconName.Close" Size="18" />
+                    </button>
+                </div>
+
+                <div class="watchlist-modal-body">
+                    <div class="modal-movie-preview">
+                        <img src="@PosterUrl" alt="@DisplayTitle" class="modal-movie-poster" />
+                        <div class="modal-movie-meta">
+                            <strong class="modal-movie-title">@DisplayTitle</strong>
+                            <span class="modal-movie-badge">@(movie?.ReleaseYear.ToString() ?? "2026") • @(movie?.Quality ?? "HD")</span>
+                            <p class="modal-benefit-text">Lưu phim vào tủ để theo dõi tiến độ và xem lại bất cứ lúc nào trên mọi thiết bị.</p>
+                        </div>
+                    </div>
+
+                    <p class="modal-prompt-question">
+                        Bạn cần đăng nhập tài khoản CinemaFlow để thêm phim này vào tủ phim cá nhân.
+                    </p>
+
+                    <div class="watchlist-modal-actions">
+                        <button type="button" class="btn-modal-cancel" @onclick="CloseLoginPrompt">
+                            Hủy
+                        </button>
+                        <button type="button" class="btn-modal-confirm" @onclick="ConfirmLogin">
+                            <CinemaIcon Name="CinemaIconName.Login" Size="16" />
+                            <span>Xác nhận đăng nhập</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private MovieDetailDto? movie;
+    private string activeTab = "overview";
+    private bool showLoginPrompt;
+    private bool backdropFailed;
+    private bool isInWatchlist => Watchlist.IsInWatchlist(Id);
+
+    private static readonly string[] CastImages =
+    [
+        "/images/generated/catalog/cast-lan.png",
+        "/images/generated/catalog/cast-minh.png",
+        "/images/generated/catalog/cast-father.png",
+        "/images/generated/catalog/cast-mother.png"
+    ];
+
+    private string DisplayTitle => string.IsNullOrWhiteSpace(movie?.Title) ? "Đang tải phim" : movie.Title;
+    private string BackdropUrl => backdropFailed || string.IsNullOrWhiteSpace(movie?.BackdropUrl)
+        ? "/images/movies/movie-1-backdrop.jpg"
+        : movie.BackdropUrl;
+    private string PosterUrl => string.IsNullOrWhiteSpace(movie?.PosterUrl)
+        ? "/images/movies/movie-1-poster.jpg"
+        : movie.PosterUrl;
+
+    private static string TextOrPending(string? value) => string.IsNullOrWhiteSpace(value) ? "Đang cập nhật" : value;
+    private static string CastImage(int index) => CastImages[index % CastImages.Length];
+
+    private bool IsDirectVideoTrailer =>
+        !string.IsNullOrWhiteSpace(movie?.TrailerUrl) &&
+        (movie.TrailerUrl.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ||
+         movie.TrailerUrl.EndsWith(".webm", StringComparison.OrdinalIgnoreCase) ||
+         movie.TrailerUrl.Contains(".mp4?", StringComparison.OrdinalIgnoreCase));
+
+    private string TrailerEmbedUrl
+    {
+        get
+        {
+            var url = movie?.TrailerUrl?.Trim();
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return "https://www.youtube-nocookie.com/embed/Way9Dexny3w?rel=0";
+            }
+
+            if (url.Contains("youtube.com/watch", StringComparison.OrdinalIgnoreCase))
+            {
+                var queryIndex = url.IndexOf("v=", StringComparison.OrdinalIgnoreCase);
+                if (queryIndex >= 0)
+                {
+                    var id = url.Substring(queryIndex + 2);
+                    var ampIndex = id.IndexOf('&');
+                    if (ampIndex >= 0) id = id.Substring(0, ampIndex);
+                    return $"https://www.youtube-nocookie.com/embed/{id}?rel=0";
+                }
+            }
+            else if (url.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase))
+            {
+                var id = url.Substring(url.LastIndexOf('/') + 1);
+                var qIndex = id.IndexOf('?');
+                if (qIndex >= 0) id = id.Substring(0, qIndex);
+                return $"https://www.youtube-nocookie.com/embed/{id}?rel=0";
+            }
+            else if (url.Contains("youtube.com/embed/", StringComparison.OrdinalIgnoreCase) ||
+                     url.Contains("youtube-nocookie.com/embed/", StringComparison.OrdinalIgnoreCase))
+            {
+                return url.Contains('?') ? $"{url}&rel=0" : $"{url}?rel=0";
+            }
+
+            return url;
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        backdropFailed = false;
+        try
+        {
+            movie = await ApiClient.GetMovieByIdAsync(Id);
+        }
+        catch
+        {
+            // Use defaults if not found
+        }
+    }
+
+    private void HandleBackdropError()
+    {
+        backdropFailed = true;
+    }
+
+    private async Task ToggleWatchlist()
+    {
+        if (!Auth.IsAuthenticated)
+        {
+            showLoginPrompt = true;
+            return;
+        }
+
+        if (movie is not null)
+        {
+            var dto = new MovieDto
+            {
+                Id = movie.Id,
+                Title = movie.Title,
+                PosterUrl = movie.PosterUrl,
+                Rating = movie.Rating,
+                ReleaseYear = movie.ReleaseYear,
+                Quality = movie.Quality,
+                DurationMinutes = movie.DurationMinutes
+            };
+            await Watchlist.ToggleWatchlistAsync(dto);
+        }
+    }
+
+    private void CloseLoginPrompt()
+    {
+        showLoginPrompt = false;
+    }
+
+    private void ConfirmLogin()
+    {
+        showLoginPrompt = false;
+        Navigation.NavigateTo($"/login?returnUrl=/movie/{Id}");
+    }
+}

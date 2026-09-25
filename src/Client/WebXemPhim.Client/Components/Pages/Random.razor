@@ -1,0 +1,479 @@
+@page "/random"
+@inject IMovieApiClient ApiClient
+@inject NavigationManager Nav
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Shared.Enums
+@using WebXemPhim.Client.Components.Icons
+
+<PageTitle>Chọn phim ngẫu nhiên - CinemaFlow Roulette</PageTitle>
+
+<section class="roulette-page" aria-labelledby="roulette-title">
+    <!-- Ambient Backdrop Glow -->
+    <div class="roulette-ambient-glow" style="background-image: url('@(selectedMovie?.BackdropUrl ?? "/images/movies/movie-1-backdrop.jpg")');" aria-hidden="true"></div>
+
+    <div class="roulette-container">
+        <!-- Header -->
+        <header class="roulette-header">
+            <div class="roulette-kicker-row">
+                <span class="roulette-kicker-pill">
+                    <CinemaIcon Name="CinemaIconName.Sparkles" Size="14" />
+                    Cinema Roulette
+                </span>
+                <span class="roulette-pool-badge">
+                    @(allMovies.Count > 0 ? $"{allMovies.Count} tác phẩm sẵn sàng" : "Đang tải kho phim...")
+                </span>
+            </div>
+            
+            <h1 class="roulette-title" id="roulette-title">
+                Để Điện Ảnh <span class="highlight-text">Chọn Bạn.</span>
+            </h1>
+            <p class="roulette-subtitle">
+                Đắn đo trước hàng trăm tựa phim? Hãy xoay vòng quay định mệnh để CinemaFlow tìm ra câu chuyện hoàn hảo cho buổi tối của bạn.
+            </p>
+        </header>
+
+        <!-- Roulette Control Center: Filters & Roll Action -->
+        <section class="roulette-controls-panel" aria-label="Bộ lọc vòng quay">
+            <!-- Genre Chips -->
+            <div class="roulette-filter-group">
+                <span class="filter-group-label">
+                    <CinemaIcon Name="CinemaIconName.Compass" Size="14" />
+                    Thể loại ưu tiên:
+                </span>
+                <div class="roulette-chips-row" role="tablist">
+                    <button type="button" 
+                            class="roulette-chip @(selectedGenre == "all" ? "active" : "")"
+                            @onclick='() => SetGenre("all")'>
+                        Tất cả
+                    </button>
+                    @foreach (var g in QuickGenres)
+                    {
+                        <button type="button" 
+                                class="roulette-chip @(selectedGenre == g ? "active" : "")"
+                                @onclick="() => SetGenre(g)">
+                            @g
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <!-- Secondary Options: Format & Min Rating -->
+            <div class="roulette-filter-subgroup">
+                <!-- Type Filter -->
+                <div class="filter-select-item">
+                    <label for="roulette-type">Định dạng:</label>
+                    <div class="filter-select-wrap">
+                        <select id="roulette-type" @bind="selectedType">
+                            <option value="all">Tất cả định dạng</option>
+                            <option value="movie">Phim lẻ (Movie)</option>
+                            <option value="series">Phim bộ (Series)</option>
+                            <option value="anime">Anime / Hoạt hình</option>
+                        </select>
+                        <CinemaIcon Name="CinemaIconName.ChevronDown" Size="14" Class="select-arrow" />
+                    </div>
+                </div>
+
+                <!-- Rating Filter -->
+                <div class="filter-select-item">
+                    <label for="roulette-rating">Đánh giá tối thiểu:</label>
+                    <div class="filter-select-wrap">
+                        <select id="roulette-rating" @bind="minRating">
+                            <option value="0">Tất cả điểm số</option>
+                            <option value="7.0">★ 7.0+ (Chất lượng khá)</option>
+                            <option value="8.0">★ 8.0+ (Tuyệt phẩm)</option>
+                            <option value="8.5">★ 8.5+ (Huyền thoại)</option>
+                        </select>
+                        <CinemaIcon Name="CinemaIconName.ChevronDown" Size="14" Class="select-arrow" />
+                    </div>
+                </div>
+
+                <!-- Mood Quick Tag -->
+                <div class="filter-select-item">
+                    <label for="roulette-mood">Tâm trạng:</label>
+                    <div class="filter-select-wrap">
+                        <select id="roulette-mood" @bind="selectedMood">
+                            <option value="any">Tự do bất ngờ</option>
+                            <option value="action">Hồi hộp & Kịch tính</option>
+                            <option value="relax">Thư giãn nhẹ nhàng</option>
+                            <option value="mind">Suy ngẫm & Triết lý</option>
+                            <option value="emotional">Cảm động sâu lắng</option>
+                        </select>
+                        <CinemaIcon Name="CinemaIconName.ChevronDown" Size="14" Class="select-arrow" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- Roll Button & Pool Counter -->
+            <div class="roulette-action-bar">
+                <div class="pool-status">
+                    <span>Khả dụng: <strong>@FilteredMoviePool.Count</strong> tác phẩm phù hợp</span>
+                </div>
+
+                <button type="button" 
+                        class="roulette-spin-btn @(isRolling ? "rolling" : "")"
+                        disabled="@(isRolling || FilteredMoviePool.Count == 0)"
+                        @onclick="RollRandomMovie">
+                    <span class="btn-spin-icon">
+                        <CinemaIcon Name="CinemaIconName.Shuffle" Size="20" />
+                    </span>
+                    <span class="btn-spin-text">
+                        @(isRolling ? "ĐANG XOAY VÒNG QUAY..." : "XOAY VÒNG QUAY ĐIỆN ẢNH")
+                    </span>
+                    <CinemaIcon Name="CinemaIconName.Sparkles" Size="16" Class="btn-sparkle" />
+                </button>
+            </div>
+        </section>
+
+        <!-- Visual Stage: Rolling Reel or Movie Showcase Card -->
+        <div class="roulette-stage" aria-live="polite">
+            @if (isRolling)
+            {
+                <div class="roulette-rolling-container">
+                    <div class="roulette-rolling-reel">
+                        @for (var r = 0; r < 5; r++)
+                        {
+                            var reelMovie = GetReelPreview(r);
+                            <div class="reel-card @(r == 2 ? "active-focus" : "")">
+                                @if (reelMovie is not null && !string.IsNullOrWhiteSpace(reelMovie.PosterUrl))
+                                {
+                                    <img src="@reelMovie.PosterUrl" alt="@reelMovie.Title" loading="lazy" />
+                                }
+                                else
+                                {
+                                    <div class="reel-card-placeholder">
+                                        <CinemaIcon Name="CinemaIconName.Film" Size="32" />
+                                    </div>
+                                }
+                                <div class="reel-card-shadow"></div>
+                            </div>
+                        }
+                    </div>
+                    <div class="roulette-rolling-indicator">
+                        <CinemaIcon Name="CinemaIconName.Sparkles" Size="22" />
+                        <span>Đang quay qua hàng chục bộ phim hấp dẫn...</span>
+                    </div>
+                </div>
+            }
+            else if (selectedMovie is not null)
+            {
+                <article class="roulette-showcase-card">
+                    <!-- Card Background Backdrop -->
+                    <div class="showcase-backdrop" style="background-image: url('@selectedMovie.BackdropUrl');" aria-hidden="true"></div>
+                    <div class="showcase-overlay" aria-hidden="true"></div>
+
+                    <div class="showcase-content">
+                        <!-- Poster Column with 3D Float -->
+                        <div class="showcase-poster-wrap">
+                            <img src="@selectedMovie.PosterUrl" alt="@selectedMovie.Title" class="showcase-poster" />
+                            <div class="showcase-rating-badge">
+                                <CinemaIcon Name="CinemaIconName.Star" Size="15" />
+                                <strong>@selectedMovie.Rating.ToString("0.0")</strong>
+                                <span>/ 10</span>
+                            </div>
+                        </div>
+
+                        <!-- Details Column -->
+                        <div class="showcase-info">
+                            <!-- Badges -->
+                            <div class="showcase-badges">
+                                <span class="badge-year">@selectedMovie.ReleaseYear</span>
+                                <span class="badge-quality">@selectedMovie.Quality</span>
+                                <span class="badge-format">@(selectedMovie.Type == MovieType.Series ? $"{selectedMovie.TotalEpisodes} Tập" : $"{selectedMovie.DurationMinutes} phút")</span>
+                                @if (!string.IsNullOrWhiteSpace(selectedMovie.AgeRating))
+                                {
+                                    <span class="badge-age">@selectedMovie.AgeRating</span>
+                                }
+                            </div>
+
+                            <!-- Title -->
+                            <h2 class="showcase-title">@selectedMovie.Title</h2>
+
+                            <!-- Genres -->
+                            <div class="showcase-genres">
+                                @foreach (var genre in selectedMovie.Genres)
+                                {
+                                    <span class="genre-pill">@genre</span>
+                                }
+                            </div>
+
+                            <!-- Overview -->
+                            <p class="showcase-overview">
+                                @(string.IsNullOrWhiteSpace(selectedMovie.Overview) 
+                                    ? "Một tác phẩm điện ảnh xuất sắc với hình ảnh mãn nhãn và cốt truyện lôi cuốn, mang lại trải nghiệm xem khó quên." 
+                                    : selectedMovie.Overview)
+                            </p>
+
+                            <!-- Actions Group -->
+                            <div class="showcase-actions">
+                                <a class="btn-showcase-play" href="@($"/watch/{selectedMovie.Id}")">
+                                    <CinemaIcon Name="CinemaIconName.Play" Size="18" />
+                                    <span>Xem Phim Ngay</span>
+                                </a>
+
+                                <a class="btn-showcase-detail" href="@($"/movie/{selectedMovie.Id}")">
+                                    <CinemaIcon Name="CinemaIconName.Film" Size="18" />
+                                    <span>Chi Tiết Phim</span>
+                                </a>
+
+                                <button type="button" 
+                                        class="btn-showcase-watchlist @(isInWatchlist ? "active" : "")"
+                                        @onclick="ToggleWatchlist">
+                                    <CinemaIcon Name="@(isInWatchlist ? CinemaIconName.BookmarkCheck : CinemaIconName.BookmarkPlus)" Size="18" />
+                                    <span>@(isInWatchlist ? "Đã Trong Tủ Phim" : "Thêm Vào Tủ Phim")</span>
+                                </button>
+
+                                <button type="button" 
+                                        class="btn-showcase-reroll" 
+                                        @onclick="RollRandomMovie"
+                                        title="Quay tiếp một bộ phim khác">
+                                    <CinemaIcon Name="CinemaIconName.Shuffle" Size="18" />
+                                    <span>Đổi Phim Khác</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+            }
+            else
+            {
+                <div class="roulette-empty-card">
+                    <CinemaIcon Name="CinemaIconName.AlertCircle" Size="36" />
+                    <h3>Không tìm thấy phim phù hợp</h3>
+                    <p>Bộ lọc hiện tại quá chặt chẽ. Hãy thử nới lỏng mức đánh giá hoặc chọn "Tất cả thể loại" để tiếp tục quay.</p>
+                    <button type="button" class="btn-reset-roulette" @onclick="ResetFilters">
+                        Đặt Lại Bộ Lọc & Quay Tiếp
+                    </button>
+                </div>
+            }
+        </div>
+
+        <!-- Recent Picks Session Track -->
+        @if (recentRolls.Count > 1)
+        {
+            <aside class="roulette-history-section" aria-label="Lịch sử quay phim">
+                <div class="history-header">
+                    <div class="history-title">
+                        <CinemaIcon Name="CinemaIconName.Clock" Size="16" />
+                        <span>Các gợi ý trước đó trong phiên này:</span>
+                    </div>
+                    <span class="history-count">@recentRolls.Count gợi ý</span>
+                </div>
+
+                <div class="history-cards-track">
+                    @foreach (var prevMovie in recentRolls.Where(m => m.Id != selectedMovie?.Id).Take(4))
+                    {
+                        <button type="button" 
+                                class="history-mini-card"
+                                @onclick="() => SelectHistoryMovie(prevMovie)"
+                                title="Xem lại @prevMovie.Title">
+                            <img src="@prevMovie.PosterUrl" alt="@prevMovie.Title" class="mini-card-poster" />
+                            <div class="mini-card-info">
+                                <strong class="mini-card-title">@prevMovie.Title</strong>
+                                <div class="mini-card-meta">
+                                    <span>★ @prevMovie.Rating.ToString("0.0")</span>
+                                    <span>·</span>
+                                    <span>@prevMovie.ReleaseYear</span>
+                                </div>
+                            </div>
+                        </button>
+                    }
+                </div>
+            </aside>
+        }
+    </div>
+</section>
+
+@code {
+    private List<MovieDto> allMovies = [];
+    private MovieDto? selectedMovie;
+    private readonly List<MovieDto> recentRolls = [];
+    private bool isRolling;
+    private bool isInWatchlist;
+
+    // Filters
+    private string selectedGenre = "all";
+    private string selectedType = "all";
+    private string minRating = "0";
+    private string selectedMood = "any";
+
+    private static readonly string[] QuickGenres =
+    [
+        "Hành Động", "Khoa Học Viễn Tưởng", "Kỳ Ảo", "Anime", "Kinh Dị", "Lãng Mạn", "Kịch Tính"
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadMoviesAsync();
+        await RollRandomMovie();
+    }
+
+    private async Task LoadMoviesAsync()
+    {
+        try
+        {
+            var trendingTask = ApiClient.GetTrendingAsync(30);
+            var latestTask = ApiClient.GetLatestAsync(30);
+            await Task.WhenAll(trendingTask, latestTask);
+
+            var merged = trendingTask.Result.Concat(latestTask.Result)
+                .GroupBy(m => m.Id)
+                .Select(g => g.First())
+                .ToList();
+
+            allMovies = merged;
+        }
+        catch
+        {
+            allMovies = [];
+        }
+    }
+
+    private List<MovieDto> FilteredMoviePool
+    {
+        get
+        {
+            if (allMovies.Count == 0) return [];
+
+            return allMovies.Where(m =>
+            {
+                // Genre
+                if (selectedGenre != "all" &&
+                    !m.Genres.Any(g => g.Equals(selectedGenre, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return false;
+                }
+
+                // Type
+                if (selectedType == "movie" && m.Type != MovieType.Movie)
+                    return false;
+                if (selectedType == "series" && m.Type != MovieType.Series)
+                    return false;
+                if (selectedType == "anime" && m.Type != MovieType.Anime)
+                    return false;
+
+                // Min Rating
+                if (double.TryParse(minRating, out var minR) && minR > 0 && m.Rating < minR)
+                    return false;
+
+                // Mood
+                if (selectedMood == "action" && !m.Genres.Any(g => g.Contains("Hành Động", StringComparison.OrdinalIgnoreCase) || g.Contains("Kịch Tính", StringComparison.OrdinalIgnoreCase) || g.Contains("Tội Phạm", StringComparison.OrdinalIgnoreCase)))
+                    return false;
+                if (selectedMood == "relax" && !m.Genres.Any(g => g.Contains("Hài", StringComparison.OrdinalIgnoreCase) || g.Contains("Hoạt Hình", StringComparison.OrdinalIgnoreCase) || g.Contains("Gia Đình", StringComparison.OrdinalIgnoreCase)))
+                    return false;
+                if (selectedMood == "mind" && !m.Genres.Any(g => g.Contains("Viễn Tưởng", StringComparison.OrdinalIgnoreCase) || g.Contains("Tâm Lý", StringComparison.OrdinalIgnoreCase) || g.Contains("Lịch Sử", StringComparison.OrdinalIgnoreCase)))
+                    return false;
+                if (selectedMood == "emotional" && !m.Genres.Any(g => g.Contains("Lãng Mạn", StringComparison.OrdinalIgnoreCase) || g.Contains("Tâm Lý", StringComparison.OrdinalIgnoreCase) || g.Contains("Gia Đình", StringComparison.OrdinalIgnoreCase)))
+                    return false;
+
+                return true;
+            }).ToList();
+        }
+    }
+
+    private async Task RollRandomMovie()
+    {
+        if (isRolling) return;
+        var pool = FilteredMoviePool;
+        if (pool.Count == 0)
+        {
+            selectedMovie = null;
+            return;
+        }
+
+        isRolling = true;
+        StateHasChanged();
+
+        // Cinematic rolling anticipation
+        await Task.Delay(550);
+
+        // Pick movie, prefer a different movie from the currently selected one if possible
+        var candidates = pool.Count > 1 && selectedMovie is not null
+            ? pool.Where(m => m.Id != selectedMovie.Id).ToList()
+            : pool;
+
+        var chosen = candidates[System.Random.Shared.Next(candidates.Count)];
+        selectedMovie = chosen;
+
+        // Track in session history
+        if (!recentRolls.Any(r => r.Id == chosen.Id))
+        {
+            recentRolls.Insert(0, chosen);
+            if (recentRolls.Count > 6)
+            {
+                recentRolls.RemoveAt(recentRolls.Count - 1);
+            }
+        }
+
+        // Check watchlist
+        try
+        {
+            isInWatchlist = await ApiClient.CheckInWatchlistAsync(chosen.Id);
+        }
+        catch
+        {
+            isInWatchlist = false;
+        }
+
+        isRolling = false;
+        StateHasChanged();
+    }
+
+    private void SetGenre(string genre)
+    {
+        selectedGenre = genre;
+    }
+
+    private void ResetFilters()
+    {
+        selectedGenre = "all";
+        selectedType = "all";
+        minRating = "0";
+        selectedMood = "any";
+        _ = RollRandomMovie();
+    }
+
+    private async Task SelectHistoryMovie(MovieDto movie)
+    {
+        selectedMovie = movie;
+        try
+        {
+            isInWatchlist = await ApiClient.CheckInWatchlistAsync(movie.Id);
+        }
+        catch
+        {
+            isInWatchlist = false;
+        }
+        StateHasChanged();
+    }
+
+    private async Task ToggleWatchlist()
+    {
+        if (selectedMovie is null) return;
+
+        try
+        {
+            if (isInWatchlist)
+            {
+                var success = await ApiClient.RemoveFromWatchlistAsync(selectedMovie.Id);
+                if (success) isInWatchlist = false;
+            }
+            else
+            {
+                var success = await ApiClient.AddToWatchlistAsync(selectedMovie.Id);
+                if (success) isInWatchlist = true;
+            }
+        }
+        catch
+        {
+            // Silently handle
+        }
+        StateHasChanged();
+    }
+
+    private MovieDto? GetReelPreview(int index)
+    {
+        var pool = FilteredMoviePool;
+        if (pool.Count == 0) return null;
+        return pool[(index + System.Random.Shared.Next(pool.Count)) % pool.Count];
+    }
+}

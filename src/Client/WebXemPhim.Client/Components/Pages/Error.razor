@@ -1,0 +1,57 @@
+@page "/Error"
+@using System.Diagnostics
+@using WebXemPhim.Client.Components.Common
+@using WebXemPhim.Client.Components.Icons
+
+<PageTitle>Có lỗi xảy ra - CinemaFlow</PageTitle>
+
+<section class="cinema-404-page cinema-error-page" aria-labelledby="error-500-title">
+    <div class="cinema-404-container">
+        <div class="projector-glow" style="background: radial-gradient(circle, rgba(229, 9, 20, 0.18) 0%, transparent 65%);" aria-hidden="true"></div>
+
+        <div class="error-404-hero">
+            <div class="error-badge-pill" style="background: rgba(229, 9, 20, 0.15); border-color: rgba(229, 9, 20, 0.35);">
+                <CinemaIcon Name="CinemaIconName.AlertCircle" Size="16" />
+                <span>Sự Cố Kỹ Thuật</span>
+            </div>
+
+            <h1 class="error-404-title" id="error-500-title">
+                Suất Chiếu <span class="highlight-text">Tạm Thời Gián Đoạn.</span>
+            </h1>
+
+            <p class="error-404-desc">
+                Hệ thống máy chiếu gặp trục trặc kỹ thuật ngoài ý muốn. Yêu cầu của bạn đã được ghi nhận vào nhật ký sự cố để đội ngũ kỹ thuật xử lý ngay lập tức.
+            </p>
+
+            @if (ShowRequestId)
+            {
+                <div class="request-id-badge" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.9rem; border-radius: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); font-size: 0.8rem; color: rgba(255, 255, 255, 0.7);">
+                    <span>Mã tra cứu sự cố:</span>
+                    <code style="color: #fbbf24; font-weight: 700;">@RequestId</code>
+                </div>
+            }
+
+            <div class="error-action-buttons">
+                <a class="button primary btn-large" href="/">
+                    <CinemaIcon Name="CinemaIconName.Home" Size="18" />
+                    <span>Về Trang Chủ</span>
+                </a>
+                <a class="button secondary btn-large" href="/explore">
+                    <CinemaIcon Name="CinemaIconName.Compass" Size="18" />
+                    <span>Mở Thư Viện Phim</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

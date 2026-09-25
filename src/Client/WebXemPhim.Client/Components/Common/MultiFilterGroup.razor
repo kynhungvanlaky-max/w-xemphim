@@ -1,0 +1,35 @@
+<fieldset class="discovery-filter-group">
+    <legend class="sr-only">@Title</legend>
+    <div class="discovery-filter-row">
+        <div class="discovery-filter-title" aria-hidden="true">@Title</div>
+        <div class="discovery-filter-body">
+            @if (Selected.Count > 0)
+            {
+                <div class="discovery-group-selected" aria-live="polite">
+                    <span>Đã chọn</span>
+                    @foreach (var option in Selected.OrderBy(x => x))
+                    {
+                        <button type="button" @onclick="() => Changed.InvokeAsync(option)" aria-label="@($"Bỏ {option} khỏi {Title}")">@option</button>
+                    }
+                </div>
+            }
+            <div class="discovery-filter-options">
+                @foreach (var option in Options)
+                {
+                    var isSelected = Selected.Contains(option);
+                    <label class="discovery-choice @(isSelected ? "selected" : "")">
+                        <input type="checkbox" class="sr-only" checked="@isSelected" @onchange="() => Changed.InvokeAsync(option)" />
+                        <span>@option</span>
+                    </label>
+                }
+            </div>
+        </div>
+    </div>
+</fieldset>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter, EditorRequired] public List<string> Options { get; set; } = [];
+    [Parameter, EditorRequired] public HashSet<string> Selected { get; set; } = [];
+    [Parameter] public EventCallback<string> Changed { get; set; }
+}

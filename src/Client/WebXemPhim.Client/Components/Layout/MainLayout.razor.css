@@ -1,0 +1,43 @@
+.cinema-minimal-footer {
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    padding: 2rem 0;
+    background: #090a0d;
+    margin-top: auto;
+    width: 100%;
+}
+
+.footer-inner {
+    width: min(1520px, calc(100% - clamp(2rem, 6vw, 6rem)));
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.45);
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.footer-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.footer-brand {
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    font-size: 0.95rem;
+}
+
+.footer-sep {
+    opacity: 0.3;
+}
+
+.footer-brand-cinema {
+    color: #ffffff;
+}
+
+.footer-brand-flow {
+    color: #e50914;
+}

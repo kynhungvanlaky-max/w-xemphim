@@ -1,0 +1,120 @@
+@using WebXemPhim.Client.Components.Icons
+@using WebXemPhim.Client.Services
+@inject NavigationManager Nav
+@inject AuthState Auth
+@inject ThemeState Theme
+@implements IDisposable
+
+<aside class="admin-left-sidebar">
+    <div class="sidebar-brand-block">
+        <a href="/" class="brand-link">
+            <span class="brand-name"><strong class="admin-brand-cinema">Cinema</strong><strong class="admin-brand-flow">Flow</strong></span>
+            <span class="brand-tag">STREAM BETTER</span>
+        </a>
+    </div>
+
+    <div class="sidebar-cmd-trigger-wrap">
+        <button type="button" class="btn-sidebar-cmd" @onclick="() => OnOpenCommandPalette.InvokeAsync()" title="Mở thanh tìm kiếm và thao tác nhanh (Ctrl + K)">
+            <CinemaIcon Name="CinemaIconName.Search" Size="14" />
+            <span class="cmd-text">Tìm nhanh...</span>
+            <kbd class="cmd-shortcut">Ctrl+K</kbd>
+        </button>
+    </div>
+
+    <nav class="sidebar-nav-menu">
+        <NavLink href="/admin" Match="NavLinkMatch.All" class="nav-btn">
+            <CinemaIcon Name="CinemaIconName.Dashboard" Size="18" />
+            <span>Tổng quan</span>
+        </NavLink>
+
+        <NavLink href="/admin/movies" class="nav-btn">
+            <CinemaIcon Name="CinemaIconName.Film" Size="18" />
+            <span>Phim</span>
+        </NavLink>
+
+        <NavLink href="/admin/episodes" class="nav-btn">
+            <CinemaIcon Name="CinemaIconName.List" Size="18" />
+            <span>Tập phim</span>
+        </NavLink>
+
+        <NavLink href="/admin/users" class="nav-btn">
+            <CinemaIcon Name="CinemaIconName.Users" Size="18" />
+            <span>Người dùng</span>
+        </NavLink>
+
+        <NavLink href="/admin/reviews" class="nav-btn">
+            <CinemaIcon Name="CinemaIconName.Star" Size="18" />
+            <span>Đánh giá</span>
+        </NavLink>
+
+        <NavLink href="/admin/vip" class="nav-btn">
+            <CinemaIcon Name="CinemaIconName.Crown" Size="18" />
+            <span>Gói VIP</span>
+        </NavLink>
+
+        <NavLink href="/admin/audit-logs" class="nav-btn">
+            <CinemaIcon Name="CinemaIconName.Shield" Size="18" />
+            <span>Kiểm toán</span>
+        </NavLink>
+    </nav>
+
+    <div class="sidebar-footer-profile">
+        <div class="admin-live-pulse-badge">
+            <span class="pulse-dot"></span>
+            <span class="pulse-text">Cockpit v2026.1 Live</span>
+        </div>
+
+        <div class="admin-profile-row">
+            <div class="admin-avatar-pill">@(Auth.User?.Initials ?? "A")</div>
+            <div class="admin-meta">
+                <strong>@(Auth.User?.FullName ?? "Admin")</strong>
+                <small title="@Auth.User?.Email">@(string.IsNullOrEmpty(Auth.User?.Email) ? "Quản trị viên" : Auth.User.Email)</small>
+            </div>
+            <button type="button" class="btn-sidebar-quick-logout" @onclick="Logout" title="Đăng xuất khỏi phiên quản trị">
+                <CinemaIcon Name="CinemaIconName.Logout" Size="14" />
+            </button>
+        </div>
+
+        <div class="sidebar-footer-actions">
+            <a href="/" class="btn-sidebar-home" title="Trở về giao diện người dùng xem phim">
+                <CinemaIcon Name="CinemaIconName.Home" Size="14" />
+                <span>Trang chủ</span>
+            </a>
+            <button type="button" class="btn-sidebar-theme-toggle" @onclick="ToggleTheme" title="@(Theme.IsLight ? "Chuyển sang giao diện Tối" : "Chuyển sang giao diện Sáng")">
+                <CinemaIcon Name="@(Theme.IsLight ? CinemaIconName.Moon : CinemaIconName.Sun)" Size="14" />
+                <span>@(Theme.IsLight ? "Bật nền Tối" : "Bật nền Sáng")</span>
+            </button>
+        </div>
+    </div>
+</aside>
+
+@code {
+    [Parameter]
+    public EventCallback OnOpenCommandPalette { get; set; }
+
+    private async Task Logout()
+    {
+        await Auth.LogoutAsync();
+        Nav.NavigateTo("/", true);
+    }
+
+    private async Task ToggleTheme()
+    {
+        await Theme.ToggleThemeAsync();
+    }
+
+    protected override void OnInitialized()
+    {
+        Theme.OnChange += HandleThemeChanged;
+    }
+
+    private void HandleThemeChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Theme.OnChange -= HandleThemeChanged;
+    }
+}

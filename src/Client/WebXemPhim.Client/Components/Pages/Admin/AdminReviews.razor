@@ -1,0 +1,368 @@
+@page "/admin/reviews"
+@layout WebXemPhim.Client.Components.Layout.AdminLayout
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Client.Components.Icons
+@using WebXemPhim.Client.Services
+@inject NavigationManager Nav
+@inject AuthState Auth
+@inject IAdminApiClient AdminApi
+@implements IDisposable
+
+<PageTitle>Kiểm duyệt đánh giá & Phản hồi - CinemaFlow Admin</PageTitle>
+
+<!-- Topbar -->
+<header class="admin-topbar">
+    <div class="topbar-title-group">
+        <h1 class="topbar-title">Kiểm duyệt Đánh giá &amp; Bình luận</h1>
+        <p class="topbar-subtitle">Xem xét đánh giá của khán giả, gắn cờ báo cáo spam và gửi phản hồi chính thức từ CinemaFlow</p>
+    </div>
+
+    <div class="topbar-actions">
+        <div class="topbar-search-pill">
+            <CinemaIcon Name="CinemaIconName.Search" Size="16" Class="search-icon" />
+            <input type="text" placeholder="Tìm theo phim, người dùng, nội dung..." @bind="searchQuery" @bind:event="oninput" @onkeydown="HandleSearchKeyDown" />
+        </div>
+    </div>
+</header>
+
+@if (!string.IsNullOrEmpty(actionAlert))
+{
+    <div class="form-alert success" style="margin-bottom: 1.5rem;" role="status">
+        @actionAlert
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(actionError))
+{
+    <div class="form-alert error" style="margin-bottom: 1.5rem;" role="alert">
+        @actionError
+    </div>
+}
+
+<section class="admin-table-section">
+    <div class="section-title-bar">
+        <div class="title-with-dropdown">
+            <h2>Toàn bộ đánh giá (@filteredReviews.Count)</h2>
+        </div>
+    </div>
+
+    <!-- Filter by Status & Star rating -->
+    <div class="status-tabs-row" style="flex-wrap: wrap; gap: 0.5rem;">
+        <button type="button" class="status-tab-btn @(statusFilter == null ? "active" : "")" @onclick="() => FilterByStatus(null)">
+            Tất cả
+        </button>
+        <button type="button" class="status-tab-btn @(statusFilter == "reported" ? "active" : "")" @onclick='() => FilterByStatus("reported")'>
+            <span class="status-dot red"></span> Bị báo cáo vi phạm
+        </button>
+        <button type="button" class="status-tab-btn @(statusFilter == "replied" ? "active" : "")" @onclick='() => FilterByStatus("replied")'>
+            <span class="status-dot blue"></span> Đã có phản hồi
+        </button>
+        <button type="button" class="status-tab-btn @(starFilter == 5 ? "active" : "")" @onclick="() => FilterByStar(5)">
+            ★ 9-10 điểm
+        </button>
+        <button type="button" class="status-tab-btn @(starFilter == 1 ? "active" : "")" @onclick="() => FilterByStar(1)">
+            ★ Dưới 7 điểm
+        </button>
+    </div>
+
+    <div class="table-frame">
+        @if (isLoadingReviews)
+        {
+            <div class="admin-table-state-msg">Đang tải danh sách đánh giá...</div>
+        }
+        else if (filteredReviews.Count == 0)
+        {
+            <div class="admin-table-state-msg">Chưa có đánh giá nào phù hợp với bộ lọc.</div>
+        }
+        else
+        {
+            <table class="admin-movies-table">
+                <thead>
+                    <tr>
+                        <th>Khán giả</th>
+                        <th>Tác phẩm</th>
+                        <th>Điểm</th>
+                        <th>Cảm nhận &amp; Phản hồi</th>
+                        <th>Thời gian</th>
+                        <th style="text-align: right;">Kiểm duyệt</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var rev in filteredReviews.Skip((currentPage - 1) * pageSize).Take(pageSize))
+                    {
+                        <tr class="@(rev.IsReported ? "is-reported-row" : "")">
+                            <td>
+                                <strong>@rev.UserFullName</strong><br />
+                                <small class="admin-user-email">@rev.UserEmail</small>
+                            </td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <img src="@rev.MoviePosterUrl" alt="@rev.MovieTitle" class="movie-thumb-mini" style="width: 28px; height: 40px;" />
+                                    <strong>@rev.MovieTitle</strong>
+                                </div>
+                            </td>
+                            <td><span class="rating-cell font-mono-num" style="color: @(rev.Rating >= 8 ? "#fbbf24" : rev.Rating <= 5 ? "#f87171" : "#ffffff");">★ @rev.Rating</span></td>
+                            <td class="admin-review-comment" style="max-width: 420px;">
+                                <div style="margin-bottom: 0.35rem;">
+                                    @if (rev.IsReported)
+                                    {
+                                        <span class="probe-pill fail" style="margin-right: 4px;">BỊ BÁO CÁO</span>
+                                    }
+                                    "@rev.Comment"
+                                </div>
+                                @if (!string.IsNullOrEmpty(rev.AdminReply))
+                                {
+                                    <div style="background: rgba(59, 130, 246, 0.08); border-left: 2px solid #3b82f6; padding: 4px 8px; border-radius: 0 4px 4px 0; margin-top: 4px; font-size: 0.78rem;">
+                                        <strong style="color: #60a5fa; display: block; font-size: 0.72rem;">CinemaFlow CSKH:</strong>
+                                        <span style="color: rgba(255,255,255,0.85);">@rev.AdminReply</span>
+                                    </div>
+                                }
+                            </td>
+                            <td><span class="font-mono-num">@rev.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span></td>
+                            <td style="text-align: right;">
+                                <div class="row-actions" style="justify-content: flex-end;">
+                                    <button type="button" class="btn-action-icon" title="Phản hồi chính thức" @onclick="() => OpenReplyModal(rev)">
+                                        <CinemaIcon Name="CinemaIconName.Edit" Size="13" />
+                                    </button>
+                                    <button type="button" class="btn-action-icon" title="@(rev.IsReported ? "Hủy cờ vi phạm" : "Gắn cờ vi phạm")" style="color: @(rev.IsReported ? "#34d399" : "#fbbf24");" @onclick="() => ToggleReportReview(rev)">
+                                        <CinemaIcon Name="CinemaIconName.AlertCircle" Size="13" />
+                                    </button>
+                                    <button type="button" class="btn-action-icon" style="color: #ef4444;" title="Xóa đánh giá" @onclick="() => DeleteReview(rev.Id)">
+                                        <CinemaIcon Name="CinemaIconName.Trash" Size="13" />
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <AdminPagination CurrentPage="@currentPage"
+                             PageSize="@pageSize"
+                             TotalItems="@filteredReviews.Count"
+                             OnPageChanged="p => { currentPage = p; StateHasChanged(); }" />
+        }
+    </div>
+</section>
+
+<!-- MODAL PHẢN HỒI ĐÁNH GIÁ (ADMIN REPLY) -->
+@if (replyingReview != null)
+{
+    <div class="admin-modal-backdrop" @onclick="CloseReplyModal">
+        <div class="admin-modal-card" style="max-width: 540px;" role="dialog" aria-modal="true" @onclick:stopPropagation>
+            <div class="admin-modal-header">
+                <h3>Phản hồi đánh giá của @replyingReview.UserFullName</h3>
+                <button type="button" class="btn-close-modal" @onclick="CloseReplyModal">&times;</button>
+            </div>
+            <div class="admin-modal-body">
+                <div style="padding: 0.75rem; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); margin-bottom: 1rem; font-size: 0.85rem;">
+                    <div style="font-weight: 600; margin-bottom: 2px;">@replyingReview.MovieTitle (★ @replyingReview.Rating)</div>
+                    <div style="color: rgba(255,255,255,0.7); font-style: italic;">"@replyingReview.Comment"</div>
+                </div>
+
+                <div class="admin-form-group">
+                    <label>Câu trả lời chính thức từ CinemaFlow CSKH *</label>
+                    <textarea rows="4" @bind="adminReplyText" placeholder="Chào bạn, cảm ơn bạn đã đóng góp ý kiến cho bộ phim..."></textarea>
+                </div>
+            </div>
+            <div class="admin-modal-footer">
+                <button type="button" class="btn-secondary-ghost" @onclick="CloseReplyModal">Hủy</button>
+                <button type="button" class="btn-primary-action" @onclick="SubmitReply" disabled="@isSubmittingReply">
+                    @(isSubmittingReply ? "Đang gửi..." : "Đăng phản hồi")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<AdminReviewDto> reviewsList = [];
+    private List<AdminReviewDto> filteredReviews = [];
+    private string searchQuery = "";
+    private int? starFilter = null;
+    private string? statusFilter = null;
+    private bool isLoadingReviews = true;
+    private string? actionAlert;
+    private string? actionError;
+    private int currentPage = 1;
+    private int pageSize = 8;
+
+    // Reply modal state
+    private AdminReviewDto? replyingReview;
+    private string adminReplyText = "";
+    private bool isSubmittingReply = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Auth.InitializeAsync();
+            await LoadReviews();
+        }
+    }
+
+    private async Task LoadReviews()
+    {
+        if (!Auth.IsAdmin) return;
+        isLoadingReviews = true;
+        try
+        {
+            reviewsList = await AdminApi.GetReviewsAsync();
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            actionError = "Không thể tải danh sách đánh giá: " + ex.Message;
+        }
+        finally
+        {
+            isLoadingReviews = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        var result = reviewsList.AsEnumerable();
+        if (statusFilter == "reported")
+        {
+            result = result.Where(r => r.IsReported);
+        }
+        else if (statusFilter == "replied")
+        {
+            result = result.Where(r => !string.IsNullOrEmpty(r.AdminReply));
+        }
+
+        if (starFilter.HasValue)
+        {
+            if (starFilter.Value == 5) result = result.Where(r => r.Rating >= 9);
+            else if (starFilter.Value == 1) result = result.Where(r => r.Rating < 7);
+        }
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            result = result.Where(r => r.MovieTitle.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)
+                                    || r.UserFullName.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)
+                                    || r.Comment.Contains(searchQuery, StringComparison.OrdinalIgnoreCase));
+        }
+        filteredReviews = result.ToList();
+        currentPage = 1;
+    }
+
+    private void FilterByStar(int? star)
+    {
+        starFilter = star;
+        ApplyFilters();
+    }
+
+    private void FilterByStatus(string? status)
+    {
+        statusFilter = status;
+        ApplyFilters();
+    }
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            ApplyFilters();
+        }
+    }
+
+    private void OpenReplyModal(AdminReviewDto rev)
+    {
+        replyingReview = rev;
+        adminReplyText = rev.AdminReply ?? "";
+    }
+
+    private void CloseReplyModal()
+    {
+        replyingReview = null;
+        adminReplyText = "";
+    }
+
+    private async Task SubmitReply()
+    {
+        if (replyingReview == null || string.IsNullOrWhiteSpace(adminReplyText))
+        {
+            actionError = "Vui lòng nhập nội dung phản hồi.";
+            return;
+        }
+
+        isSubmittingReply = true;
+        actionAlert = null;
+        actionError = null;
+
+        try
+        {
+            var res = await AdminApi.ReplyToReviewAsync(replyingReview.Id, new AdminReviewModerationRequest
+            {
+                AdminReply = adminReplyText.Trim()
+            });
+
+            if (res?.Success == true)
+            {
+                actionAlert = "Đã lưu phản hồi chính thức thành công!";
+                CloseReplyModal();
+                await LoadReviews();
+            }
+            else
+            {
+                actionError = res?.Message ?? "Không thể lưu phản hồi.";
+            }
+        }
+        catch (Exception ex)
+        {
+            actionError = "Lỗi khi lưu phản hồi: " + ex.Message;
+        }
+        finally
+        {
+            isSubmittingReply = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleReportReview(AdminReviewDto rev)
+    {
+        actionAlert = null;
+        actionError = null;
+
+        var newFlag = !rev.IsReported;
+        var res = await AdminApi.ReplyToReviewAsync(rev.Id, new AdminReviewModerationRequest
+        {
+            IsReported = newFlag
+        });
+
+        if (res?.Success == true)
+        {
+            rev.IsReported = newFlag;
+            actionAlert = $"Đã cập nhật trạng thái báo cáo: {(newFlag ? "Bị báo cáo" : "Bình thường")}.";
+        }
+        else
+        {
+            actionError = res?.Message ?? "Không thể cập nhật cờ báo cáo.";
+        }
+        StateHasChanged();
+    }
+
+    private async Task DeleteReview(Guid reviewId)
+    {
+        actionAlert = null;
+        actionError = null;
+
+        if (await AdminApi.DeleteReviewAsync(reviewId))
+        {
+            actionAlert = "Đã xóa bình luận thành công.";
+            await LoadReviews();
+        }
+        else
+        {
+            actionError = "Không thể xóa bình luận này.";
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+    }
+}
+

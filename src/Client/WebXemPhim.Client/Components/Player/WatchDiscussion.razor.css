@@ -1,0 +1,33 @@
+.watch-discussion-body { color:#f0f1f4; }
+.watch-discussion-body > header { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-bottom:24px; }
+h2 { font-size:28px; margin:0; letter-spacing:-.03em; }
+header p { color:#adb0ba; font-size:12px; line-height:1.7; margin:0; }
+.wd-signin { display:flex; gap:20px; align-items:flex-end; }
+.wd-signin > div { flex:1; min-width:0; }
+label { display:block; font-size:13px; margin-bottom:8px; }
+input,.wd-form ::deep textarea,.wd-form ::deep select { background:#191b20; border:1px solid #3c4049; border-radius:8px; color:#f0f1f4; padding:14px; font:inherit; font-size:14px; width:100%; }
+input::placeholder,.wd-form ::deep textarea::placeholder { color:#adb0ba; opacity:1; }
+.wd-form ::deep textarea { min-height:100px; resize:vertical; }
+.wd-form ::deep select { width:110px; min-height:44px; padding:8px; }
+.wd-rating { display:flex; align-items:center; gap:16px; margin-bottom:18px; }
+.wd-rating label { margin:0; }
+.wd-button { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:48px; padding:12px 24px; background:#252830; border:1px solid #3c4049; border-radius:8px; color:#f0f1f4; font:inherit; font-size:13px; text-decoration:none; white-space:nowrap; cursor:pointer; }
+.wd-button.primary { background:#b72d40; border-color:#b72d40; }
+.wd-button:hover:not(:disabled) { filter:brightness(1.1); }
+.wd-button:disabled { opacity:.5; cursor:not-allowed; }
+.wd-actions { display:flex; gap:12px; margin-top:16px; }
+.wd-empty { text-align:center; color:#adb0ba; padding:40px 20px; }
+.wd-empty h3 { font-size:15px; color:#f0f1f4; margin:12px 0 8px; font-weight:500; }
+.wd-empty p { font-size:13px; line-height:1.6; margin:0 0 12px; }
+.wd-reviews { margin-top:24px; }
+.wd-reviews article { display:flex; gap:16px; padding:22px 0; border-top:1px solid #30333b; }
+.wd-avatar { flex-shrink:0; display:grid; place-items:center; background:#303540; border-radius:50%; width:42px; height:42px; font-size:13px; }
+.wd-review-copy { min-width:0; flex:1; }
+.wd-review-copy header { display:flex; align-items:center; flex-wrap:wrap; gap:12px; font-size:12px; }
+.wd-review-copy header span { color:#f0808b; }
+.wd-review-copy time { color:#adb0ba; margin-left:auto; font-size:11px; }
+.wd-review-copy p { font-size:13px; line-height:1.8; margin:10px 0 0; overflow-wrap:anywhere; white-space:pre-wrap; }
+.wd-status { color:#adb0ba; font-size:13px; line-height:1.6; }
+.wd-form ::deep .validation-message { color:#ffa1ab; font-size:12px; }
+.wd-button:focus-visible,.wd-form ::deep textarea:focus-visible,.wd-form ::deep select:focus-visible { outline:2px solid #f0808b; outline-offset:3px; }
+@media(max-width:600px) { .watch-discussion-body > header { display:block; } h2 { font-size:23px; margin-bottom:10px; } .wd-signin { display:block; } .wd-signin .wd-button { margin-top:12px; width:100%; } .wd-actions { flex-wrap:wrap; } .wd-actions .wd-button { flex:1; } }

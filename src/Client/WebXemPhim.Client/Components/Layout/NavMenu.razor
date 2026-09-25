@@ -1,0 +1,699 @@
+@inject NavigationManager Nav
+@inject WatchlistState Watchlist
+@inject AuthState Auth
+@inject ThemeState Theme
+@inject IAccountApiClient Api
+@inject IMovieApiClient MovieApi
+@using WebXemPhim.Client.Components.Common
+@using WebXemPhim.Client.Services
+@using WebXemPhim.Shared.Requests
+@implements IDisposable
+
+<header class="cinema-navbar @(showNotificationMenu || showUserMenu || showSearchDropdown || showMobileSearch ? "has-open-popover" : "")" role="banner" @onkeydown="HandleMenuKeyDown">
+    @if (showNotificationMenu || showUserMenu || showSearchDropdown || showMobileSearch)
+    {
+        <button type="button" class="nav-popover-dismiss" tabindex="-1" aria-label="Đóng bảng đang mở" @onclick="ClosePopovers"></button>
+    }
+    <div class="navbar-left">
+        <a href="/" class="cinema-brand-title" aria-label="CinemaFlow - Trang chủ">
+            <span class="brand-cinema">Cinema</span><span class="brand-flow">Flow</span>
+        </a>
+
+        <nav class="nav-links" aria-label="Điều hướng chính">
+            <a href="/" class="@GetNavLinkClass("/")">Trang chủ</a>
+            <a href="/explore" class="@GetNavLinkClass("/explore")">Khám phá</a>
+            <a href="/genres" class="@GetNavLinkClass("/genres")">Thể loại</a>
+            <a href="/watchlist" class="@GetNavLinkClass("/watchlist")">Tủ phim</a>
+            <a href="/vip" class="nav-vip @GetNavLinkClass("/vip")"><CinemaIcon Name="CinemaIconName.Crown" Size="16" />VIP</a>
+        </nav>
+    </div>
+
+    <div class="navbar-right">
+        <!-- Mobile search toggle button -->
+        <button type="button"
+                class="btn-mobile-search-toggle"
+                @onclick="ToggleMobileSearch"
+                aria-label="@(showMobileSearch ? "Đóng tìm kiếm" : "Mở tìm kiếm phim")"
+                title="Tìm kiếm phim">
+            <CinemaIcon Name="@(showMobileSearch ? CinemaIconName.Close : CinemaIconName.Search)" Size="18" />
+        </button>
+        <div class="nav-search-container">
+            <div class="nav-search-pill">
+                <CinemaIcon Name="CinemaIconName.Search" Size="16" Class="nav-search-icon" />
+                <input type="text"
+                       placeholder="Tìm phim, diễn viên, thể loại..."
+                       value="@searchQuery"
+                       @oninput="HandleSearchInput"
+                       @onfocus="HandleSearchFocus"
+                       @onkeydown="HandleSearchKeyDown"
+                       aria-label="Tìm kiếm phim" />
+                @if (!string.IsNullOrWhiteSpace(searchQuery))
+                {
+                    <button type="button" class="btn-clear-search" @onclick="ClearSearch" aria-label="Xóa từ khóa">
+                        <CinemaIcon Name="CinemaIconName.Close" Size="14" />
+                    </button>
+                }
+            </div>
+
+            @if (showSearchDropdown && !string.IsNullOrWhiteSpace(searchQuery))
+            {
+                <div class="search-suggest-dropdown" role="listbox" aria-label="Gợi ý tìm kiếm">
+                    <div class="suggest-header">
+                        <span>Gợi ý phim</span>
+                        @if (isSearching)
+                        {
+                            <span class="suggest-searching">Đang tìm...</span>
+                        }
+                    </div>
+
+                    @if (isSearching && searchResults.Count == 0)
+                    {
+                        <div class="suggest-loading">
+                            <span>Đang tìm kiếm phim...</span>
+                        </div>
+                    }
+                    else if (searchResults.Count == 0)
+                    {
+                        <div class="suggest-empty">
+                            <span>Không tìm thấy phim phù hợp</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="suggest-list">
+                            @foreach (var movie in searchResults)
+                            {
+                                <a href="@($"/movie/{movie.Id}")"
+                                   class="suggest-item"
+                                   @onclick="CloseSearchDropdown">
+                                    <img src="@movie.PosterUrl" alt="@movie.Title" class="suggest-thumb" loading="lazy" />
+                                    <div class="suggest-info">
+                                        <span class="suggest-title" title="@movie.Title">@movie.Title</span>
+                                        <div class="suggest-meta">
+                                            <span class="rating">
+                                                <CinemaIcon Name="CinemaIconName.Star" Size="12" Filled="true" />
+                                                @movie.Rating.ToString("0.0")
+                                            </span>
+                                            <span>@movie.ReleaseYear</span>
+                                            <span>@movie.Quality</span>
+                                        </div>
+                                    </div>
+                                </a>
+                            }
+                        </div>
+
+                        <div class="suggest-footer">
+                            <a href="@($"/explore?keyword={Uri.EscapeDataString(searchQuery.Trim())}")"
+                               class="suggest-view-all"
+                               @onclick="CloseSearchDropdown">
+                                <span>Xem tất cả kết quả cho "@searchQuery"</span>
+                                <CinemaIcon Name="CinemaIconName.ArrowRight" Size="13" />
+                            </a>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <button type="button"
+                class="btn-theme-toggle"
+                @onclick="ToggleTheme"
+                title="@(Theme.IsLight ? "Chuyển sang giao diện Tối" : "Chuyển sang giao diện Sáng")"
+                aria-label="@(Theme.IsLight ? "Chuyển sang giao diện Tối" : "Chuyển sang giao diện Sáng")">
+            <CinemaIcon Name="@(Theme.IsLight ? CinemaIconName.Moon : CinemaIconName.Sun)" Size="18" />
+        </button>
+
+        <div class="notification-menu-wrap">
+            <button type="button"
+                    class="nav-icon-action nav-notification-trigger"
+                    title="Thông báo"
+                    aria-label="Thông báo"
+                    aria-expanded="@showNotificationMenu.ToString().ToLowerInvariant()"
+                    aria-controls="notification-popover"
+                    aria-haspopup="dialog"
+                    @ref="notificationTrigger"
+                    @onclick="ToggleNotificationMenu">
+                <CinemaIcon Name="CinemaIconName.Bell" Size="19" />
+                @if (unreadNotificationsCount > 0)
+                {
+                    <span class="nav-notification-count">@(unreadNotificationsCount > 9 ? "9+" : unreadNotificationsCount)</span>
+                }
+            </button>
+
+            @if (showNotificationMenu)
+            {
+                <section id="notification-popover" class="notification-popover" role="dialog" aria-labelledby="notification-popover-title">
+                    <header class="notification-popover-head">
+                        <div><span>Cập nhật mới</span><h2 id="notification-popover-title">Thông báo</h2></div>
+                        @if (unreadNotificationsCount > 0)
+                        {
+                            <strong>@unreadNotificationsCount chưa đọc</strong>
+                        }
+                        <button type="button" class="notification-close" aria-label="Đóng thông báo" @onclick="CloseNotificationAndFocus" @ref="notificationClose"><CinemaIcon Name="CinemaIconName.Close" Size="18" /></button>
+                    </header>
+
+                    <div class="notification-popover-body">
+                    @if (loadingNotifications)
+                    {
+                        <div class="notification-popover-loading" role="status"><i></i><i></i><i></i></div>
+                    }
+                    else if (!Auth.IsAuthenticated)
+                    {
+                        <div class="notification-popover-empty">
+                            <CinemaIcon Name="CinemaIconName.Bell" Size="24" />
+                            <strong>Thông báo dành riêng cho bạn</strong>
+                            <p>Đăng nhập để theo dõi tập mới, tủ phim và quyền lợi VIP.</p>
+                            <a href="/login?returnUrl=/notifications" @onclick="CloseNotificationMenu">Đăng nhập</a>
+                        </div>
+                    }
+                    else if (notificationsFailed)
+                    {
+                        <div class="notification-popover-empty" role="alert"><strong>Chưa tải được thông báo</strong><p>Vui lòng thử lại sau một lát.</p><button type="button" class="notification-retry" @onclick="CheckUnreadNotifications">Thử lại</button></div>
+                    }
+                    else if (notificationItems.Count == 0)
+                    {
+                        <div class="notification-popover-empty">
+                            <CinemaIcon Name="CinemaIconName.Check" Size="24" />
+                            <strong>Bạn đã cập nhật tất cả</strong>
+                            <p>Thông báo mới sẽ xuất hiện tại đây.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="notification-popover-list">
+                            @foreach (var notice in notificationItems.Take(4))
+                            {
+                                <button type="button" class="notification-preview @(!notice.Read ? "unread" : "")" @onclick="() => OpenNotification(notice)">
+                                    <span class="notification-preview-icon"><CinemaIcon Name="@GetNotificationIcon(notice.Icon)" Size="17" /></span>
+                                    <span><strong>@notice.Title</strong><small>@notice.Copy</small><time>@notice.Time</time></span>
+                                </button>
+                            }
+                        </div>
+                    }
+                    </div>
+
+                    <a class="notification-popover-all" href="/notifications" @onclick="CloseNotificationMenu">Xem toàn bộ thông báo <CinemaIcon Name="CinemaIconName.ArrowRight" Size="15" /></a>
+                </section>
+            }
+        </div>
+
+        @if (!Auth.IsInitialized)
+        {
+            <span class="nav-auth-loading" role="status">Đang xác thực</span>
+        }
+        else if (!Auth.IsAuthenticated)
+        {
+            <div class="nav-auth-actions"><a class="nav-signin" href="/login">Đăng nhập</a><a class="nav-signup" href="/register">Đăng ký</a></div>
+        }
+        else
+        {
+        <div class="user-menu-wrap" style="display: flex; align-items: center; gap: 0.4rem;">
+            <button type="button" class="user-avatar-btn" @onclick="ToggleUserMenu" aria-expanded="@showUserMenu.ToString().ToLowerInvariant()" aria-controls="account-popover" aria-label="Menu tài khoản">
+                <span class="nav-user-initials">@Auth.User!.Initials</span><span class="nav-user-label"><strong>@Auth.User.FullName</strong><small>@(Auth.User.IsVip ? "VIP đang hoạt động" : "Đã đăng nhập")</small></span>
+            </button>
+            <button type="button" class="nav-direct-logout-btn" @onclick="Logout" title="Đăng xuất khỏi tài khoản (@Auth.User?.Email)">
+                <CinemaIcon Name="CinemaIconName.Logout" Size="14" />
+                <span class="direct-logout-text">Đăng xuất</span>
+            </button>
+
+            @if (showUserMenu)
+            {
+                <div id="account-popover" class="user-dropdown-popover" role="menu" aria-label="Tài khoản">
+                    <div class="user-popover-header">
+                        <span class="nav-user-initials">@Auth.User!.Initials</span>
+                        <div class="popover-user-info">
+                            <strong>@Auth.User.FullName</strong>
+                            <span class="@(Auth.User.IsVip ? "badge-vip-tag" : "badge-member-tag")">@(Auth.User.IsVip ? "Thành viên VIP" : "Thành viên miễn phí")</span>
+                        </div>
+                    </div>
+                    <div class="popover-divider"></div>
+                    @if (Auth.IsAdmin)
+                    {
+                    <a href="/admin" class="user-popover-item" @onclick="CloseUserMenu">
+                        <CinemaIcon Name="CinemaIconName.Shield" Size="15" />
+                        <span>Quản trị (Admin)</span>
+                    </a>
+                    }
+                    <a href="/account" class="user-popover-item" role="menuitem" @onclick="CloseUserMenu">
+                        <CinemaIcon Name="CinemaIconName.User" Size="15" />
+                        <span>Tài khoản cá nhân</span>
+                    </a>
+                    <a href="/vip" class="user-popover-item" role="menuitem" @onclick="CloseUserMenu">
+                        <CinemaIcon Name="CinemaIconName.Crown" Size="15" />
+                        <span>Gói VIP 4K</span>
+                    </a>
+                    <button type="button" class="user-popover-item" role="menuitem" @onclick="ToggleTheme">
+                        <CinemaIcon Name="@(Theme.IsLight ? CinemaIconName.Moon : CinemaIconName.Sun)" Size="15" />
+                        <span>@(Theme.IsLight ? "Giao diện: Sáng (Đổi tối)" : "Giao diện: Tối (Đổi sáng)")</span>
+                    </button>
+                    <div class="popover-logout-divider"></div>
+                    <button type="button" class="user-popover-item btn-logout" role="menuitem" @onclick="Logout">
+                        <CinemaIcon Name="CinemaIconName.Logout" Size="15" />
+                        <span>Đăng xuất tài khoản</span>
+                    </button>
+                </div>
+            }
+        </div>
+        }
+
+        <!-- Mobile hamburger -->
+        <button type="button" class="mobile-toggle-btn" @onclick="ToggleMobileMenu" aria-expanded="@showMobileMenu.ToString().ToLowerInvariant()" aria-controls="mobile-navigation" aria-label="@(showMobileMenu ? "Đóng menu điều hướng" : "Mở menu điều hướng")">
+            <CinemaIcon Name="@(showMobileMenu ? CinemaIconName.Close : CinemaIconName.Menu)" Size="22" />
+        </button>
+    </div>
+
+    @if (showMobileSearch)
+    {
+        <div class="mobile-search-bar-drawer" role="search" aria-label="Tìm kiếm phim trên di động">
+            <div class="mobile-search-input-pill">
+                <CinemaIcon Name="CinemaIconName.Search" Size="16" Class="mobile-search-pill-icon" />
+                <input type="text"
+                       class="mobile-search-field"
+                       placeholder="Tìm phim, đạo diễn, thể loại..."
+                       value="@searchQuery"
+                       @oninput="HandleSearchInput"
+                       @onkeydown="HandleSearchKeyDown"
+                       aria-label="Nhập từ khóa tìm kiếm"
+                       autofocus />
+                @if (!string.IsNullOrWhiteSpace(searchQuery))
+                {
+                    <button type="button" class="btn-clear-mobile-search" @onclick="ClearSearch" aria-label="Xóa từ khóa">
+                        <CinemaIcon Name="CinemaIconName.Close" Size="14" />
+                    </button>
+                }
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(searchQuery))
+            {
+                <div class="mobile-search-dropdown-results">
+                    @if (isSearching && searchResults.Count == 0)
+                    {
+                        <div class="suggest-loading"><span>Đang tìm kiếm phim...</span></div>
+                    }
+                    else if (searchResults.Count == 0)
+                    {
+                        <div class="suggest-empty"><span>Không tìm thấy phim phù hợp</span></div>
+                    }
+                    else
+                    {
+                        <div class="suggest-list">
+                            @foreach (var movie in searchResults.Take(6))
+                            {
+                                <a href="@($"/movie/{movie.Id}")"
+                                   class="suggest-item"
+                                   @onclick="CloseMobileSearch">
+                                    <img src="@movie.PosterUrl" alt="@movie.Title" class="suggest-thumb" loading="lazy" />
+                                    <div class="suggest-info">
+                                        <span class="suggest-title" title="@movie.Title">@movie.Title</span>
+                                        <div class="suggest-meta">
+                                            <span class="rating">
+                                                <CinemaIcon Name="CinemaIconName.Star" Size="12" Filled="true" />
+                                                @movie.Rating.ToString("0.0")
+                                            </span>
+                                            <span>@movie.ReleaseYear</span>
+                                            <span>@movie.Quality</span>
+                                        </div>
+                                    </div>
+                                </a>
+                            }
+                        </div>
+                        <div class="suggest-footer">
+                            <a href="@($"/explore?keyword={Uri.EscapeDataString(searchQuery.Trim())}")"
+                               class="suggest-view-all"
+                               @onclick="CloseMobileSearch">
+                                <span>Xem tất cả kết quả cho "@searchQuery"</span>
+                                <CinemaIcon Name="CinemaIconName.ArrowRight" Size="13" />
+                            </a>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @if (showMobileMenu)
+    {
+        <div class="mobile-nav-layer" @onclick="CloseMobileMenu">
+            <nav id="mobile-navigation" class="mobile-nav-drawer" aria-label="Menu điều hướng mobile" @onclick:stopPropagation="true">
+                <header class="mobile-nav-header">
+                    <div><span>Khám phá CinemaFlow</span><small>Chọn không gian bạn muốn mở</small></div>
+                    <button type="button" class="mobile-nav-close" @onclick="CloseMobileMenu" aria-label="Đóng menu điều hướng"><CinemaIcon Name="CinemaIconName.Close" Size="19" /></button>
+                </header>
+                <div class="mobile-drawer-search-wrap">
+                    <div class="mobile-drawer-search-pill">
+                        <CinemaIcon Name="CinemaIconName.Search" Size="15" />
+                        <input type="text"
+                               placeholder="Tìm phim nhanh..."
+                               value="@searchQuery"
+                               @oninput="HandleSearchInput"
+                               @onkeydown="HandleSearchKeyDown"
+                               aria-label="Tìm kiếm trong menu" />
+                    </div>
+                </div>
+                <div class="mobile-nav-links">
+                    @if (!Auth.IsAuthenticated)
+                    {
+                        <a href="/login" @onclick="CloseMobileMenu"><CinemaIcon Name="CinemaIconName.Login" Size="19" /><span><strong>Đăng nhập</strong><small>Tiếp tục tủ phim của bạn</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
+                        <a href="/register" @onclick="CloseMobileMenu"><CinemaIcon Name="CinemaIconName.UserPlus" Size="19" /><span><strong>Đăng ký</strong><small>Tạo tài khoản miễn phí</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
+                    }
+                    <a href="/" class="@GetNavLinkClass("/")" @onclick="CloseMobileMenu"><CinemaIcon Name="CinemaIconName.Home" Size="19" /><span><strong>Trang chủ</strong><small>Điểm đến nổi bật hôm nay</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
+                    <a href="/explore" class="@GetNavLinkClass("/explore")" @onclick="CloseMobileMenu"><CinemaIcon Name="CinemaIconName.Compass" Size="19" /><span><strong>Khám phá</strong><small>Tìm phim theo sở thích</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
+                    <a href="/explore?type=2" class="@GetNavLinkClass("/explore?type=2")" @onclick="CloseMobileMenu"><CinemaIcon Name="CinemaIconName.List" Size="19" /><span><strong>Phim bộ</strong><small>Theo dõi câu chuyện dài tập</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
+                    <a href="/explore?type=3" class="@GetNavLinkClass("/explore?type=3")" @onclick="CloseMobileMenu"><CinemaIcon Name="CinemaIconName.Sparkles" Size="19" /><span><strong>Anime</strong><small>Hoạt hình và thế giới kỳ ảo</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
+                    <a href="/watchlist" class="@GetNavLinkClass("/watchlist")" @onclick="CloseMobileMenu"><CinemaIcon Name="CinemaIconName.Bookmark" Size="19" /><span><strong>Tủ phim</strong><small>Danh sách bạn đã lưu</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
+                    <a href="/vip" class="mobile-vip-link @GetNavLinkClass("/vip")" @onclick="CloseMobileMenu"><CinemaIcon Name="CinemaIconName.Crown" Size="19" /><span><strong>Gói VIP</strong><small>4K, ưu tiên và không quảng cáo</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
+                    @if (Auth.IsAuthenticated && Auth.IsAdmin)
+                    {
+                        <a href="/admin" class="mobile-admin-link" @onclick="CloseMobileMenu"><CinemaIcon Name="CinemaIconName.Shield" Size="19" /><span><strong>Quản trị viên</strong><small>Quản lý nội dung hệ thống</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
+                    }
+                    @if (Auth.IsAuthenticated)
+                    {
+                        <div class="mobile-logout-wrap">
+                            <button type="button" class="mobile-btn-logout" @onclick="Logout">
+                                <CinemaIcon Name="CinemaIconName.Logout" Size="18" />
+                                <span>Đăng xuất (@Auth.User?.Email)</span>
+                            </button>
+                        </div>
+                    }
+                </div>
+            </nav>
+        </div>
+    }
+</header>
+
+@code {
+    private string searchQuery = string.Empty;
+    private List<MovieDto> searchResults = [];
+    private bool showSearchDropdown = false;
+    private bool isSearching = false;
+    private CancellationTokenSource? searchCts;
+
+    private bool showUserMenu = false;
+    private bool showNotificationMenu = false;
+    private bool showMobileMenu = false;
+    private bool showMobileSearch = false;
+    private int unreadNotificationsCount = 0;
+    private bool loadingNotifications;
+    private bool notificationsFailed;
+    private bool focusNotification;
+    private ElementReference notificationTrigger;
+    private ElementReference notificationClose;
+    private List<NotificationDto> notificationItems = [];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (focusNotification && showNotificationMenu)
+        {
+            focusNotification = false;
+            await notificationClose.FocusAsync(preventScroll: true);
+        }
+        if (!firstRender) return;
+        await Theme.InitializeAsync();
+        await Auth.InitializeAsync();
+        await Watchlist.InitializeAsync();
+        await CheckUnreadNotifications();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        Watchlist.OnChange += StateHasChanged;
+        Auth.OnChange += OnAuthChanged;
+        Theme.OnChange += StateHasChanged;
+    }
+
+    private void OnAuthChanged()
+    {
+        _ = CheckUnreadNotifications();
+        StateHasChanged();
+    }
+
+    private async Task CheckUnreadNotifications()
+    {
+        loadingNotifications = true;
+        notificationsFailed = false;
+        if (Auth.IsAuthenticated)
+        {
+            try
+            {
+                notificationItems = await Api.GetNotificationsAsync();
+                unreadNotificationsCount = notificationItems.Count(n => !n.Read);
+            }
+            catch
+            {
+                notificationItems = [];
+                unreadNotificationsCount = 0;
+                notificationsFailed = true;
+            }
+        }
+        else
+        {
+            notificationItems = [];
+            unreadNotificationsCount = 0;
+        }
+        loadingNotifications = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        showUserMenu = false;
+        showNotificationMenu = false;
+        showMobileMenu = false;
+        showMobileSearch = false;
+        showSearchDropdown = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string GetNavLinkClass(string target)
+    {
+        var relative = "/" + Nav.ToBaseRelativePath(Nav.Uri);
+        if (target == "/" && (relative == "/" || string.IsNullOrEmpty(relative.Trim('/'))))
+        {
+            return "nav-link active";
+        }
+        if (target != "/" && relative.StartsWith(target, StringComparison.OrdinalIgnoreCase))
+        {
+            return "nav-link active";
+        }
+        return "nav-link";
+    }
+
+    private async Task HandleSearchInput(ChangeEventArgs e)
+    {
+        searchQuery = e.Value?.ToString() ?? "";
+        searchCts?.Cancel();
+        searchCts?.Dispose();
+
+        if (string.IsNullOrWhiteSpace(searchQuery))
+        {
+            searchResults = [];
+            showSearchDropdown = false;
+            isSearching = false;
+            return;
+        }
+
+        showSearchDropdown = true;
+        isSearching = true;
+
+        var currentCts = new CancellationTokenSource();
+        searchCts = currentCts;
+
+        try
+        {
+            await Task.Delay(250, currentCts.Token);
+            var query = searchQuery.Trim();
+            if (string.IsNullOrWhiteSpace(query)) return;
+
+            var result = await MovieApi.FilterMoviesAsync(new MovieFilterRequest
+            {
+                Keyword = query,
+                PageSize = 5
+            });
+
+            if (!currentCts.Token.IsCancellationRequested)
+            {
+                searchResults = result.Items ?? [];
+                isSearching = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (TaskCanceledException)
+        {
+        }
+        catch
+        {
+            isSearching = false;
+            searchResults = [];
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void HandleSearchFocus()
+    {
+        if (!string.IsNullOrWhiteSpace(searchQuery) && searchResults.Count > 0)
+        {
+            showSearchDropdown = true;
+        }
+    }
+
+    private void CloseSearchDropdown()
+    {
+        showSearchDropdown = false;
+    }
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(searchQuery))
+        {
+            showSearchDropdown = false;
+            var q = Uri.EscapeDataString(searchQuery.Trim());
+            Nav.NavigateTo($"/explore?keyword={q}");
+        }
+        else if (e.Key == "Escape")
+        {
+            showSearchDropdown = false;
+        }
+    }
+
+    private void ClearSearch()
+    {
+        searchQuery = string.Empty;
+        searchResults = [];
+        showSearchDropdown = false;
+    }
+
+    private void ToggleUserMenu()
+    {
+        showMobileMenu = false;
+        showNotificationMenu = false;
+        showSearchDropdown = false;
+        showUserMenu = !showUserMenu;
+    }
+    private void CloseUserMenu() => showUserMenu = false;
+
+    private void ToggleNotificationMenu()
+    {
+        showMobileMenu = false;
+        showUserMenu = false;
+        showSearchDropdown = false;
+        showNotificationMenu = !showNotificationMenu;
+        focusNotification = showNotificationMenu;
+        if (showNotificationMenu && Auth.IsAuthenticated)
+        {
+            _ = CheckUnreadNotifications();
+        }
+    }
+
+    private void CloseNotificationMenu() => showNotificationMenu = false;
+
+    private void ToggleMobileSearch()
+    {
+        showMobileSearch = !showMobileSearch;
+        if (showMobileSearch)
+        {
+            showUserMenu = false;
+            showNotificationMenu = false;
+            showMobileMenu = false;
+            showSearchDropdown = false;
+        }
+    }
+
+    private void CloseMobileSearch()
+    {
+        showMobileSearch = false;
+        showSearchDropdown = false;
+    }
+
+    private void ClosePopovers()
+    {
+        showUserMenu = false;
+        showNotificationMenu = false;
+        showMobileMenu = false;
+        showMobileSearch = false;
+        showSearchDropdown = false;
+    }
+
+    private async Task CloseNotificationAndFocus()
+    {
+        showNotificationMenu = false;
+        await notificationTrigger.FocusAsync(preventScroll: true);
+    }
+
+    private async Task HandleMenuKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Escape") return;
+        if (showNotificationMenu) await CloseNotificationAndFocus();
+        showUserMenu = false;
+        showMobileMenu = false;
+        showMobileSearch = false;
+        showSearchDropdown = false;
+    }
+
+    private async Task OpenNotification(NotificationDto notice)
+    {
+        if (!notice.Read)
+        {
+            try
+            {
+                if (await Api.MarkNotificationReadAsync(notice.Id))
+                {
+                    notice.Read = true;
+                    unreadNotificationsCount = Math.Max(0, unreadNotificationsCount - 1);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        showNotificationMenu = false;
+        if (!string.IsNullOrWhiteSpace(notice.ActionUrl))
+        {
+            Nav.NavigateTo(notice.ActionUrl);
+        }
+        else
+        {
+            Nav.NavigateTo("/notifications");
+        }
+    }
+
+    private static CinemaIconName GetNotificationIcon(string? icon) => icon?.ToLowerInvariant() switch
+    {
+        "play" => CinemaIconName.Play,
+        "bookmark" => CinemaIconName.Bookmark,
+        "crown" => CinemaIconName.Crown,
+        "star" => CinemaIconName.Star,
+        _ => CinemaIconName.Bell
+    };
+
+    private void ToggleMobileMenu()
+    {
+        ClosePopovers();
+        showMobileMenu = !showMobileMenu;
+    }
+    private void CloseMobileMenu() => showMobileMenu = false;
+
+    private async Task Logout()
+    {
+        showUserMenu = false;
+        await Auth.LogoutAsync();
+        Nav.NavigateTo("/");
+    }
+
+    private async Task ToggleTheme()
+    {
+        await Theme.ToggleThemeAsync();
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+        Watchlist.OnChange -= StateHasChanged;
+        Auth.OnChange -= OnAuthChanged;
+        Theme.OnChange -= StateHasChanged;
+        searchCts?.Cancel();
+        searchCts?.Dispose();
+    }
+}

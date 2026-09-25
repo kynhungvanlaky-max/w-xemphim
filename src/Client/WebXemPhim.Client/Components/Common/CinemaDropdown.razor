@@ -1,0 +1,109 @@
+@using WebXemPhim.Client.Components.Icons
+
+<div class="cinema-dropdown-wrap @(Disabled ? "is-disabled" : "") @(isOpen ? "is-open" : "") @Class" id="@Id">
+    @if (isOpen)
+    {
+        <div class="cinema-dropdown-backdrop" @onclick="CloseDropdown" aria-hidden="true"></div>
+    }
+
+    <button type="button"
+            class="cinema-dropdown-trigger @(isOpen ? "is-open" : "")"
+            @onclick="ToggleDropdown"
+            @onkeydown="HandleKeyDown"
+            disabled="@Disabled"
+            aria-haspopup="listbox"
+            aria-expanded="@isOpen"
+            aria-label="@(AriaLabel ?? SelectedOption?.Label ?? "Lựa chọn")">
+        <span class="cinema-dropdown-trigger-content">
+            @if (SelectedOption?.Icon is not null || DefaultIcon is not null)
+            {
+                <CinemaIcon Name="@(SelectedOption?.Icon ?? DefaultIcon!.Value)" Size="16" Class="cinema-dropdown-icon" />
+            }
+            <span class="cinema-dropdown-label">@(SelectedOption?.Label ?? Value)</span>
+        </span>
+        <CinemaIcon Name="CinemaIconName.ChevronDown" Size="15" Class="@($"cinema-dropdown-chevron {(isOpen ? "rotated" : "")}")" />
+    </button>
+
+    @if (isOpen)
+    {
+        <div class="cinema-dropdown-menu" role="listbox" aria-label="@AriaLabel" @onkeydown="HandleKeyDown">
+            @foreach (var opt in Options)
+            {
+                var isSelected = string.Equals(opt.Value, Value, StringComparison.OrdinalIgnoreCase);
+                <button type="button"
+                        class="cinema-dropdown-item @(isSelected ? "is-selected" : "")"
+                        role="option"
+                        aria-selected="@isSelected"
+                        @onclick="() => SelectOption(opt.Value)">
+                    <span class="cinema-dropdown-item-left">
+                        @if (opt.Icon is not null)
+                        {
+                            <CinemaIcon Name="@opt.Icon.Value" Size="16" Class="cinema-dropdown-item-icon" />
+                        }
+                        <span class="cinema-dropdown-item-text">
+                            <span class="cinema-dropdown-item-title">@opt.Label</span>
+                            @if (!string.IsNullOrWhiteSpace(opt.Subtitle))
+                            {
+                                <span class="cinema-dropdown-item-desc">@opt.Subtitle</span>
+                            }
+                        </span>
+                    </span>
+
+                    <span class="cinema-dropdown-item-right">
+                        @if (!string.IsNullOrWhiteSpace(opt.Badge))
+                        {
+                            <span class="cinema-dropdown-badge">@opt.Badge</span>
+                        }
+                        @if (isSelected)
+                        {
+                            <CinemaIcon Name="CinemaIconName.Check" Size="15" Class="cinema-dropdown-check" />
+                        }
+                    </span>
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public List<CinemaDropdownOption> Options { get; set; } = [];
+    [Parameter] public CinemaIconName? DefaultIcon { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private bool isOpen = false;
+
+    private CinemaDropdownOption? SelectedOption =>
+        Options.FirstOrDefault(o => string.Equals(o.Value, Value, StringComparison.OrdinalIgnoreCase));
+
+    private void ToggleDropdown()
+    {
+        if (Disabled) return;
+        isOpen = !isOpen;
+    }
+
+    private void CloseDropdown()
+    {
+        isOpen = false;
+    }
+
+    private async Task SelectOption(string value)
+    {
+        if (Disabled) return;
+        Value = value;
+        isOpen = false;
+        await ValueChanged.InvokeAsync(value);
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            CloseDropdown();
+        }
+    }
+}

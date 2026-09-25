@@ -1,0 +1,165 @@
+@page "/"
+@inject IMovieApiClient ApiClient
+
+<PageTitle>CinemaFlow - Điện ảnh theo cách của bạn</PageTitle>
+
+@if (loading)
+{
+    <div class="home-hero-skeleton skeleton" aria-label="Đang tải phim nổi bật"></div>
+}
+else if (heroMovies.Count > 0)
+{
+    <HeroBillboard Movies="heroMovies" Movie="featuredMovie" />
+}
+else if (featuredMovie is not null)
+{
+    <HeroBillboard Movie="featuredMovie" />
+}
+
+<div class="home-expanded">
+    <HomeMovieSection Title="Đang thịnh hành" Subtitle="Những bộ phim được xem nhiều lúc này." Movies="trendingMovies" Loading="loading" Link="/explore?sortBy=trending" />
+    <HomeMovieSection Title="Mới cập nhật" Subtitle="Thêm một câu chuyện mới vào buổi tối của bạn." Movies="latestMovies" Loading="loading" Landscape="true" Link="/explore?sortBy=latest" />
+
+    @if (featuredMovie is not null)
+    {
+        <section class="home-spotlight" aria-labelledby="home-spotlight-title">
+            <img src="@featuredMovie.BackdropUrl" alt="" loading="lazy" />
+            <div class="home-spotlight-copy">
+                <span class="home-editorial-label">Tâm điểm điện ảnh</span>
+                <h2 id="home-spotlight-title">@featuredMovie.Title</h2>
+                <p>@featuredMovie.Overview</p>
+                <a class="button primary" href="@($"/movie/{featuredMovie.Id}")">Chi tiết phim <CinemaIcon Name="CinemaIconName.ArrowRight" Size="16" /></a>
+            </div>
+        </section>
+    }
+
+    <section class="genre-bento-section" aria-labelledby="bento-title">
+        <div class="home-section-heading">
+            <div>
+                <h2 id="bento-title">Chọn một thế giới để bước vào</h2>
+                <p>Bắt đầu bằng cảm xúc bạn muốn tìm tối nay.</p>
+            </div>
+            <a href="/explore">Tất cả thể loại <CinemaIcon Name="CinemaIconName.ArrowRight" Size="16" /></a>
+        </div>
+
+        <div class="genre-bento-grid">
+            <!-- Bento Card 1: Hành động & phiêu lưu (Thẻ lớn bên trái) -->
+            <a href="/explore?genre=Hành động" class="bento-card bento-card-action">
+                <img src="/images/generated/redesign-2026/cinemaflow-watch-rain-night.png"
+                     alt="Hành động & phiêu lưu"
+                     class="bento-bg-img"
+                     loading="lazy" />
+                <div class="bento-overlay"></div>
+                <div class="bento-header">
+                    <span class="bento-badge"><CinemaIcon Name="CinemaIconName.Flame" Size="13" /> Hành động</span>
+                    <span class="bento-arrow-btn"><CinemaIcon Name="CinemaIconName.ArrowRight" Size="14" /></span>
+                </div>
+                <div class="bento-copy">
+                    <h3 class="bento-card-title">Hành động &amp;<br />phiêu lưu</h3>
+                    <p class="bento-card-desc">Nhịp độ dồn dập, kỹ xảo mãn nhãn và những cuộc chạm trán nghẹt thở.</p>
+                    <span class="bento-explore-cta">Khám phá ngay <CinemaIcon Name="CinemaIconName.ArrowRight" Size="12" /></span>
+                </div>
+            </a>
+
+            <!-- Bento Card 2: Tình cảm lãng mạn (Phải trên) -->
+            <a href="/explore?genre=Tâm lý" class="bento-card bento-card-romance">
+                <img src="/images/movies/movie-28-backdrop.jpg"
+                     alt="Tình cảm lãng mạn"
+                     class="bento-bg-img"
+                     loading="lazy" />
+                <div class="bento-overlay"></div>
+                <div class="bento-header">
+                    <span class="bento-badge"><CinemaIcon Name="CinemaIconName.Sparkles" Size="13" /> Tình cảm</span>
+                    <span class="bento-arrow-btn"><CinemaIcon Name="CinemaIconName.ArrowRight" Size="14" /></span>
+                </div>
+                <div class="bento-copy">
+                    <h3 class="bento-card-title">Tình cảm lãng mạn</h3>
+                    <p class="bento-card-desc">Những câu chuyện rung động sâu sắc và ngọt ngào.</p>
+                    <span class="bento-explore-cta">Khám phá ngay <CinemaIcon Name="CinemaIconName.ArrowRight" Size="12" /></span>
+                </div>
+            </a>
+
+            <!-- Bento Card 3: Anime & hoạt hình (Phải giữa) -->
+            <a href="/explore?type=3" class="bento-card bento-card-anime">
+                <img src="/images/movies/movie-33-backdrop.jpg"
+                     alt="Anime & hoạt hình"
+                     class="bento-bg-img"
+                     loading="lazy" />
+                <div class="bento-overlay"></div>
+                <div class="bento-header">
+                    <span class="bento-badge"><CinemaIcon Name="CinemaIconName.Smile" Size="13" /> Anime</span>
+                    <span class="bento-arrow-btn"><CinemaIcon Name="CinemaIconName.ArrowRight" Size="14" /></span>
+                </div>
+                <div class="bento-copy">
+                    <h3 class="bento-card-title">Anime &amp; hoạt hình</h3>
+                    <p class="bento-card-desc">Vũ trụ kỳ ảo, đồ họa đỉnh cao từ những xưởng phim hàng đầu.</p>
+                    <span class="bento-explore-cta">Khám phá ngay <CinemaIcon Name="CinemaIconName.ArrowRight" Size="12" /></span>
+                </div>
+            </a>
+
+            <!-- Bento Card 4: Khoa học viễn tưởng (Dưới cùng rộng) -->
+            <a href="/explore?genre=Khoa học viễn tưởng" class="bento-card bento-card-scifi">
+                <img src="/images/movies/movie-1-backdrop.jpg"
+                     alt="Khoa học viễn tưởng"
+                     class="bento-bg-img"
+                     loading="lazy" />
+                <div class="bento-overlay"></div>
+                <div class="bento-header">
+                    <span class="bento-badge"><CinemaIcon Name="CinemaIconName.Compass" Size="13" /> Viễn tưởng</span>
+                    <span class="bento-arrow-btn"><CinemaIcon Name="CinemaIconName.ArrowRight" Size="14" /></span>
+                </div>
+                <div class="bento-copy">
+                    <h3 class="bento-card-title">Khoa học viễn tưởng</h3>
+                    <p class="bento-card-desc">Khám phá không gian sâu thẳm, tương lai và những quy luật vượt giới hạn.</p>
+                    <span class="bento-explore-cta">Khám phá ngay <CinemaIcon Name="CinemaIconName.ArrowRight" Size="12" /></span>
+                </div>
+            </a>
+        </div>
+    </section>
+
+    <HomeMovieSection Title="Phim bộ đáng theo dõi" Subtitle="Một tập nữa, một thế giới rộng hơn." Movies="seriesMovies" Loading="loading" Link="/explore?type=2&sortBy=rating" />
+    <section class="home-discovery" aria-labelledby="home-discovery-title">
+        <div>
+            <h2 id="home-discovery-title">Chưa biết xem gì tối nay?</h2>
+            <p>Để CinemaFlow chọn giúp bạn một bộ phim trong kho.</p>
+            <a class="button primary" href="/random">Chọn phim cho tôi <CinemaIcon Name="CinemaIconName.ArrowRight" Size="16" /></a>
+        </div>
+        <img src="/images/generated/redesign-2026/cinemaflow-projector.png" alt="" loading="lazy" />
+    </section>
+</div>
+
+@code {
+    private MovieDto? featuredMovie;
+    private List<MovieDto> trendingMovies = [];
+    private List<MovieDto> latestMovies = [];
+    private List<MovieDto> seriesMovies = [];
+    private List<MovieDto> heroMovies = [];
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var featured = ApiClient.GetFeaturedAsync();
+            var trending = ApiClient.GetTrendingAsync(6);
+            var latest = ApiClient.GetLatestAsync(6);
+            var series = ApiClient.GetTopSeriesAsync(6);
+            await Task.WhenAll(featured, trending, latest, series);
+            featuredMovie = await featured;
+            trendingMovies = await trending;
+            latestMovies = await latest;
+            seriesMovies = await series;
+
+            var list = new List<MovieDto>();
+            if (featuredMovie is not null) list.Add(featuredMovie);
+            foreach (var m in trendingMovies)
+            {
+                if (list.All(x => x.Id != m.Id))
+                    list.Add(m);
+                if (list.Count >= 5) break;
+            }
+            heroMovies = list;
+        }
+        finally { loading = false; }
+    }
+}

@@ -1,0 +1,13 @@
+<section class="movie-section reveal-section" aria-label="@Title">
+    <header class="section-header"><h2 class="section-title">@Title</h2>@if (!string.IsNullOrEmpty(SeeAllUrl)) { <a href="@SeeAllUrl" class="see-all-link">Xem tất cả<CinemaIcon Name="CinemaIconName.ArrowRight" Size="16" /></a> }</header>
+    <div class="row-scroll-container" tabindex="0" aria-label="Danh sách @Title">
+        @if (Movies is null) { @for (var i = 0; i < 6; i++) { <div class="row-item"><SkeletonCard /></div> } }
+        else if (Movies.Count == 0) { <p class="empty-inline">Chưa có phim trong mục này.</p> }
+        else { @foreach (var movie in Movies) { <div class="row-item"><MovieCard Movie="movie" /></div> } }
+    </div>
+</section>
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public List<MovieDto>? Movies { get; set; }
+    [Parameter] public string? SeeAllUrl { get; set; }
+}

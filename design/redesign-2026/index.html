@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CinemaFlow | Bộ phác thảo giao diện</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #08090b; color: #f2efe8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    header { padding: 24px 28px; border-bottom: 1px solid #2c3036; }
+    h1 { font-size: 24px; margin: 0 0 8px; }
+    p { color: #b6bbc3; line-height: 1.6; margin: 0; }
+    a { color: inherit; }
+    a:focus-visible, input:focus-visible { outline: 2px solid #f2efe8; outline-offset: 4px; }
+    .shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: calc(100dvh - 125px); }
+    aside { padding: 18px 12px; border-right: 1px solid #2c3036; }
+    aside h2 { font-size: 14px; padding: 0 12px; color: #b6bbc3; margin: 18px 0 8px; }
+    nav { display: grid; gap: 4px; }
+    nav a { padding: 10px 12px; text-decoration: none; border-radius: 8px; display: block; font-size: 14px; }
+    nav a:hover { background: #161a20; }
+    nav a[aria-current="true"] { background: #311217; color: #fff; box-shadow: inset 3px 0 #d31920; }
+    main { padding: 24px; min-width: 0; }
+    .toolbar { display: flex; gap: 16px; align-items: start; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; }
+    #title { font-size: 21px; margin: 0 0 6px; }
+    #route { font-size: 14px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 18px; font-size: 14px; align-items: center; }
+    .actions label { cursor: pointer; }
+    .viewport { overflow: auto; border: 1px solid #2c3036; background: #121418; border-radius: 8px; }
+    #reference { display: block; width: 100%; height: auto; }
+    .viewport.natural #reference { width: auto; max-width: none; }
+    .note { margin-top: 18px; font-size: 13px; max-width: 85ch; }
+    @media (max-width: 800px) { .shell { grid-template-columns: 1fr; } aside { border-right: 0; border-bottom: 1px solid #2c3036; } nav { grid-template-columns: repeat(2, minmax(0, 1fr)); } main { padding: 16px; } header { padding: 20px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CinemaFlow | Phác thảo desktop v1</h1>
+    <p>21 ảnh tham chiếu cho 19 route, 6 ảnh nguyên liệu sạch. Chưa thay đổi giao diện ứng dụng.</p>
+  </header>
+  <div class="shell">
+    <aside aria-label="Danh sách mẫu">
+      <h2>Trang và section</h2>
+      <nav id="pages">
+        <a href="home.png" data-title="Trang chủ" data-route="/" aria-current="true">Trang chủ</a>
+        <a href="home-content.png" data-title="Home | Content và footer" data-route="/ · phần bên dưới hero">Home: Content và footer</a>
+        <a href="explore.png" data-title="Khám phá" data-route="/explore">Khám phá</a>
+        <a href="genres.png" data-title="Thể loại" data-route="/genres">Thể loại</a>
+        <a href="random.png" data-title="Chọn phim ngẫu nhiên" data-route="/random">Chọn phim ngẫu nhiên</a>
+        <a href="movie-detail.png" data-title="Chi tiết phim" data-route="/movie/{id}">Chi tiết phim</a>
+        <a href="watch.png" data-title="Xem phim" data-route="/watch/{id}">Xem phim</a>
+        <a href="watchlist.png" data-title="Tủ phim" data-route="/watchlist">Tủ phim</a>
+        <a href="history.png" data-title="Lịch sử xem" data-route="/history">Lịch sử xem</a>
+        <a href="account-v2.png" data-title="Tài khoản" data-route="/account · bản v2 đúng scope">Tài khoản</a>
+        <a href="profile-settings.png" data-title="Cài đặt trải nghiệm" data-route="/profile/settings">Cài đặt trải nghiệm</a>
+        <a href="notifications.png" data-title="Thông báo" data-route="/notifications">Thông báo</a>
+        <a href="login-v2.png" data-title="Đăng nhập" data-route="/login · bản v2">Đăng nhập</a>
+        <a href="register-v2.png" data-title="Tạo tài khoản" data-route="/register · bản v2 giữ consent">Tạo tài khoản</a>
+        <a href="forgot-password.png" data-title="Quên mật khẩu" data-route="/forgot-password">Quên mật khẩu</a>
+        <a href="reset-password.png" data-title="Đặt lại mật khẩu" data-route="/reset-password">Đặt lại mật khẩu</a>
+        <a href="vip.png" data-title="VIP | Hero" data-route="/vip · hero và benefit rail">VIP: Hero</a>
+        <a href="vip-plans.png" data-title="VIP | Pricing và checkout" data-route="/vip · pricing section">VIP: Pricing và checkout</a>
+        <a href="admin.png" data-title="Trung tâm vận hành" data-route="/admin">Admin</a>
+        <a href="not-found.png" data-title="Không tìm thấy trang" data-route="/not-found">Không tìm thấy trang</a>
+        <a href="error.png" data-title="Lỗi ứng dụng" data-route="/Error">Lỗi ứng dụng</a>
+      </nav>
+      <h2>Ảnh nguyên liệu không UI</h2>
+      <nav id="assets">
+        <a href="../../src/Client/WebXemPhim.Client/wwwroot/images/generated/redesign-2026/cinemaflow-hero-rice-field.png" data-title="Hero | Rice field" data-route="Ảnh nguyên liệu sạch · landscape">Hero: Rice field</a>
+        <a href="../../src/Client/WebXemPhim.Client/wwwroot/images/generated/redesign-2026/cinemaflow-watch-rain-night.png" data-title="Player | Rain night" data-route="Ảnh nguyên liệu sạch · landscape">Player: Rain night</a>
+        <a href="../../src/Client/WebXemPhim.Client/wwwroot/images/generated/redesign-2026/cinemaflow-poster-rain-field.png" data-title="Poster | Rain field" data-route="Artwork hư cấu · portrait">Poster: Rain field</a>
+        <a href="../../src/Client/WebXemPhim.Client/wwwroot/images/generated/redesign-2026/cinemaflow-projector.png" data-title="Ambient | Projector" data-route="Ảnh nguyên liệu sạch · landscape">Ambient: Projector</a>
+        <a href="../../src/Client/WebXemPhim.Client/wwwroot/images/generated/redesign-2026/cinemaflow-vip-corridor.png" data-title="VIP | Cinema corridor" data-route="Ảnh nguyên liệu sạch · landscape">VIP: Cinema corridor</a>
+        <a href="../../src/Client/WebXemPhim.Client/wwwroot/images/generated/redesign-2026/cinemaflow-auth-rain.png" data-title="Auth | Rain field" data-route="Ảnh nguyên liệu sạch · portrait">Auth: Rain field</a>
+      </nav>
+    </aside>
+    <main>
+      <div class="toolbar">
+        <div><h2 id="title">Trang chủ</h2><p id="route">/</p></div>
+        <div class="actions"><label><input type="checkbox" id="natural"> Kích thước gốc</label><a id="open" href="home.png" target="_blank" rel="noopener">Mở ảnh riêng</a><a href="DESIGN_DIRECTION.md">Spec đối chiếu</a></div>
+      </div>
+      <div class="viewport" id="viewport"><img id="reference" src="home.png" alt="Phác thảo trang chủ CinemaFlow"></div>
+      <p class="note">Đây là ảnh thiết kế sinh bằng ImageGen, không phải website đã implement. Tên phim, số liệu và một số copy là minh họa. Logo, nav, field, consent, giá và nội dung thực phải theo spec/API hiện hữu. Asset clean được render riêng, không cắt UI mockup làm nguyên liệu. Fidelity sẽ được kiểm tra bằng screenshot từng route khi triển khai.</p>
+    </main>
+  </div>
+  <script>
+    const links = [...document.querySelectorAll('nav a')];
+    const reference = document.getElementById('reference');
+    const viewport = document.getElementById('viewport');
+    links.forEach(link => link.addEventListener('click', event => {
+      event.preventDefault();
+      links.forEach(item => item.removeAttribute('aria-current'));
+      link.setAttribute('aria-current', 'true');
+      reference.src = link.getAttribute('href');
+      reference.alt = link.dataset.title;
+      document.getElementById('title').textContent = link.dataset.title;
+      document.getElementById('route').textContent = link.dataset.route;
+      document.getElementById('open').href = link.getAttribute('href');
+      viewport.scrollTo(0, 0);
+    }));
+    document.getElementById('natural').addEventListener('change', event => viewport.classList.toggle('natural', event.target.checked));
+  </script>
+</body>
+</html>

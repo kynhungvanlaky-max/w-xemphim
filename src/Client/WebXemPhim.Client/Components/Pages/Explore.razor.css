@@ -1,0 +1,391 @@
+.explore-catalog-page {
+    width: min(1520px, calc(100% - clamp(2rem, 6vw, 6rem)));
+    margin: 0 auto;
+    padding: clamp(2.5rem, 4vw, 4rem) 0 8rem;
+}
+
+.explore-header-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 2rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}
+
+.explore-title-block {
+    flex: 1;
+    min-width: 300px;
+}
+
+.explore-kicker {
+    margin: 0 0 0.45rem;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.explore-heading {
+    margin: 0 0 0.5rem;
+    font-size: clamp(2rem, 3.5vw, 2.75rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #ffffff;
+    line-height: 1.15;
+}
+
+.explore-subheading {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.95rem;
+    max-width: 54ch;
+    line-height: 1.5;
+}
+
+.explore-search-box {
+    width: auto;
+    flex: 1;
+    max-width: 440px;
+    min-width: 200px;
+    margin: 0;
+}
+
+.search-pill {
+    display: flex;
+    align-items: center;
+    height: 42px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 9px;
+    padding: 0 0.45rem 0 0.95rem;
+    gap: 0.6rem;
+    transition: all 0.2s ease;
+}
+
+.search-pill:focus-within {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(229, 9, 20, 0.5);
+    box-shadow: 0 0 0 3px rgba(229, 9, 20, 0.15);
+}
+
+.search-pill ::deep svg,
+.search-pill ::deep .cinema-icon,
+.search-pill .search-icon,
+.search-icon {
+    position: static !important;
+    transform: none !important;
+    left: auto !important;
+    top: auto !important;
+    color: rgba(255, 255, 255, 0.4) !important;
+    flex-shrink: 0;
+    pointer-events: none;
+}
+
+.search-pill input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #ffffff;
+    font-size: 0.88rem;
+    width: 100%;
+}
+
+.search-pill input::placeholder {
+    color: rgba(255, 255, 255, 0.38);
+}
+
+.btn-clear {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    padding: 0;
+}
+
+/* 2. Filter Pill Bar */
+.filter-pill-bar {
+    display: flex;
+    align-items: center;
+    background: #11141c;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 9999px;
+    padding: 0.35rem 0.6rem;
+    margin-bottom: 2rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.filter-pill-bar::-webkit-scrollbar {
+    display: none;
+}
+
+.filter-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.85rem;
+    position: relative;
+    white-space: nowrap;
+}
+
+.filter-icon {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.filter-item select {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.86rem;
+    font-weight: 500;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 1.1rem;
+}
+
+.filter-item select option {
+    background: #151821;
+    color: #ffffff;
+}
+
+.caret-icon {
+    position: absolute;
+    right: 0.85rem;
+    pointer-events: none;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.filter-divider {
+    width: 1px;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.1);
+    flex-shrink: 0;
+}
+
+.filter-right-action {
+    margin-left: auto;
+    padding-right: 0.6rem;
+}
+
+.btn-reset-filters {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: transparent;
+    border: none;
+    color: #e50914;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0.4rem 0.75rem;
+    border-radius: 9999px;
+    transition: background 0.18s ease;
+}
+
+.btn-reset-filters:hover {
+    background: rgba(229, 9, 20, 0.12);
+}
+
+/* 3. Catalog Meta Row */
+.catalog-meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.25rem;
+}
+
+.catalog-count {
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.view-toggles {
+    display: flex;
+    gap: 0.35rem;
+}
+
+.view-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.5);
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+.view-btn.active {
+    background: #e50914;
+    border-color: #e50914;
+    color: #ffffff;
+}
+
+/* 4. Grid Showcase */
+.catalog-grid-showcase {
+    display: flex;
+    flex-direction: column;
+    gap: 2.2rem;
+}
+
+/* Row 1: 1 wide card (~36%) + 4 portrait cards */
+.catalog-row-featured {
+    display: grid;
+    grid-template-columns: 3.16fr 1fr 1fr 1fr 1fr;
+    gap: 1.15rem;
+    align-items: stretch;
+}
+
+/* Row 2: 6 portrait cards */
+.catalog-row-standard {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 1.15rem;
+    align-items: stretch;
+}
+
+/* Common Card Styles */
+.showcase-card-wide,
+.showcase-card-portrait {
+    display: flex;
+    flex-direction: column;
+    text-decoration: none;
+    color: #ffffff;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #11141c;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease, border-color 0.28s ease;
+}
+
+.showcase-card-wide:hover,
+.showcase-card-portrait:hover {
+    transform: translateY(-5px);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+}
+
+.card-media {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    background-color: #171a22;
+}
+
+.showcase-card-wide .card-media {
+    width: 100%;
+    aspect-ratio: 405 / 168;
+    overflow: hidden;
+    position: relative;
+    background: #151821;
+}
+
+.showcase-card-portrait .card-media {
+    width: 100%;
+    aspect-ratio: 128 / 168;
+    overflow: hidden;
+    position: relative;
+    background: #151821;
+}
+
+.catalog-row-standard .showcase-card-portrait .card-media {
+    aspect-ratio: 150 / 135;
+}
+
+.img-fill {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.35s ease;
+}
+
+.showcase-card-wide:hover .img-fill,
+.showcase-card-portrait:hover .img-fill {
+    transform: scale(1.04);
+}
+
+.card-caption {
+    padding: 0.85rem 0.95rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.showcase-card-portrait .card-caption {
+    padding: 0.75rem 0.55rem 0.85rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+}
+
+.caption-info {
+    flex: 1;
+}
+
+.caption-title {
+    margin: 0 0 0.25rem;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.caption-meta {
+    margin: 0;
+    font-size: 0.66rem;
+    color: rgba(255, 255, 255, 0.55);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: -0.025em;
+}
+
+.caption-rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: #f59e0b;
+    font-size: 0.8rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+@media (max-width: 1200px) {
+    .catalog-row-featured {
+        grid-template-columns: 1fr 1fr 1fr;
+    }
+    .showcase-card-wide {
+        grid-column: span 3;
+    }
+    .catalog-row-standard {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .catalog-row-featured {
+        grid-template-columns: 1fr 1fr;
+    }
+    .showcase-card-wide {
+        grid-column: span 2;
+    }
+    .catalog-row-standard {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .explore-catalog-page {
+        width: calc(100% - 1.5rem);
+    }
+}

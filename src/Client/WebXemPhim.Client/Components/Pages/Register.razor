@@ -1,0 +1,47 @@
+@page "/register"
+@inject AuthState Auth
+@inject NavigationManager Nav
+@using WebXemPhim.Client.Components.Common
+
+<PageTitle>Đăng ký - CinemaFlow</PageTitle>
+
+<main class="auth-shell">
+    <section class="auth-intro auth-register-art">
+        <CinemaLogo Size="CinemaLogo.CinemaLogoSize.Large" ShowTagline="true" />
+        <p class="auth-kicker">Bắt đầu miễn phí</p>
+        <h1>Mỗi bộ phim, một dấu nhớ riêng.</h1>
+        <p>Tạo hồ sơ để quản lý tủ phim, đánh giá tác phẩm và nhận đề xuất phù hợp hơn.</p>
+    </section>
+    <section class="auth-panel" aria-labelledby="register-title">
+        <div><h2 id="register-title">Tạo tài khoản</h2><p>Đã là thành viên? <a href="@($"/login?returnUrl={Uri.EscapeDataString(AuthNavigation.ReturnPath(ReturnUrl))}")">Đăng nhập</a></p></div>
+        <EditForm Model="model" OnValidSubmit="Submit">
+            <DataAnnotationsValidator />
+            <div class="form-field"><label for="full-name">Họ và tên</label><InputText id="full-name" autocomplete="name" @bind-Value="model.FullName" /><ValidationMessage For="() => model.FullName" /></div>
+            <div class="form-field"><label for="register-email">Email</label><InputText id="register-email" type="email" autocomplete="email" @bind-Value="model.Email" /><ValidationMessage For="() => model.Email" /></div>
+            <div class="form-grid">
+                <div class="form-field"><label for="register-password">Mật khẩu</label><InputText id="register-password" type="password" autocomplete="new-password" @bind-Value="model.Password" /><ValidationMessage For="() => model.Password" /></div>
+                <div class="form-field"><label for="confirm-password">Nhập lại mật khẩu</label><InputText id="confirm-password" type="password" autocomplete="new-password" @bind-Value="model.ConfirmPassword" /><ValidationMessage For="() => model.ConfirmPassword" /></div>
+            </div>
+            <p class="field-help">Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường và chữ số.</p>
+            <label class="check-field"><InputCheckbox @bind-Value="model.AcceptTerms" /><span>Tôi đồng ý với điều khoản sử dụng và chính sách riêng tư.</span></label>
+            <ValidationMessage For="() => model.AcceptTerms" />
+            @if (!string.IsNullOrWhiteSpace(error)) { <p class="form-alert error" role="alert">@error</p> }
+            <button class="button primary wide" type="submit" disabled="@submitting"><CinemaIcon Name="CinemaIconName.UserPlus" Size="18" />@(submitting ? "Đang tạo tài khoản..." : "Tạo tài khoản")</button>
+        </EditForm>
+    </section>
+</main>
+
+@code {
+    [SupplyParameterFromQuery(Name = "returnUrl")] public string? ReturnUrl { get; set; }
+    private readonly RegisterRequest model = new();
+    private bool submitting;
+    private string? error;
+    private async Task Submit()
+    {
+        submitting = true; error = null;
+        var response = await Auth.RegisterAsync(model);
+        submitting = false;
+        if (response?.Success == true) Nav.NavigateTo(AuthNavigation.ReturnPath(ReturnUrl));
+        else error = response?.Message ?? "Không thể tạo tài khoản lúc này.";
+    }
+}

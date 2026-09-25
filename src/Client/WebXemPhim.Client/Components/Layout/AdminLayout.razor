@@ -1,0 +1,134 @@
+@inherits LayoutComponentBase
+@using WebXemPhim.Client.Services
+@using WebXemPhim.Client.Components.Icons
+@inject NavigationManager Nav
+@inject AuthState Auth
+@inject ThemeState Theme
+@implements IDisposable
+
+@if (!Auth.IsInitialized)
+{
+    <main class="admin-access-gate" aria-live="polite">
+        <p>Đang xác minh quyền truy cập</p>
+        <h1>Khu vực vận hành được bảo vệ.</h1>
+    </main>
+}
+else if (!Auth.IsAuthenticated)
+{
+    <main class="admin-access-gate" role="alert">
+        <p>Yêu cầu đăng nhập</p>
+        <h1>Bạn cần đăng nhập bằng tài khoản quản trị.</h1>
+        <a class="button primary" href="/login?returnUrl=/admin">Đăng nhập</a>
+    </main>
+}
+else if (!Auth.IsAdmin)
+{
+    <main class="admin-access-gate" role="alert">
+        <p>Không có quyền truy cập</p>
+        <h1>Tài khoản này không phải quản trị viên.</h1>
+        <a class="button primary" href="/account">Trở về tài khoản</a>
+    </main>
+}
+else
+{
+    <div class="admin-app-root admin-workspace-shell">
+        <AdminSidebar OnOpenCommandPalette="OpenCommandPalette" />
+        <div class="admin-stage-container">
+            <header class="admin-global-utility-header">
+                <div class="utility-left">
+                    <span class="utility-breadcrumb-label">CINEMAFLOW COCKPIT</span>
+                    <span class="utility-separator">/</span>
+                    <span class="utility-environment-tag">DEV LIVE</span>
+                </div>
+                <div class="utility-right">
+                    <a href="/" class="utility-link-btn" title="Về trang người dùng xem phim">
+                        <CinemaIcon Name="CinemaIconName.Home" Size="14" />
+                        <span>Xem trang Web</span>
+                    </a>
+                    <button type="button"
+                            class="admin-theme-toggle-btn"
+                            @onclick="ToggleTheme"
+                            title="@(Theme.IsLight ? "Chuyển sang giao diện Tối (Dark mode)" : "Chuyển sang giao diện Sáng (Light mode)")"
+                            aria-label="@(Theme.IsLight ? "Chuyển sang giao diện Tối" : "Chuyển sang giao diện Sáng")">
+                        <CinemaIcon Name="@(Theme.IsLight ? CinemaIconName.Moon : CinemaIconName.Sun)" Size="15" />
+                        <span class="theme-toggle-text">@(Theme.IsLight ? "Giao diện Tối" : "Giao diện Sáng")</span>
+                    </button>
+                    <div class="utility-user-pill">
+                        <div class="user-dot green"></div>
+                        <span class="user-email-text" title="@Auth.User?.Email">@(Auth.User?.FullName ?? "Admin")</span>
+                    </div>
+                    <button type="button" class="btn-global-logout" @onclick="HandleGlobalLogout" title="Đăng xuất khỏi tài khoản quản trị">
+                        <CinemaIcon Name="CinemaIconName.Logout" Size="14" />
+                        <span>ĐĂNG XUẤT</span>
+                    </button>
+                </div>
+            </header>
+            <main class="admin-main-stage">
+                @Body
+            </main>
+        </div>
+        <AdminCommandPalette @ref="cmdPalette" />
+    </div>
+}
+
+@code {
+    private AdminCommandPalette? cmdPalette;
+
+    private async Task HandleGlobalLogout()
+    {
+        await Auth.LogoutAsync();
+        Nav.NavigateTo("/", true);
+    }
+
+    private void OpenCommandPalette()
+    {
+        _ = cmdPalette?.Open();
+    }
+
+    private async Task ToggleTheme()
+    {
+        await Theme.ToggleThemeAsync();
+    }
+
+    private void HandleThemeChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    protected override void OnInitialized()
+    {
+        Auth.OnChange += HandleAuthStateChanged;
+        Theme.OnChange += HandleThemeChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Auth.InitializeAsync();
+        await Theme.InitializeAsync();
+        CheckAccess();
+    }
+
+    private void HandleAuthStateChanged()
+    {
+        CheckAccess();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void CheckAccess()
+    {
+        if (!Auth.IsInitialized) return;
+        if (!Auth.IsAuthenticated)
+            Nav.NavigateTo($"/login?returnUrl={Uri.EscapeDataString(AdminReturnPath)}", replace: true);
+        else if (!Auth.IsAdmin)
+            Nav.NavigateTo("/account", replace: true);
+    }
+
+    private string AdminReturnPath => "/" + Nav.ToBaseRelativePath(Nav.Uri).TrimStart('/');
+
+    public void Dispose()
+    {
+        Auth.OnChange -= HandleAuthStateChanged;
+        Theme.OnChange -= HandleThemeChanged;
+    }
+}

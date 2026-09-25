@@ -1,0 +1,859 @@
+@page "/vip"
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Shared.Enums
+@using WebXemPhim.Shared.Requests
+@using WebXemPhim.Client.Components.Icons
+@using WebXemPhim.Client.Services
+@inject IAccountApiClient Api
+@inject AuthState Auth
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>CinemaFlow VIP - Trải nghiệm điện ảnh đỉnh cao, không giới hạn</PageTitle>
+
+<main class="vip-landing-page">
+    <!-- 1. Ambient Background Layer with Cinema Flow Art -->
+    <div class="vip-art-layer" aria-hidden="true">
+        <img src="/images/generated/redesign-2026/cinemaflow-vip-corridor.png" alt="" class="vip-art-bg" />
+        <div class="vip-art-gradient-left"></div>
+        <div class="vip-art-gradient-bottom"></div>
+        <div class="vip-art-gradient-top"></div>
+    </div>
+
+    <div class="vip-container">
+        @if (Auth.IsAuthenticated)
+        {
+            <section class="vip-account-status" aria-live="polite">
+                <strong>@Auth.User!.FullName</strong>
+                <span>@(Auth.User?.IsVip == true ? $"VIP đang hoạt động đến {Auth.User.VipExpiresAt:dd/MM/yyyy HH:mm}" : "Tài khoản hiện chưa kích hoạt VIP.")</span>
+                <small>Chế độ mô phỏng an toàn: kích hoạt VIP thử nghiệm, không thu tiền thật.</small>
+            </section>
+        }
+
+        <!-- 2. Hero Header Section -->
+        <header class="vip-hero-header">
+            <div class="vip-header-left">
+                <span class="vip-kicker">CINEMAFLOW VIP PRIVILEGE</span>
+                <h1 class="vip-headline">
+                    <span class="hl-white">Xem trọn cảm xúc.</span><br />
+                    <span class="hl-crimson">Không bị ngắt quãng.</span>
+                </h1>
+                <p class="vip-lead-desc">
+                    Âm thanh vòm Dolby Atmos, hình ảnh chuẩn 4K HDR sắc nét và đường truyền máy chủ ưu tiên dành riêng cho thành viên VIP.
+                </p>
+
+                <!-- 4 Feature Badges Strip -->
+                <div class="vip-features-strip">
+                    <div class="vip-feature-item">
+                        <div class="feature-icon-box box-amber">4K</div>
+                        <div class="feature-text">
+                            <strong>Hình ảnh 4K HDR</strong>
+                            <small>Sắc nét từng chi tiết</small>
+                        </div>
+                    </div>
+
+                    <div class="vip-feature-item">
+                        <div class="feature-icon-box box-crimson">
+                            <svg class="ad-slash-svg" width="22" height="22" viewBox="0 0 24 24" fill="none">
+                                <circle cx="12" cy="12" r="10" stroke="#e50914" stroke-width="2" />
+                                <line x1="5" y1="5" x2="19" y2="19" stroke="#e50914" stroke-width="2" />
+                                <text x="12" y="15" text-anchor="middle" font-size="7.5" font-weight="900" fill="#ffffff" font-family="system-ui, sans-serif">AD</text>
+                            </svg>
+                        </div>
+                        <div class="feature-text">
+                            <strong>Không quảng cáo</strong>
+                            <small>Xem liền mạch, trọn vẹn</small>
+                        </div>
+                    </div>
+
+                    <div class="vip-feature-item">
+                        <div class="feature-icon-box box-devices">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="4" width="14" height="10" rx="1.5" />
+                                <line x1="5" y1="17" x2="13" y2="17" />
+                                <line x1="9" y1="14" x2="9" y2="17" />
+                                <rect x="15" y="8" width="7" height="12" rx="1.5" />
+                                <circle cx="18.5" cy="17.5" r="0.5" fill="currentColor" />
+                            </svg>
+                        </div>
+                        <div class="feature-text">
+                            <strong>Nhiều thiết bị</strong>
+                            <small>Xem mọi lúc mọi nơi</small>
+                        </div>
+                    </div>
+
+                    <div class="vip-feature-item">
+                        <div class="feature-icon-box box-speed">
+                            <svg width="19" height="19" viewBox="0 0 24 24" fill="#fbbf24" stroke="none">
+                                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                            </svg>
+                        </div>
+                        <div class="feature-text">
+                            <strong>Máy chủ ưu tiên</strong>
+                            <small>Băng thông tốc độ cao</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- 3. Dynamic Pricing Cards Section -->
+        <section class="vip-cards-section" aria-label="Các gói đăng ký VIP">
+            <div class="vip-pricing-row">
+                @foreach (var plan in plans)
+                {
+                    <article class="vip-tier-card @(plan.IsRecommended ? "tier-card-recommended" : "") @(selected?.Id == plan.Id ? "selected" : "")">
+                        <div class="tier-head">
+                            <div class="tier-title-row">
+                                <h2 class="tier-name">@plan.Name</h2>
+                                @if (!string.IsNullOrWhiteSpace(plan.DiscountBadge))
+                                {
+                                    <span class="tier-discount-pill">@plan.DiscountBadge</span>
+                                }
+                                else if (plan.IsRecommended)
+                                {
+                                    <span class="tier-discount-pill" style="background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.4); color: #f59e0b;">Được chọn nhiều</span>
+                                }
+                            </div>
+                            <p class="tier-subtitle">@plan.Description</p>
+                        </div>
+
+                        <div class="tier-price-wrap">
+                            <span class="tier-price-amount">@plan.Price.ToString("N0")đ</span>
+                            <span class="tier-price-cycle">/ @plan.DurationDays ngày</span>
+                            @if (plan.OriginalPrice.HasValue && plan.OriginalPrice.Value > plan.Price)
+                            {
+                                <span class="tier-price-equiv">Giá gốc: <del>@plan.OriginalPrice.Value.ToString("N0")đ</del></span>
+                            }
+                        </div>
+
+                        <ul class="tier-perks-list">
+                            @foreach (var benefit in plan.Benefits)
+                            {
+                                <li>
+                                    <CinemaIcon Name="CinemaIconName.Check" Size="14" />
+                                    <span>@benefit</span>
+                                </li>
+                            }
+                        </ul>
+
+                        <button type="button"
+                                class="btn-tier-action @(plan.IsRecommended ? "btn-tier-crimson" : "btn-tier-muted")"
+                                @onclick="() => SelectPlan(plan.Id)">
+                            Chọn gói @plan.Name
+                        </button>
+                        <p class="tier-footnote">Hiệu lực @plan.DurationDays ngày. Không tự động trừ tiền.</p>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <!-- 4. Interactive Two-Column Cinema Checkout Experience -->
+        @if (isCheckingOut && selected != null)
+        {
+            <div class="vip-checkout-modal-backdrop" @onclick="CloseCheckout">
+                <div class="vip-checkout-modal-content" @ref="checkoutDialog" role="dialog" aria-modal="true" aria-labelledby="vip-checkout-title" tabindex="0" @onkeydown="ModalKeyDown" @onclick:stopPropagation="true">
+                    
+                    <!-- Modal Header -->
+                    <div class="checkout-modal-header">
+                        <div class="checkout-header-left">
+                            <span class="checkout-header-badge">
+                                <CinemaIcon Name="CinemaIconName.Shield" Size="13" />
+                                <span>Bảo mật SSL 256-Bit</span>
+                            </span>
+                            <h3 id="vip-checkout-title">Đăng ký gói VIP @selected.Name</h3>
+                        </div>
+                        <button type="button" class="btn-close-modal" aria-label="Đóng thanh toán" @onclick="CloseCheckout">
+                            <CinemaIcon Name="CinemaIconName.Close" Size="18" />
+                        </button>
+                    </div>
+
+                    @if (!success)
+                    {
+                        <!-- Two-Column Checkout Grid -->
+                        <div class="checkout-stage-grid">
+                            <!-- LEFT COLUMN: Payment Gateway Hub -->
+                            <div class="checkout-gateway-column">
+                                <div class="gateway-section-title">Chọn cổng thanh toán trực tuyến</div>
+
+                                <!-- Payment Channel Tabs -->
+                                <div class="payment-channel-tabs">
+                                    <button type="button" class="channel-tab-btn @(method == PaymentMethod.BankTransfer ? "active" : "")" @onclick="() => SetPaymentMethod(PaymentMethod.BankTransfer)">
+                                        <span class="channel-tab-icon">⚡</span>
+                                        <span class="channel-tab-name">Chuyển khoản VietQR</span>
+                                        <span class="channel-tab-badge">24/7 Siêu tốc</span>
+                                    </button>
+
+                                    <button type="button" class="channel-tab-btn @(method == PaymentMethod.Momo ? "active" : "")" @onclick="() => SetPaymentMethod(PaymentMethod.Momo)">
+                                        <span class="channel-tab-icon">📱</span>
+                                        <span class="channel-tab-name">Ví MoMo</span>
+                                        <span style="font-size: 0.65rem; color: #f472b6;">Quét mã ví</span>
+                                    </button>
+
+                                    <button type="button" class="channel-tab-btn @(method == PaymentMethod.Visa ? "active" : "")" @onclick="() => SetPaymentMethod(PaymentMethod.Visa)">
+                                        <span class="channel-tab-icon">💳</span>
+                                        <span class="channel-tab-name">Thẻ Quốc Tế</span>
+                                        <span style="font-size: 0.65rem; color: #facc15;">Visa / MasterCard</span>
+                                    </button>
+                                </div>
+
+                                <!-- Dynamic Method Interface -->
+                                @if (method == PaymentMethod.BankTransfer)
+                                {
+                                    <div class="vietqr-box">
+                                        <div class="qr-code-frame">
+                                            <img src="@($"https://img.vietqr.io/image/VCB-1029384756-compact2.png?amount={CalculatedFinalPrice}&addInfo={activeOrderCode}&accountName=CINEMAFLOW%20MEDIA")" 
+                                                 alt="VietQR Mã Chuyển Khoản" 
+                                                 class="qr-code-img" />
+                                            <div class="qr-scan-line"></div>
+                                        </div>
+
+                                        <div class="bank-details-list">
+                                            <div class="bank-detail-item">
+                                                <span class="bank-detail-label">Ngân hàng</span>
+                                                <span class="bank-detail-val">Vietcombank</span>
+                                            </div>
+
+                                            <div class="bank-detail-item">
+                                                <span class="bank-detail-label">Số tài khoản</span>
+                                                <div class="bank-detail-val">
+                                                    <span class="font-mono-num">1029 384 756</span>
+                                                    <button type="button" class="btn-mini-copy @(copiedField == "acc" ? "copied" : "")" @onclick='() => CopyToClipboard("1029384756", "acc")'>
+                                                        @(copiedField == "acc" ? "Đã chép!" : "Sao chép")
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div class="bank-detail-item">
+                                                <span class="bank-detail-label">Người nhận</span>
+                                                <span class="bank-detail-val" style="font-size: 0.76rem;">CONG TY CP CINEMAFLOW</span>
+                                            </div>
+
+                                            <div class="bank-detail-item">
+                                                <span class="bank-detail-label">Số tiền</span>
+                                                <div class="bank-detail-val">
+                                                    <span class="font-mono-num" style="color: #34d399;">@CalculatedFinalPrice.ToString("N0")đ</span>
+                                                    <button type="button" class="btn-mini-copy @(copiedField == "amt" ? "copied" : "")" @onclick='() => CopyToClipboard(CalculatedFinalPrice.ToString(), "amt")'>
+                                                        @(copiedField == "amt" ? "Đã chép!" : "Sao chép")
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div class="bank-detail-item">
+                                                <span class="bank-detail-label">Nội dung CK</span>
+                                                <div class="bank-detail-val">
+                                                    <code class="font-mono-num" style="color: #f59e0b; background: rgba(245,158,11,0.1); padding: 1px 4px; border-radius: 3px;">@activeOrderCode</code>
+                                                    <button type="button" class="btn-mini-copy @(copiedField == "memo" ? "copied" : "")" @onclick='() => CopyToClipboard(activeOrderCode, "memo")'>
+                                                        @(copiedField == "memo" ? "Đã chép!" : "Sao chép")
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="qr-live-scanner-bar">
+                                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                            <div class="radar-pulse-dot"></div>
+                                            <span>Đang tự động kiểm tra biên lai chuyển khoản...</span>
+                                        </div>
+                                        <span class="countdown-clock">@countdownText</span>
+                                    </div>
+                                }
+                                else if (method == PaymentMethod.Momo)
+                                {
+                                    <div class="vietqr-box" style="border-color: rgba(216, 45, 139, 0.25);">
+                                        <div class="qr-code-frame" style="background: #a50064; padding: 12px;">
+                                            <div style="width: 100%; height: 100%; border: 2px dashed rgba(255,255,255,0.4); border-radius: 8px; display: grid; place-items: center; color: #ffffff; text-align: center;">
+                                                <div>
+                                                    <div style="font-size: 1.8rem; font-weight: 900;">MoMo</div>
+                                                    <small style="font-size: 0.68rem; opacity: 0.85;">Quét bằng app MoMo</small>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="bank-details-list">
+                                            <div class="bank-detail-item">
+                                                <span class="bank-detail-label">Ví thanh toán</span>
+                                                <span class="bank-detail-val" style="color: #f472b6;">Ví Điện Tử MoMo</span>
+                                            </div>
+
+                                            <div class="bank-detail-item">
+                                                <span class="bank-detail-label">Số điện thoại</span>
+                                                <div class="bank-detail-val">
+                                                    <span class="font-mono-num">0988 776 655</span>
+                                                    <button type="button" class="btn-mini-copy @(copiedField == "momo_phone" ? "copied" : "")" @onclick='() => CopyToClipboard("0988776655", "momo_phone")'>
+                                                        @(copiedField == "momo_phone" ? "Đã chép!" : "Sao chép")
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div class="bank-detail-item">
+                                                <span class="bank-detail-label">Tên thụ hưởng</span>
+                                                <span class="bank-detail-val">CINEMAFLOW MEDIA</span>
+                                            </div>
+
+                                            <div class="bank-detail-item">
+                                                <span class="bank-detail-label">Số tiền</span>
+                                                <div class="bank-detail-val">
+                                                    <span class="font-mono-num" style="color: #34d399;">@CalculatedFinalPrice.ToString("N0")đ</span>
+                                                </div>
+                                            </div>
+
+                                            <div class="bank-detail-item">
+                                                <span class="bank-detail-label">Lời nhắn</span>
+                                                <div class="bank-detail-val">
+                                                    <code class="font-mono-num" style="color: #f59e0b;">@activeOrderCode</code>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <!-- Interactive 3D Card Preview -->
+                                    <div class="interactive-card-preview">
+                                        <div class="card-preview-top">
+                                            <div class="card-chip"></div>
+                                            <span class="card-network-name">VISA</span>
+                                        </div>
+                                        <div class="card-number-display">@cardNumber</div>
+                                        <div class="card-preview-bottom">
+                                            <div>
+                                                <div class="card-preview-label">Chủ thẻ</div>
+                                                <div class="card-preview-val">@cardHolder</div>
+                                            </div>
+                                            <div>
+                                                <div class="card-preview-label">Hết hạn</div>
+                                                <div class="card-preview-val font-mono-num">@cardExpiry</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="card-inputs-grid">
+                                        <div class="card-input-field" style="grid-column: span 2;">
+                                            <label>Số thẻ thanh toán</label>
+                                            <input type="text" @bind="cardNumber" @bind:event="oninput" placeholder="4532 8901 2345 6789" />
+                                        </div>
+
+                                        <div class="card-input-field" style="grid-column: span 2;">
+                                            <label>Họ và tên trên thẻ</label>
+                                            <input type="text" @bind="cardHolder" @bind:event="oninput" placeholder="NGUYEN VAN A" style="text-transform: uppercase;" />
+                                        </div>
+
+                                        <div class="card-input-field">
+                                            <label>Ngày hết hạn (MM/YY)</label>
+                                            <input type="text" @bind="cardExpiry" @bind:event="oninput" placeholder="12/28" />
+                                        </div>
+
+                                        <div class="card-input-field">
+                                            <label>Mã bảo mật CVV</label>
+                                            <input type="password" maxlength="4" placeholder="•••" />
+                                        </div>
+                                    </div>
+                                }
+
+                                <div style="font-size: 0.78rem; color: rgba(255,255,255,0.45); line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.75rem;">
+                                    💡 <strong>Chế độ mô phỏng Sandbox:</strong> Khi bấm <em>"Thanh toán ngay"</em>, hệ thống sẽ tự động duyệt kích hoạt VIP thử nghiệm trên tài khoản của bạn ngay tức khắc.
+                                </div>
+                            </div>
+
+                            <!-- RIGHT COLUMN: Cinema Ticket Summary & Coupon -->
+                            <div class="checkout-ticket-column">
+                                <div class="ticket-header">
+                                    <span class="ticket-subtitle">VÉ NÂNG CẤP CINEMAFLOW</span>
+                                    <h4 class="ticket-title">@selected.Name</h4>
+                                    <span class="ticket-duration-pill">@selected.DurationDays ngày trải nghiệm trọn vẹn</span>
+                                </div>
+
+                                <!-- Coupon Engine -->
+                                <div class="ticket-coupon-box">
+                                    <div style="font-size: 0.78rem; font-weight: 700; color: rgba(255,255,255,0.7);">Mã ưu đãi / Khuyến mãi</div>
+                                    <div class="coupon-input-group">
+                                        <input type="text" 
+                                               class="coupon-input" 
+                                               placeholder="Nhập mã coupon" 
+                                               @bind="couponCodeInput" 
+                                               @bind:event="oninput" 
+                                               @onkeydown="HandleCouponKeyDown" />
+                                        <button type="button" class="btn-apply-coupon" @onclick="ApplyCoupon" disabled="@isApplyingCoupon">
+                                            @(isApplyingCoupon ? "..." : "Áp dụng")
+                                        </button>
+                                    </div>
+
+                                    <div class="coupon-quick-chips">
+                                        <span class="coupon-chip" @onclick='() => SetQuickCoupon("CINEMA2026")'>CINEMA2026 (-20%)</span>
+                                        <span class="coupon-chip" @onclick='() => SetQuickCoupon("VIPPRO")'>VIPPRO (-15%)</span>
+                                        <span class="coupon-chip" @onclick='() => SetQuickCoupon("TRIAN50K")'>TRIAN50K (-50K)</span>
+                                    </div>
+
+                                    @if (appliedCoupon != null)
+                                    {
+                                        <div class="coupon-success-tag">
+                                            ✓ @appliedCoupon.Message
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(couponError))
+                                    {
+                                        <div class="coupon-error-tag">
+                                            ⚠ @couponError
+                                        </div>
+                                    }
+                                </div>
+
+                                <!-- Financial Breakdown -->
+                                <div class="ticket-price-lines">
+                                    <div class="ticket-line">
+                                        <span>Giá niêm yết:</span>
+                                        <span class="font-mono-num">@(selected.OriginalPrice?.ToString("N0") ?? selected.Price.ToString("N0"))đ</span>
+                                    </div>
+
+                                    @if (selected.OriginalPrice.HasValue && selected.OriginalPrice.Value > selected.Price)
+                                    {
+                                        <div class="ticket-line" style="color: #ff4d58;">
+                                            <span>Ưu đãi gói (@(selected.DiscountBadge ?? "Giảm")):</span>
+                                            <span class="font-mono-num">-@((selected.OriginalPrice.Value - selected.Price).ToString("N0"))đ</span>
+                                        </div>
+                                    }
+
+                                    @if (appliedCoupon != null && appliedCoupon.DiscountAmount > 0)
+                                    {
+                                        <div class="ticket-line" style="color: #34d399;">
+                                            <span>Mã giảm giá (@appliedCoupon.CouponCode):</span>
+                                            <span class="font-mono-num">-@appliedCoupon.DiscountAmount.ToString("N0")đ</span>
+                                        </div>
+                                    }
+
+                                    <div class="ticket-line">
+                                        <span>Phí giao dịch (Miễn phí):</span>
+                                        <span class="font-mono-num">0đ</span>
+                                    </div>
+
+                                    <div class="ticket-line total-line">
+                                        <span>Tổng thanh toán:</span>
+                                        <span class="total-amount-glow font-mono-num">@CalculatedFinalPrice.ToString("N0")đ</span>
+                                    </div>
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(message))
+                                {
+                                    <div class="checkout-alert-msg @(success ? "alert-success" : "alert-error")">
+                                        @message
+                                    </div>
+                                }
+
+                                <!-- Actions -->
+                                <div>
+                                    <button type="button" class="btn-ticket-checkout" disabled="@processing" @onclick="Checkout">
+                                        <CinemaIcon Name="CinemaIconName.Crown" Size="18" />
+                                        <span>@(processing ? "Đang xử lý đơn..." : $"Thanh toán ngay {CalculatedFinalPrice:N0}đ")</span>
+                                    </button>
+                                </div>
+
+                                <!-- Trust Badges -->
+                                <div class="ticket-trust-badges">
+                                    <span>✓ Kích hoạt tức thì</span>
+                                    <span>✓ Hoàn tiền trong 24h</span>
+                                    <span>✓ Hỗ trợ 24/7</span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Post-Payment Celebration Screen -->
+                        <div class="vip-celebration-stage">
+                            <div class="celebration-crown-wrap">
+                                <CinemaIcon Name="CinemaIconName.Crown" Size="44" />
+                            </div>
+
+                            <h3 class="celebration-title">CHÚC MỪNG BẠN ĐÃ LÊN VIP!</h3>
+                            <p class="celebration-desc">
+                                Gói <strong>@selected.Name</strong> (@selected.DurationDays ngày) đã được kích hoạt thành công trên tài khoản của bạn. Toàn bộ đặc quyền rạp chiếu cao cấp đã sẵn sàng.
+                            </p>
+
+                            <div class="celebration-perks-grid">
+                                <div class="celebration-perk-item">
+                                    <span style="color: #f59e0b;">✓</span>
+                                    <span>Hình ảnh chuẩn 4K HDR &amp; Dolby Atmos</span>
+                                </div>
+                                <div class="celebration-perk-item">
+                                    <span style="color: #e50914;">✓</span>
+                                    <span>Không quảng cáo ngắt quãng cảm xúc</span>
+                                </div>
+                                <div class="celebration-perk-item">
+                                    <span style="color: #3b82f6;">✓</span>
+                                    <span>Máy chủ VIP Fast Server mượt mà</span>
+                                </div>
+                                <div class="celebration-perk-item">
+                                    <span style="color: #10b981;">✓</span>
+                                    <span>Mở khóa toàn bộ kho phim chiếu rạp</span>
+                                </div>
+                            </div>
+
+                            <div class="celebration-actions">
+                                <button type="button" class="btn-primary-action" style="padding: 0.85rem 2rem; font-size: 0.95rem;" @onclick='() => Nav.NavigateTo("/movies")'>
+                                    <CinemaIcon Name="CinemaIconName.Play" Size="16" />
+                                    <span>Khám phá kho phim VIP ngay</span>
+                                </button>
+                                <button type="button" class="btn-secondary-ghost" style="padding: 0.85rem 1.6rem;" @onclick='() => Nav.NavigateTo("/account")'>
+                                    <span>Xem lịch sử giao dịch</span>
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Login Required Prompt Modal -->
+        @if (showLoginPromptModal)
+        {
+            <div class="vip-checkout-modal-backdrop" @onclick="CloseLoginPrompt">
+                <div class="vip-checkout-modal-content vip-login-prompt-modal"
+                     role="dialog"
+                     aria-modal="true"
+                     aria-labelledby="vip-login-prompt-title"
+                     tabindex="0"
+                     @onkeydown="PromptKeyDown"
+                     @onclick:stopPropagation="true">
+                    <div class="checkout-modal-header">
+                        <div class="prompt-header-title">
+                            <span class="prompt-header-icon" aria-hidden="true">
+                                <CinemaIcon Name="CinemaIconName.Login" Size="18" />
+                            </span>
+                            <h3 id="vip-login-prompt-title">Yêu cầu đăng nhập</h3>
+                        </div>
+                        <button type="button" class="btn-close-modal" aria-label="Đóng thông báo" @onclick="CloseLoginPrompt">
+                            <CinemaIcon Name="CinemaIconName.Close" Size="18" />
+                        </button>
+                    </div>
+
+                    <div class="checkout-modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+                        @if (pendingPlan is not null)
+                        {
+                            <div class="prompt-plan-highlight">
+                                <span class="prompt-plan-label">Gói bạn chọn:</span>
+                                <strong>@pendingPlan.Name (@pendingPlan.DurationDays ngày)</strong>
+                                <span class="prompt-plan-price text-crimson font-mono-num">@pendingPlan.Price.ToString("N0")đ</span>
+                            </div>
+                        }
+
+                        <p class="prompt-body-text">
+                            Bạn cần đăng nhập tài khoản CinemaFlow để tiếp tục đăng ký gói dịch vụ này.
+                        </p>
+                        <p class="prompt-sub-text">
+                            Bấm <strong>Xác nhận</strong> để chuyển sang trang đăng nhập, hoặc bấm <strong>Hủy</strong> để ở lại trang VIP.
+                        </p>
+
+                        <div class="prompt-actions-row">
+                            <button type="button" class="btn-prompt-cancel" @onclick="CloseLoginPrompt">
+                                Hủy
+                            </button>
+                            <button type="button" class="btn-prompt-confirm" @onclick="ConfirmLogin">
+                                Xác nhận
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- 5. Bottom Trust & Security Bar -->
+        <footer class="vip-trust-footer">
+            <div class="trust-footer-col trust-security">
+                <div class="trust-icon-wrap">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                </div>
+                <div class="trust-text">
+                    <strong>Kiểm tra thông tin trước khi thanh toán</strong>
+                    <small>Xem lại gói, thời hạn và số tiền trong bước xác nhận.</small>
+                </div>
+            </div>
+
+            <div class="trust-methods">
+                <span class="pay-badge pay-visa">VISA</span>
+                <span class="pay-badge pay-mastercard"><span class="mc-c1"></span><span class="mc-c2"></span></span>
+                <span class="pay-badge pay-momo">mo<br />mo</span>
+                <span class="pay-badge pay-zalopay"><span class="zp-zalo">Zalo</span><span class="zp-pay">Pay</span></span>
+                <span class="pay-badge pay-bank">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 21h18M3 10h18M5 10v11M9 10v11M15 10v11M19 10v11M12 3L2 8h20L12 3z" />
+                    </svg>
+                    <span>Chuyển khoản<br />ngân hàng</span>
+                </span>
+            </div>
+
+            <div class="trust-footer-divider"></div>
+
+            <div class="trust-footer-col trust-guarantee">
+                <div class="trust-icon-wrap">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                        <polyline points="9 12 11 14 15 10"></polyline>
+                    </svg>
+                </div>
+                <div class="trust-text">
+                    <strong>Quản lý gói trong tài khoản</strong>
+                    <small>Theo dõi thời hạn VIP và lịch sử thanh toán của bạn.</small>
+                </div>
+            </div>
+        </footer>
+    </div>
+</main>
+
+@code {
+    private List<VipPlanDto> plans = [];
+    private VipPlanDto? selected;
+    private VipPlanDto? pendingPlan;
+    private PaymentMethod method = PaymentMethod.BankTransfer;
+    private bool isCheckingOut;
+    private bool showLoginPromptModal;
+    private bool processing;
+    private bool success;
+    private string? message;
+    private ElementReference checkoutDialog;
+    private bool focusCheckout;
+
+    // Order code & copy feedback
+    private string activeOrderCode = "";
+    private string? copiedField;
+
+    // Countdown timer (15 minutes)
+    private int secondsRemaining = 899;
+    private string countdownText = "14:59";
+    private System.Threading.Timer? countdownTimer;
+
+    // Coupon Engine
+    private string couponCodeInput = "";
+    private CouponValidationResultDto? appliedCoupon;
+    private string? couponError;
+    private bool isApplyingCoupon;
+
+    // Credit Card interactive preview
+    private string cardNumber = "4532 8901 2345 6789";
+    private string cardHolder = "NGUYEN VAN A";
+    private string cardExpiry = "12/28";
+
+    private decimal CalculatedFinalPrice => appliedCoupon?.IsValid == true ? appliedCoupon.FinalPrice : (selected?.Price ?? 0);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Auth.OnChange += AuthChanged;
+            await Auth.InitializeAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        if (focusCheckout && isCheckingOut)
+        {
+            focusCheckout = false;
+            await checkoutDialog.FocusAsync();
+        }
+    }
+
+    private void AuthChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void ModalKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && !processing) CloseCheckout();
+    }
+
+    private void PromptKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") CloseLoginPrompt();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            plans = await Api.GetPlansAsync();
+        }
+        catch { }
+
+        selected = plans.FirstOrDefault(p => p.IsRecommended)
+                   ?? plans.FirstOrDefault(p => p.DurationDays >= 365)
+                   ?? plans.FirstOrDefault();
+    }
+
+    private void SelectPlan(string planId)
+    {
+        if (!Auth.IsInitialized) return;
+        var plan = plans.FirstOrDefault(p => p.Id == planId);
+        if (plan is null)
+        {
+            message = "Không tải được gói VIP. Vui lòng tải lại trang.";
+            return;
+        }
+
+        if (!Auth.IsAuthenticated)
+        {
+            pendingPlan = plan;
+            showLoginPromptModal = true;
+            return;
+        }
+
+        selected = plan;
+        appliedCoupon = null;
+        couponCodeInput = "";
+        couponError = null;
+        activeOrderCode = $"CF{DateTime.UtcNow:yyMMdd}{System.Random.Shared.Next(1000, 9999)}";
+        StartCountdown();
+
+        isCheckingOut = true;
+        focusCheckout = true;
+        success = false;
+        message = null;
+    }
+
+    private void SetPaymentMethod(PaymentMethod newMethod)
+    {
+        method = newMethod;
+    }
+
+    private void StartCountdown()
+    {
+        countdownTimer?.Dispose();
+        secondsRemaining = 899;
+        countdownText = "14:59";
+        countdownTimer = new System.Threading.Timer(_ =>
+        {
+            if (secondsRemaining > 0)
+            {
+                secondsRemaining--;
+                var minutes = secondsRemaining / 60;
+                var seconds = secondsRemaining % 60;
+                countdownText = $"{minutes:D2}:{seconds:D2}";
+                _ = InvokeAsync(StateHasChanged);
+            }
+        }, null, 1000, 1000);
+    }
+
+    private void SetQuickCoupon(string code)
+    {
+        couponCodeInput = code;
+        _ = ApplyCoupon();
+    }
+
+    private void HandleCouponKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            _ = ApplyCoupon();
+        }
+    }
+
+    private async Task ApplyCoupon()
+    {
+        if (string.IsNullOrWhiteSpace(couponCodeInput) || selected == null) return;
+        isApplyingCoupon = true;
+        couponError = null;
+        try
+        {
+            var res = await Api.ApplyCouponAsync(new ApplyCouponRequest
+            {
+                PlanId = selected.Id,
+                CouponCode = couponCodeInput.Trim().ToUpperInvariant()
+            });
+
+            if (res?.Success == true && res.Data?.IsValid == true)
+            {
+                appliedCoupon = res.Data;
+                couponError = null;
+            }
+            else
+            {
+                appliedCoupon = null;
+                couponError = res?.Data?.Message ?? res?.Message ?? "Mã giảm giá không hợp lệ.";
+            }
+        }
+        catch (Exception ex)
+        {
+            couponError = "Lỗi áp dụng mã: " + ex.Message;
+        }
+        finally
+        {
+            isApplyingCoupon = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CopyToClipboard(string text, string fieldKey)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            copiedField = fieldKey;
+            StateHasChanged();
+            _ = Task.Delay(2000).ContinueWith(_ =>
+            {
+                copiedField = null;
+                _ = InvokeAsync(StateHasChanged);
+            });
+        }
+        catch { }
+    }
+
+    private void CloseCheckout()
+    {
+        if (processing) return;
+        isCheckingOut = false;
+        countdownTimer?.Dispose();
+        message = null;
+    }
+
+    private void CloseLoginPrompt()
+    {
+        showLoginPromptModal = false;
+        pendingPlan = null;
+    }
+
+    private void ConfirmLogin()
+    {
+        showLoginPromptModal = false;
+        pendingPlan = null;
+        Nav.NavigateTo("/login?returnUrl=/vip");
+    }
+
+    private async Task Checkout()
+    {
+        if (selected is null || processing || success) return;
+        if (!Auth.IsAuthenticated)
+        {
+            pendingPlan = selected;
+            isCheckingOut = false;
+            showLoginPromptModal = true;
+            return;
+        }
+
+        processing = true;
+        message = null;
+
+        var response = await Api.CheckoutAsync(new CreatePaymentRequest
+        {
+            PlanId = selected.Id,
+            Method = method,
+            CouponCode = appliedCoupon?.CouponCode
+        });
+
+        processing = false;
+        success = response?.Success == true && response.Data?.Status == PaymentStatus.Completed;
+        message = response?.Message ?? "Không thể tạo đơn VIP lúc này.";
+
+        if (success)
+        {
+            countdownTimer?.Dispose();
+            await Auth.RefreshAsync();
+        }
+    }
+
+    public void Dispose()
+    {
+        Auth.OnChange -= AuthChanged;
+        countdownTimer?.Dispose();
+    }
+}

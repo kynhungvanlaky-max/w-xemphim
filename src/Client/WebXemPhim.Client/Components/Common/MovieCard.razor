@@ -1,0 +1,13 @@
+<a href="@($"/movie/{Movie.Id}")" class="movie-card" @onclick:preventDefault="PreventDefaultClick" @onclick="HandleCardClick">
+    <div class="poster-wrapper"><img src="@Movie.PosterUrl" alt="" class="poster-img" loading="lazy" /></div>
+    <div class="card-info">
+        <h3 class="card-title" title="@Movie.Title">@Movie.Title</h3>
+        <div class="card-subtext"><span class="card-rating"><CinemaIcon Name="CinemaIconName.Star" Size="14" />@Movie.Rating.ToString("0.0")</span><span>@Movie.ReleaseYear</span><span>@(Movie.Type == MovieType.Movie ? $"{Movie.DurationMinutes} phút" : $"{Movie.TotalEpisodes} tập")</span></div>
+    </div>
+</a>
+@code {
+    [Parameter, EditorRequired] public MovieDto Movie { get; set; } = default!;
+    [Parameter] public EventCallback<MovieDto> OnSelect { get; set; }
+    [Parameter] public bool PreventDefaultClick { get; set; }
+    private async Task HandleCardClick() { if (OnSelect.HasDelegate) await OnSelect.InvokeAsync(Movie); }
+}

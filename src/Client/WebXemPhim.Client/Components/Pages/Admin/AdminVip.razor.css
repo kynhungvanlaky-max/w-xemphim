@@ -1,0 +1,532 @@
+/* CinemaFlow Admin VIP & Finance Suite Styling
+   Obsidian Theme | Tabular Digits | Cinema Aesthetic
+   DESIGN_VARIANCE: 7 | MOTION_INTENSITY: 6 | VISUAL_DENSITY: 5
+*/
+
+.vip-admin-tabs {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 0.75rem;
+    overflow-x: auto;
+}
+
+.vip-tab-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.65rem 1.15rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+}
+
+.vip-tab-pill:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.vip-tab-pill.active {
+    background: rgba(229, 9, 20, 0.12);
+    border-color: rgba(229, 9, 20, 0.45);
+    color: #ffffff;
+    box-shadow: 0 0 16px rgba(229, 9, 20, 0.15);
+}
+
+.tab-badge {
+    display: inline-block;
+    padding: 1px 7px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
+}
+
+.vip-tab-pill.active .tab-badge {
+    background: #e50914;
+    color: #ffffff;
+}
+
+/* Financial KPI Grid */
+.admin-kpi-grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+@media (max-width: 1200px) {
+    .admin-kpi-grid-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 640px) {
+    .admin-kpi-grid-4 {
+        grid-template-columns: 1fr;
+    }
+}
+
+.kpi-icon-wrap.gold {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.kpi-icon-wrap.green {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.kpi-icon-wrap.amber {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.kpi-icon-wrap.cyan {
+    background: rgba(6, 182, 212, 0.15);
+    color: #06b6d4;
+    border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+/* Filter controls row */
+.filter-controls-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+}
+
+.filter-left-group {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.filter-select {
+    padding: 0.45rem 0.85rem;
+    background: #0f121d;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 0.82rem;
+    outline: none;
+    cursor: pointer;
+}
+
+.filter-select:focus {
+    border-color: #e50914;
+}
+
+/* User cell with avatar */
+.user-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.user-mini-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #1e293b, #334155);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    display: grid;
+    place-items: center;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #e2e8f0;
+    flex-shrink: 0;
+}
+
+.user-cell-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.user-cell-name {
+    font-weight: 600;
+    font-size: 0.84rem;
+    color: #f8fafc;
+}
+
+.user-cell-email {
+    font-size: 0.74rem;
+    color: rgba(255, 255, 255, 0.5);
+    font-family: monospace;
+}
+
+/* Method badge */
+.method-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.74rem;
+    font-weight: 600;
+}
+
+.method-badge.vietqr {
+    background: rgba(37, 99, 235, 0.12);
+    color: #60a5fa;
+    border: 1px solid rgba(37, 99, 235, 0.3);
+}
+
+.method-badge.momo {
+    background: rgba(216, 45, 139, 0.12);
+    color: #f472b6;
+    border: 1px solid rgba(216, 45, 139, 0.3);
+}
+
+.method-badge.visa {
+    background: rgba(234, 179, 8, 0.12);
+    color: #facc15;
+    border: 1px solid rgba(234, 179, 8, 0.3);
+}
+
+/* Status pills */
+.status-pill.status-completed {
+    background: rgba(16, 185, 129, 0.12);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-pill.status-pending {
+    background: rgba(251, 191, 36, 0.12);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.status-pill.status-failed {
+    background: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* Table action buttons */
+.table-action-group {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.4rem;
+}
+
+.btn-table-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s ease;
+}
+
+.btn-table-action.approve {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.btn-table-action.approve:hover {
+    background: #10b981;
+    color: #ffffff;
+}
+
+.btn-table-action.reject {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.btn-table-action.reject:hover {
+    background: #ef4444;
+    color: #ffffff;
+}
+
+.btn-table-action.detail {
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.btn-table-action.detail:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+}
+
+/* Tab 2: VIP Plans Grid */
+.vip-plans-admin-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.25rem;
+    margin-top: 1rem;
+}
+
+.plan-admin-card {
+    background: rgba(20, 23, 34, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 1.4rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 1.2rem;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.plan-admin-card:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+.plan-admin-card.is-recommended {
+    border-color: rgba(245, 158, 11, 0.4);
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.08);
+}
+
+.plan-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.plan-title-block h3 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: #ffffff;
+}
+
+.plan-title-block p {
+    margin: 0.25rem 0 0;
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.plan-badges-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
+}
+
+.badge-recommended {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: #f59e0b;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+}
+
+.badge-discount {
+    background: rgba(229, 9, 20, 0.15);
+    border: 1px solid rgba(229, 9, 20, 0.4);
+    color: #ff4d58;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+}
+
+.plan-pricing-display {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+}
+
+.plan-price-main {
+    font-size: 1.6rem;
+    font-weight: 900;
+    color: #ffffff;
+}
+
+.plan-price-original {
+    font-size: 0.95rem;
+    text-decoration: line-through;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.plan-duration-tag {
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.plan-perks-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.perk-tag {
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 0.74rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.plan-card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 0.85rem;
+}
+
+.plan-active-status {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+}
+
+.status-dot.green { background: #10b981; }
+.status-dot.amber { background: #f59e0b; }
+.status-dot.gray { background: #64748b; }
+
+/* Tab 3: Direct VIP Granting Form */
+.grant-vip-wrapper {
+    max-width: 780px;
+    margin: 1rem 0;
+    background: rgba(20, 23, 34, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 2rem;
+}
+
+.grant-vip-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.grant-crown-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    display: grid;
+    place-items: center;
+    color: #f59e0b;
+    flex-shrink: 0;
+}
+
+.grant-header-text h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #ffffff;
+}
+
+.grant-header-text p {
+    margin: 0.25rem 0 0;
+    font-size: 0.84rem;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.days-pills-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+}
+
+.days-pill-btn {
+    padding: 0.5rem 0.95rem;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.16s ease;
+}
+
+.days-pill-btn:hover {
+    background: rgba(255, 255, 255, 0.09);
+    color: #ffffff;
+}
+
+.days-pill-btn.active {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.45);
+    color: #f59e0b;
+}
+
+.reason-suggestions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+}
+
+.suggestion-chip {
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.74rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.suggestion-chip:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+}
+
+.grant-summary-banner {
+    padding: 1rem;
+    border-radius: 8px;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    margin-top: 1.25rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: #e2e8f0;
+}

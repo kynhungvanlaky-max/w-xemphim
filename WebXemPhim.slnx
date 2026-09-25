@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Client/">
+    <Project Path="src/Client/WebXemPhim.Client/WebXemPhim.Client.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/">
+    <Project Path="src/Server/WebXemPhim.Server/WebXemPhim.Server.csproj" />
+  </Folder>
+  <Folder Name="/src/Shared/">
+    <Project Path="src/Shared/WebXemPhim.Shared/WebXemPhim.Shared.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WebXemPhim.Tests/WebXemPhim.Tests.csproj" />
+  </Folder>
+</Solution>

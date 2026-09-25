@@ -1,0 +1,63 @@
+@if (IsOpen)
+{
+    <div class="drawer-backdrop" @onclick="Close"></div>
+    <aside class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="episode-drawer-title">
+        <header class="episode-drawer-header">
+            <div><span>Đang phát tập @CurrentEpisodeNumber</span><h3 id="episode-drawer-title">Danh sách tập phim</h3></div>
+            <button class="ctrl-btn icon-control" @onclick="Close" aria-label="Đóng danh sách tập"><CinemaIcon Name="CinemaIconName.Close" Size="20" /></button>
+        </header>
+
+        <div class="episode-list">
+            @if (Episodes != null)
+            {
+                @foreach (var ep in Episodes)
+                {
+                    <button type="button" class="episode-item @(ep.EpisodeNumber == CurrentEpisodeNumber ? "active" : "")"
+                         aria-current="@(ep.EpisodeNumber == CurrentEpisodeNumber ? "true" : null)"
+                         @onclick="() => SelectEpisode(ep)">
+                        <div class="ep-num">
+                            #@ep.EpisodeNumber
+                        </div>
+                        <div class="episode-drawer-copy">
+                            <strong>@ep.Title</strong>
+                            <small>@ep.DurationMinutes phút</small>
+                        </div>
+                        @if (ep.EpisodeNumber == CurrentEpisodeNumber)
+                        {
+                            <span class="episode-now-playing">Đang phát</span>
+                        }
+                    </button>
+                }
+            }
+        </div>
+    </aside>
+}
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+
+    [Parameter]
+    public List<EpisodeDto>? Episodes { get; set; }
+
+    [Parameter]
+    public int CurrentEpisodeNumber { get; set; } = 1;
+
+    [Parameter]
+    public EventCallback<EpisodeDto> OnSelectEpisode { get; set; }
+
+    private async Task Close()
+    {
+        IsOpen = false;
+        await IsOpenChanged.InvokeAsync(false);
+    }
+
+    private async Task SelectEpisode(EpisodeDto ep)
+    {
+        await OnSelectEpisode.InvokeAsync(ep);
+        await Close();
+    }
+}

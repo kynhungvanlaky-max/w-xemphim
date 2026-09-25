@@ -1,0 +1,330 @@
+@page "/notifications"
+@inject AuthState Auth
+@inject IAccountApiClient Api
+@inject NavigationManager Nav
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Client.Components.Common
+@using WebXemPhim.Client.Components.Icons
+@implements IDisposable
+
+<PageTitle>Hộp thư thông báo - CinemaFlow</PageTitle>
+
+<AccountWorkspace ActiveSection="notifications"
+                  Eyebrow="Hộp thư thành viên"
+                  Title="Thông Báo Điện Ảnh"
+                  Description="Theo dõi các tập phim mới nhất, cập nhật từ tủ phim và thông báo trạng thái tài khoản VIP của bạn.">
+    <section class="account-notice-panel" aria-labelledby="notice-list-heading">
+        @if (!Auth.IsInitialized || isLoading)
+        {
+            <div class="notice-list" aria-busy="true" aria-label="Đang tải thông báo">
+                @for (var s = 0; s < 4; s++)
+                {
+                    <div class="skeleton" style="height: 76px; border-radius: 14px; margin-bottom: 12px;"></div>
+                }
+            </div>
+        }
+        else if (!Auth.IsAuthenticated)
+        {
+            <div class="notice-auth-prompt">
+                <div class="auth-prompt-icon-ring">
+                    <CinemaIcon Name="CinemaIconName.Bell" Size="36" />
+                </div>
+                <h2>Khám Phá Hộp Thư Thành Viên</h2>
+                <p>Đăng nhập để nhận thông báo về tập phim mới ra mắt, thay đổi trong tủ phim và ưu đãi dành riêng cho tài khoản VIP.</p>
+                <a href="/login?returnUrl=/notifications" class="button primary">
+                    <CinemaIcon Name="CinemaIconName.Login" Size="16" />
+                    <span>Đăng nhập ngay</span>
+                </a>
+            </div>
+        }
+        else
+        {
+            <!-- Navigation Toolbar & Filters -->
+            <div class="notice-filter-bar">
+                <div class="notice-tabs" role="tablist" aria-label="Lọc loại thông báo">
+                    <button type="button" 
+                            class="notice-tab-btn @(currentTab == "all" ? "active" : "")"
+                            @onclick='() => SetTab("all")'>
+                        Tất cả
+                        <span class="tab-badge">@notices.Count</span>
+                    </button>
+                    <button type="button" 
+                            class="notice-tab-btn @(currentTab == "unread" ? "active" : "")"
+                            @onclick='() => SetTab("unread")'>
+                        Chưa đọc
+                        @if (UnreadCount > 0)
+                        {
+                            <span class="tab-badge unread-badge">@UnreadCount</span>
+                        }
+                    </button>
+                    <button type="button" 
+                            class="notice-tab-btn @(currentTab == "episodes" ? "active" : "")"
+                            @onclick='() => SetTab("episodes")'>
+                        Phim & Tập mới
+                    </button>
+                    <button type="button" 
+                            class="notice-tab-btn @(currentTab == "system" ? "active" : "")"
+                            @onclick='() => SetTab("system")'>
+                        Hệ thống & VIP
+                    </button>
+                </div>
+
+                <div class="notice-actions-group">
+                    @if (UnreadCount > 0)
+                    {
+                        <button type="button" class="btn-mark-all" @onclick="MarkAll">
+                            <CinemaIcon Name="CinemaIconName.Check" Size="14" />
+                            <span>Đánh dấu tất cả đã đọc</span>
+                        </button>
+                    }
+                    <button type="button" class="btn-refresh-notices" @onclick="LoadNotificationsAsync" title="Làm mới thông báo">
+                        <CinemaIcon Name="CinemaIconName.Refresh" Size="14" />
+                    </button>
+                </div>
+            </div>
+
+            <!-- Search Field -->
+            <div class="notice-search-box">
+                <CinemaIcon Name="CinemaIconName.Search" Size="16" Class="notice-search-icon" />
+                <input type="text"
+                       placeholder="Tìm kiếm trong thông báo..."
+                       @bind="searchQuery"
+                       @bind:event="oninput"
+                       aria-label="Tìm kiếm thông báo" />
+                @if (!string.IsNullOrWhiteSpace(searchQuery))
+                {
+                    <button type="button" class="btn-clear-notice-search" @onclick="ClearSearch" aria-label="Xóa tìm kiếm">
+                        <CinemaIcon Name="CinemaIconName.Close" Size="13" />
+                    </button>
+                }
+            </div>
+
+            <!-- Content Area -->
+            @if (FilteredNotices.Count == 0)
+            {
+                <div class="notice-empty-state">
+                    <div class="empty-icon-ring">
+                        <CinemaIcon Name="CinemaIconName.Check" Size="32" />
+                    </div>
+                    <h3>
+                        @(string.IsNullOrWhiteSpace(searchQuery) && currentTab == "all" 
+                            ? "Không có thông báo mới" 
+                            : "Không tìm thấy thông báo phù hợp")
+                    </h3>
+                    <p>
+                        @(string.IsNullOrWhiteSpace(searchQuery) && currentTab == "all"
+                            ? "Bạn đã cập nhật tất cả thông tin mới nhất từ CinemaFlow."
+                            : "Không có thông báo nào khớp với bộ lọc hiện tại. Hãy thử chọn mục khác.")
+                    </p>
+                    @if (currentTab != "all" || !string.IsNullOrWhiteSpace(searchQuery))
+                    {
+                        <button type="button" class="button secondary btn-reset-notice-filter" @onclick="ResetFilters">
+                            Xem tất cả thông báo
+                        </button>
+                    }
+                </div>
+            }
+            else
+            {
+                <section class="notice-list" id="notice-list-heading" aria-label="Danh sách thông báo">
+                    @foreach (var notice in FilteredNotices)
+                    {
+                        var isMedia = notice.Icon?.Equals("play", StringComparison.OrdinalIgnoreCase) == true;
+                        var isVip = notice.Icon?.Equals("crown", StringComparison.OrdinalIgnoreCase) == true;
+                        var isBookmark = notice.Icon?.Equals("bookmark", StringComparison.OrdinalIgnoreCase) == true;
+
+                        <article class="notice-card @(!notice.Read ? "unread" : "")" @key="notice.Id">
+                            <div class="notice-indicator-col">
+                                <span class="notice-status-dot @(!notice.Read ? "active-dot" : "")" aria-hidden="true"></span>
+                            </div>
+
+                            <div class="notice-icon-box @(isMedia ? "media" : isVip ? "vip" : isBookmark ? "bookmark" : "system")">
+                                <CinemaIcon Name="@GetIconName(notice.Icon)" Size="18" />
+                            </div>
+
+                            <div class="notice-body" @onclick="() => HandleNoticeClick(notice)">
+                                <div class="notice-meta-line">
+                                    <span class="notice-category-tag">
+                                        @(isMedia ? "Tập mới" : isVip ? "VIP Club" : isBookmark ? "Tủ phim" : "Hệ thống")
+                                    </span>
+                                    <time class="notice-timestamp">@notice.Time</time>
+                                </div>
+                                <h3 class="notice-title">@notice.Title</h3>
+                                <p class="notice-copy">@notice.Copy</p>
+                            </div>
+
+                            <div class="notice-actions-col">
+                                @if (!notice.Read)
+                                {
+                                    <button type="button" 
+                                            class="btn-mark-single-read" 
+                                            @onclick="() => MarkSingleRead(notice)"
+                                            title="Đánh dấu đã đọc"
+                                            aria-label="Đánh dấu đã đọc">
+                                        <CinemaIcon Name="CinemaIconName.Check" Size="14" />
+                                    </button>
+                                }
+
+                                @if (!string.IsNullOrWhiteSpace(notice.ActionUrl))
+                                {
+                                    <a href="@notice.ActionUrl" 
+                                       class="btn-notice-navigate"
+                                       @onclick="() => HandleNoticeClick(notice)"
+                                       title="Xem nội dung liên quan"
+                                       aria-label="Xem nội dung liên quan">
+                                        <CinemaIcon Name="CinemaIconName.ArrowRight" Size="15" />
+                                    </a>
+                                }
+                            </div>
+                        </article>
+                    }
+                </section>
+            }
+        }
+    </section>
+</AccountWorkspace>
+
+@code {
+    private List<NotificationDto> notices = [];
+    private bool isLoading = true;
+    private string currentTab = "all";
+    private string searchQuery = string.Empty;
+
+    private int UnreadCount => notices.Count(x => !x.Read);
+
+    private List<NotificationDto> FilteredNotices
+    {
+        get
+        {
+            var q = searchQuery.Trim();
+            return notices.Where(n =>
+            {
+                // Tab filter
+                if (currentTab == "unread" && n.Read) return false;
+                if (currentTab == "episodes" &&
+                    !(n.Icon.Equals("play", StringComparison.OrdinalIgnoreCase) ||
+                      n.Icon.Equals("bookmark", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return false;
+                }
+                if (currentTab == "system" &&
+                    (n.Icon.Equals("play", StringComparison.OrdinalIgnoreCase) ||
+                     n.Icon.Equals("bookmark", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return false;
+                }
+
+                // Keyword search
+                if (!string.IsNullOrWhiteSpace(q))
+                {
+                    var matchTitle = n.Title.Contains(q, StringComparison.OrdinalIgnoreCase);
+                    var matchCopy = n.Copy.Contains(q, StringComparison.OrdinalIgnoreCase);
+                    if (!matchTitle && !matchCopy) return false;
+                }
+
+                return true;
+            }).ToList();
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Auth.OnChange += StateHasChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Auth.InitializeAsync();
+            if (Auth.IsAuthenticated)
+            {
+                await LoadNotificationsAsync();
+            }
+            else
+            {
+                isLoading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task LoadNotificationsAsync()
+    {
+        isLoading = true;
+        try
+        {
+            notices = await Api.GetNotificationsAsync();
+        }
+        catch
+        {
+            notices = [];
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleNoticeClick(NotificationDto notice)
+    {
+        if (!notice.Read)
+        {
+            notice.Read = true;
+            await Api.MarkNotificationReadAsync(notice.Id);
+        }
+
+        if (!string.IsNullOrWhiteSpace(notice.ActionUrl))
+        {
+            Nav.NavigateTo(notice.ActionUrl);
+        }
+    }
+
+    private async Task MarkSingleRead(NotificationDto notice)
+    {
+        notice.Read = true;
+        await Api.MarkNotificationReadAsync(notice.Id);
+        StateHasChanged();
+    }
+
+    private async Task MarkAll()
+    {
+        foreach (var n in notices)
+        {
+            n.Read = true;
+        }
+        await Api.MarkAllNotificationsReadAsync();
+        StateHasChanged();
+    }
+
+    private void SetTab(string tab)
+    {
+        currentTab = tab;
+    }
+
+    private void ClearSearch()
+    {
+        searchQuery = string.Empty;
+    }
+
+    private void ResetFilters()
+    {
+        currentTab = "all";
+        searchQuery = string.Empty;
+    }
+
+    private static CinemaIconName GetIconName(string? icon) => icon?.ToLowerInvariant() switch
+    {
+        "play" => CinemaIconName.Play,
+        "bookmark" => CinemaIconName.Bookmark,
+        "crown" => CinemaIconName.Crown,
+        "star" => CinemaIconName.Star,
+        _ => CinemaIconName.Bell
+    };
+
+    public void Dispose()
+    {
+        Auth.OnChange -= StateHasChanged;
+    }
+}

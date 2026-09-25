@@ -1,0 +1,93 @@
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Shared.Requests
+@inject IAccountApiClient Api
+@inject AuthState Auth
+@implements IDisposable
+
+<div class="watch-discussion-body">
+    <header><h2>Thảo luận</h2><p>Chia sẻ cảm nhận, tránh tiết lộ nội dung quan trọng.</p></header>
+    @if (Auth.IsAuthenticated)
+    {
+        <div class="wd-form">
+        <EditForm Model="form" OnValidSubmit="Save" FormName="watch-review">
+            <DataAnnotationsValidator />
+            <div class="wd-rating"><label for="watch-review-score">Điểm của bạn</label><InputSelect id="watch-review-score" @bind-Value="form.Rating">@for (var i = 1; i <= 10; i++) { <option value="@i">@i / 10</option> }</InputSelect></div>
+            <label for="watch-review-comment">Bình luận của bạn</label>
+            <InputTextArea id="watch-review-comment" @bind-Value="form.Comment" placeholder="Chia sẻ cảm nhận..." maxlength="800" />
+            <ValidationMessage For="() => form.Comment" />
+            <div class="wd-actions"><button class="wd-button primary" disabled="@saving">@(saving ? "Đang lưu..." : ownReview is null ? "Đăng đánh giá" : "Cập nhật đánh giá")</button>
+                @if (ownReview is not null) { <button type="button" class="wd-button" disabled="@saving" @onclick="Delete">Xóa đánh giá</button> }
+            </div>
+        </EditForm>
+        </div>
+    }
+    else
+    {
+        <div class="wd-signin"><div><label for="watch-guest-comment">Bình luận của bạn</label><input id="watch-guest-comment" placeholder="Đăng nhập để chia sẻ cảm nhận..." disabled /></div><a class="wd-button primary" href="@($"/login?ReturnUrl={Uri.EscapeDataString(ReturnUrl)}")">Đăng nhập</a></div>
+    }
+    @if (message is not null) { <p role="status" class="wd-status">@message</p> }
+    @if (loading) { <p class="wd-empty" role="status">Đang tải thảo luận...</p> }
+    else if (loadFailed)
+    {
+        <div class="wd-empty"><p>Chưa thể tải thảo luận.</p><button class="wd-button" @onclick="Load">Thử lại</button></div>
+    }
+    else if (reviews?.Reviews.Count > 0)
+    {
+        <div class="wd-reviews">
+            @foreach (var review in reviews.Reviews)
+            {
+                <article><div class="wd-avatar" aria-hidden="true">@review.UserInitials</div><div class="wd-review-copy"><header><strong>@review.UserName</strong><span>@review.Rating / 10</span><time datetime="@review.UpdatedAt.ToString("O")">@review.UpdatedAt.ToString("dd/MM/yyyy")</time></header><p>@review.Comment</p></div></article>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="wd-empty"><CinemaIcon Name="CinemaIconName.MessageSquare" Size="30" /><h3>Chưa có đánh giá.</h3><p>Hãy bắt đầu cuộc trò chuyện.</p></div>
+    }
+</div>
+
+@code {
+    [Parameter] public int MovieId { get; set; }
+    [Parameter] public string ReturnUrl { get; set; } = "/";
+    private MovieReviewsDto? reviews;
+    private ReviewDto? ownReview;
+    private UpsertReviewRequest form = new() { Rating = 8 };
+    private bool loading = true, loadFailed, saving, disposed;
+    private string? message;
+    protected override void OnInitialized() { Auth.Changed += AuthChanged; }
+    protected override async Task OnParametersSetAsync() { if (reviews?.MovieId != MovieId) await Load(); }
+    private async Task Load()
+    {
+        loading = true; loadFailed = false;
+        reviews = await Api.GetReviewsAsync(MovieId);
+        if (disposed) return;
+        loading = false; loadFailed = reviews is null;
+        ownReview = reviews?.Reviews.FirstOrDefault(item => item.UserId == Auth.User?.Id);
+        if (ownReview is not null) form = new() { Rating = ownReview.Rating, Comment = ownReview.Comment };
+    }
+    private async Task Save()
+    {
+        if (saving) return;
+        saving = true;
+        try
+        {
+            var result = await Api.SaveReviewAsync(MovieId, form);
+            message = result?.Message ?? "Chưa thể lưu đánh giá. Vui lòng thử lại.";
+            if (result?.Success == true) await Load();
+        }
+        finally { saving = false; }
+    }
+    private async Task Delete()
+    {
+        if (saving) return;
+        saving = true;
+        try
+        {
+            if (await Api.DeleteReviewAsync(MovieId)) { form = new() { Rating = 8 }; message = "Đã xóa đánh giá."; await Load(); }
+            else message = "Chưa thể xóa đánh giá. Vui lòng thử lại.";
+        }
+        finally { saving = false; }
+    }
+    private void AuthChanged() => _ = InvokeAsync(async () => { form = new() { Rating = 8 }; await Load(); if (!disposed) StateHasChanged(); });
+    public void Dispose() { disposed = true; Auth.Changed -= AuthChanged; }
+}

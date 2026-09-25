@@ -1,0 +1,108 @@
+@inject AuthState Auth
+@inject NavigationManager Nav
+
+<div class="account-workspace">
+    <aside class="account-workspace-rail" aria-label="Điều hướng tài khoản">
+        <a class="account-workspace-brand" href="/account" aria-label="Mở tổng quan tài khoản">
+            <span class="account-workspace-avatar" aria-hidden="true">@Initials</span>
+            <span>
+                <small>Không gian thành viên</small>
+                <strong>@DisplayName</strong>
+                <em class="@(Auth.User?.IsVip == true ? "is-vip" : "")">@MembershipLabel</em>
+            </span>
+        </a>
+
+        <nav class="account-workspace-nav">
+            <a class="@ActiveClass("overview")" href="/account" aria-current="@CurrentPage("overview")">
+                <CinemaIcon Name="CinemaIconName.Home" Size="19" />
+                <span><strong>Tổng quan</strong><small>Trạng thái tài khoản</small></span>
+            </a>
+            <a class="@ActiveClass("profile")" href="/profile/settings" aria-current="@CurrentPage("profile")">
+                <CinemaIcon Name="CinemaIconName.Settings" Size="19" />
+                <span><strong>Hồ sơ &amp; cài đặt</strong><small>Cá nhân hóa trải nghiệm</small></span>
+            </a>
+            <a class="@ActiveClass("history")" href="/history" aria-current="@CurrentPage("history")">
+                <CinemaIcon Name="CinemaIconName.Clock" Size="19" />
+                <span><strong>Lịch sử xem</strong><small>Tiếp tục từ lần trước</small></span>
+            </a>
+            <a class="@ActiveClass("payments")" href="/account#payments" aria-current="@CurrentPage("payments")">
+                <CinemaIcon Name="CinemaIconName.Film" Size="19" />
+                <span><strong>Thanh toán</strong><small>Gói và giao dịch</small></span>
+            </a>
+            <a class="@ActiveClass("notifications")" href="/notifications" aria-current="@CurrentPage("notifications")">
+                <CinemaIcon Name="CinemaIconName.Bell" Size="19" />
+                <span><strong>Thông báo</strong><small>Cập nhật dành cho bạn</small></span>
+            </a>
+        </nav>
+
+        <div class="account-workspace-rail-footer">
+            <a href="/watchlist"><CinemaIcon Name="CinemaIconName.Bookmark" Size="17" />Mở tủ phim</a>
+            @if (Auth.IsAuthenticated)
+            {
+                <button type="button" class="account-rail-logout-btn" @onclick="Logout"><CinemaIcon Name="CinemaIconName.Logout" Size="17" />Đăng xuất</button>
+            }
+        </div>
+    </aside>
+
+    <section class="account-stage account-workspace-stage">
+        @if (ShowHeader)
+        {
+            <header class="account-workspace-head">
+                <div>
+                    <p class="section-kicker">@Eyebrow</p>
+                    <h1>@Title</h1>
+                    @if (!string.IsNullOrWhiteSpace(Description))
+                    {
+                        <p>@Description</p>
+                    }
+                </div>
+                <span class="account-workspace-status">
+                    <i></i>
+                    @(Auth.IsAuthenticated ? "Tài khoản đang hoạt động" : "Chưa đăng nhập")
+                </span>
+            </header>
+        }
+        <div class="account-workspace-body">
+            @ChildContent
+        </div>
+    </section>
+</div>
+
+@code {
+    [Parameter] public string ActiveSection { get; set; } = "overview";
+    [Parameter] public string Eyebrow { get; set; } = "Không gian cá nhân";
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string Description { get; set; } = string.Empty;
+    [Parameter] public bool ShowHeader { get; set; } = true;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private string DisplayName => !Auth.IsInitialized
+        ? "Đang xác thực"
+        : Auth.User?.FullName ?? "Khách";
+
+    private string MembershipLabel => !Auth.IsInitialized
+        ? "Đang kết nối"
+        : Auth.User?.IsVip == true ? "CinemaFlow VIP" : Auth.IsAuthenticated ? "Thành viên miễn phí" : "Chưa đăng nhập";
+
+    private string Initials
+    {
+        get
+        {
+            var name = Auth.User?.FullName?.Trim();
+            if (string.IsNullOrWhiteSpace(name)) return "CF";
+            var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length == 1
+                ? parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant()
+                : $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant();
+        }
+    }
+
+    private string ActiveClass(string section) => ActiveSection == section ? "active" : string.Empty;
+    private string? CurrentPage(string section) => ActiveSection == section ? "page" : null;
+
+    private async Task Logout()
+    {
+        await Auth.LogoutAsync();
+        Nav.NavigateTo("/");
+    }
+}

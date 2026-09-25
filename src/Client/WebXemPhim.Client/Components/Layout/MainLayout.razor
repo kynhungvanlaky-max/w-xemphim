@@ -1,0 +1,33 @@
+@using WebXemPhim.Client.Components.Common
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
+
+<div class="page-wrapper" id="top">
+    <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
+    <NavMenu />
+    <main class="site-main" id="main-content" tabindex="-1">@Body</main>
+
+    @if (!IsWatchPage())
+    {
+        <footer class="cinema-minimal-footer">
+            <div class="footer-inner">
+                <div class="footer-left">
+                    <span class="footer-brand"><strong class="footer-brand-cinema">CINEMA</strong><strong class="footer-brand-flow">FLOW</strong></span>
+                    <span class="footer-sep">·</span>
+                    <span>Thiết kế cho những buổi xem phim trọn vẹn.</span>
+                </div>
+                <div class="footer-right">
+                    <span>© @DateTime.UtcNow.Year CinemaFlow</span>
+                </div>
+            </div>
+        </footer>
+    }
+</div>
+
+@code {
+    private bool IsWatchPage()
+    {
+        var uri = Nav.Uri.ToLowerInvariant();
+        return uri.Contains("/watch");
+    }
+}
