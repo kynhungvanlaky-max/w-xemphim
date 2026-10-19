@@ -1,6 +1,6 @@
 /* CinemaFlow library v2: flat media grid, 12px media / 8px controls, crimson action / amber membership. */
 .personal-library { width: min(1520px, calc(100% - clamp(2rem, 6vw, 6rem))); margin: auto; padding: clamp(2.5rem, 4vw, 4rem) 0 64px; min-height: calc(100dvh - 68px); }
-.library-heading h1 { font-size:clamp(2.3rem,4.1vw,3.7rem); line-height:1.15; letter-spacing:-.045em; margin:0 0 12px; font-weight:800; }
+.library-heading h1 { font-size:clamp(2rem,3.6vw,3rem); line-height:1.22; letter-spacing:-0.015em; margin:0 0 12px; font-weight:800; }
 .personal-library :is(h1,h2,h3) { font-family: var(--font-display, "Be Vietnam Pro", sans-serif); }
 body .cinema-navbar .nav-links .nav-vip { color:#efb74e; }
 .library-heading > p { font-size:1.1rem; color:#b5b7c0; margin:0; }
@@ -14,7 +14,7 @@ body .cinema-navbar .nav-links .nav-vip { color:#efb74e; }
 .library-route-tabs a span { font-size:.75rem; margin-left:8px; }
 .library-welcome { display:grid; grid-template-columns:1.25fr 1fr; gap:40px; align-items:center; }
 .library-welcome > img { width:100%; height:auto; aspect-ratio:16/9; object-fit:cover; border-radius:12px; }
-.library-welcome h2 { font-size:clamp(1.7rem,2.4vw,2.4rem); line-height:1.22; letter-spacing:-.035em; margin:0 0 16px; max-width:20ch; }
+.library-welcome h2 { font-size:clamp(1.6rem,2.4vw,2.2rem); line-height:1.25; letter-spacing:-0.012em; margin:0 0 16px; max-width:20ch; }
 .library-welcome p { color:#b5b7c0; line-height:1.75; margin:0 0 26px; max-width:40ch; }
 .library-cta-row { display:flex; flex-wrap:wrap; gap:12px; }
 .personal-library .button { border-radius:8px; min-height:46px; padding:12px 24px; white-space:nowrap; font-size:.875rem; }

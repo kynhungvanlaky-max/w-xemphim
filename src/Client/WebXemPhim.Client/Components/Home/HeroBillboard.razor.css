@@ -144,11 +144,11 @@
 
 .hero-title {
     font-family: var(--font-display, "Be Vietnam Pro", sans-serif);
-    font-size: clamp(2.8rem, 5.5vw, 4.4rem);
-    font-weight: 900;
-    letter-spacing: 0.05em;
+    font-size: clamp(2.4rem, 4.8vw, 3.8rem);
+    font-weight: 800;
+    letter-spacing: -0.015em;
     color: #f5f5f7;
-    line-height: 1.05;
+    line-height: 1.22;
     margin: 0;
     text-transform: uppercase;
     text-shadow: 0 4px 28px rgba(0, 0, 0, 0.8);
@@ -514,7 +514,7 @@
     }
     .hero-title {
         font-size: clamp(1.4rem, 5.6vw, 1.95rem) !important;
-        line-height: 1.16 !important;
+        line-height: 1.24 !important;
         letter-spacing: -0.01em !important;
         max-width: 18ch !important;
         text-align: center !important;

@@ -259,7 +259,7 @@ body[data-theme="light"] .cinema-navbar .nav-links .nav-link.nav-vip,
     border: 1px solid #fde68a !important;
     border-radius: 999px !important;
     padding: 4px 13px !important;
-    font-weight: 750 !important;
+    font-weight: 700 !important;
     display: inline-flex !important;
     align-items: center !important;
     gap: 0.4rem !important;
@@ -1292,7 +1292,7 @@ body[data-theme="light"] .detail-genre-tag {
     padding: 0.32rem 0.85rem !important;
     border-radius: 999px !important;
     font-size: 0.82rem !important;
-    font-weight: 550 !important;
+    font-weight: 500 !important;
     line-height: 1.25 !important;
 }
 
@@ -6606,7 +6606,7 @@ body[data-theme="light"] .detail-genre-tag,
     padding: 0.32rem 0.85rem !important;
     border-radius: 999px !important;
     font-size: 0.82rem !important;
-    font-weight: 550 !important;
+    font-weight: 500 !important;
     line-height: 1.25 !important;
 }
 
@@ -8655,7 +8655,7 @@ body[data-theme="light"] .site-main .vip-account-status,
 body[data-theme="light"] .site-main .vip-account-status strong,
 [data-theme="light"] .vip-account-status strong {
     color: #92400e !important;
-    font-weight: 750 !important;
+    font-weight: 700 !important;
 }
 
 body[data-theme="light"] .site-main .vip-account-status span,

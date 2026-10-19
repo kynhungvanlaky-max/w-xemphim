@@ -55,17 +55,17 @@
     border: 1px solid rgba(229, 9, 20, 0.3);
     color: #ff5964;
     font-size: 0.8rem;
-    font-weight: 750;
+    font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
 }
 
 .error-404-title {
     font-family: var(--font-display, "Be Vietnam Pro", sans-serif);
-    font-size: clamp(2.4rem, 5vw, 4.2rem);
-    font-weight: 850;
-    line-height: 1.1;
-    letter-spacing: -0.035em;
+    font-size: clamp(2.2rem, 4.5vw, 3.6rem);
+    font-weight: 800;
+    line-height: 1.22;
+    letter-spacing: -0.015em;
     margin: 0;
     color: #ffffff;
 }
@@ -218,7 +218,7 @@
 
 .suggestions-header h2 {
     font-size: 1.05rem;
-    font-weight: 750;
+    font-weight: 700;
     margin: 0;
     color: #ffffff;
 }
@@ -227,7 +227,7 @@
     color: #ff5964;
     text-decoration: none;
     font-size: 0.84rem;
-    font-weight: 650;
+    font-weight: 600;
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;

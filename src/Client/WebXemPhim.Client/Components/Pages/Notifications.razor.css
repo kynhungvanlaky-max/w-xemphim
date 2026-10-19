@@ -86,7 +86,7 @@
     border: 1px solid rgba(229, 9, 20, 0.3);
     color: #ff5964;
     font-size: 0.8rem;
-    font-weight: 650;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
 }
@@ -278,7 +278,7 @@
 
 .notice-category-tag {
     font-size: 0.72rem;
-    font-weight: 750;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: rgba(255, 255, 255, 0.55);
@@ -291,7 +291,7 @@
 
 .notice-title {
     font-size: 0.95rem;
-    font-weight: 750;
+    font-weight: 700;
     line-height: 1.35;
     margin: 0;
     color: #ffffff;
@@ -382,7 +382,7 @@
 .notice-auth-prompt h2 {
     color: #ffffff;
     font-size: 1.35rem;
-    font-weight: 750;
+    font-weight: 700;
     margin: 0;
 }
 

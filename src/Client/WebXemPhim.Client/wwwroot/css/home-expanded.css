@@ -3,12 +3,12 @@ body .site-main .hero-title { max-width: 24ch; font-size: clamp(2.8rem, 4.2vw, 4
 body .site-main .hero-content-wrapper { padding-top: 4rem; padding-bottom: 4rem; }
 body .site-main .cinema-recovery-page { min-height: calc(100dvh - 164px); padding: 5rem clamp(1.5rem, 7vw, 7rem); justify-content: flex-start; align-items: center; background: linear-gradient(90deg, rgb(8 9 11 / 98%), rgb(8 9 11 / 70%) 45%, rgb(8 9 11 / 10%)), url('/images/generated/redesign-2026/cinemaflow-projector.png') right center / cover; }
 body .site-main .cinema-recovery-page .system-state-panel { width: min(640px, 100%); max-width: none; background: transparent; border: 0; box-shadow: none; text-align: left; padding: 0; }
-body .site-main .cinema-recovery-page h1 { font-family: var(--font-display); font-size: clamp(2.5rem, 4vw, 4.5rem); line-height: 1.08; }
+body .site-main .cinema-recovery-page h1 { font-family: var(--font-display); font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.22; letter-spacing: -0.015em; }
 body .site-main .cinema-recovery-page .system-state-actions { justify-content: flex-start; }
 body .site-main .home-expanded { width: min(1520px, calc(100% - clamp(2rem, 6vw, 6rem))); margin: 0 auto; }
 body .site-main .home-movie-section { padding-block: 3.5rem 1rem; }
 body .site-main .home-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem; }
-body .site-main .home-section-heading h2 { font-size: clamp(1.5rem, 2.3vw, 2.2rem); letter-spacing: -.035em; margin: 0; }
+body .site-main .home-section-heading h2 { font-size: clamp(1.4rem, 2.2vw, 2rem); line-height: 1.25; letter-spacing: -0.012em; margin: 0; }
 body .site-main .home-section-heading p { color: var(--text-2); margin: .5rem 0 0; font-size: .9rem; }
 body .site-main .home-section-heading > a { color: #f16b70; display: inline-flex; align-items: center; gap: .6rem; white-space: nowrap; text-decoration: none; }
 body .site-main .home-movie-rail { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1.15rem; }
@@ -29,11 +29,11 @@ body .site-main .home-spotlight > img { position: absolute; inset: 0; width: 100
 body .site-main .home-spotlight::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgb(8 9 11 / 96%), rgb(8 9 11 / 80%) 40%, rgb(8 9 11 / 10%)); }
 body .site-main .home-spotlight-copy { padding: clamp(1.5rem, 4vw, 4rem); max-width: 640px; }
 body .site-main .home-editorial-label { color: var(--text-2); font-size: .8rem; }
-body .site-main .home-spotlight h2 { font-family: var(--font-display); font-size: clamp(2rem, 3.7vw, 3.8rem); line-height: 1.1; margin: 1rem 0; }
+body .site-main .home-spotlight h2 { font-family: var(--font-display); font-size: clamp(1.8rem, 3.2vw, 2.6rem); line-height: 1.22; letter-spacing: -0.015em; margin: 1rem 0; }
 body .site-main .home-spotlight p { color: #d1cec8; line-height: 1.8; margin-bottom: 1.5rem; }
 body .site-main .home-discovery { margin-block: 5rem; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 2rem; background: #101216; overflow: hidden; border-radius: var(--radius-card); }
 body .site-main .home-discovery > div { padding: clamp(1.5rem, 4vw, 4rem); }
-body .site-main .home-discovery h2 { font-size: clamp(2rem, 3.2vw, 3.2rem); line-height: 1.15; margin: 0 0 1rem; }
+body .site-main .home-discovery h2 { font-size: clamp(1.8rem, 2.8vw, 2.4rem); line-height: 1.25; letter-spacing: -0.015em; margin: 0 0 1rem; }
 body .site-main .home-discovery p { color: var(--text-2); margin-bottom: 1.6rem; }
 body .site-main .home-discovery img { width: 100%; height: 100%; min-height: 340px; object-fit: cover; }
 body .site-main .home-expanded .button { display: inline-flex; gap: .75rem; align-items: center; min-height: 48px; }
@@ -55,7 +55,7 @@ body .site-main .home-expanded .genre-bento-grid {
 }
 body .site-main .explore-search-box { max-width: 850px; margin-top: 0; position: relative; z-index: 1; }
 body .site-main .explore-header-row::after { background-image: url('/images/generated/redesign-2026/cinemaflow-projector.png'); opacity: .4; }
-body .site-main .explore-heading { font-size: clamp(3rem, 5vw, 5.5rem); }
+body .site-main .explore-heading { font-size: clamp(2rem, 3.6vw, 2.8rem); line-height: 1.22; letter-spacing: -0.015em; }
 body .site-main .explore-live-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2rem 1.25rem; }
 body .site-main .explore-live-grid .movie-card { width: 100%; min-width: 0; }
 body .site-main .home-results-note { color: var(--text-2); font-size: .85rem; }

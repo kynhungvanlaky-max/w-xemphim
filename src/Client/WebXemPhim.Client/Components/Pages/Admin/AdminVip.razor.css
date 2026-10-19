@@ -172,7 +172,8 @@
 .user-cell-email {
     font-size: 0.74rem;
     color: rgba(255, 255, 255, 0.5);
-    font-family: monospace;
+    font-family: var(--font-mono, monospace);
+    font-variant-numeric: tabular-nums;
 }
 
 /* Method badge */

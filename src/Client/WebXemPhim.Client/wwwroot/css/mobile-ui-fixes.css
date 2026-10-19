@@ -95,7 +95,7 @@
 
     body .site-main .auth-panel h2 {
         font-size: clamp(1.8rem, 8vw, 2.3rem);
-        line-height: 1.12;
+        line-height: 1.24;
     }
 
     body .site-main .auth-panel form {
@@ -136,8 +136,8 @@
 
     body .site-main .detail-main-title {
         max-width: 100%;
-        font-size: clamp(1.9rem, 8.5vw, 2.8rem);
-        line-height: 1.12;
+        font-size: clamp(1.8rem, 6.5vw, 2.3rem);
+        line-height: 1.24;
         text-wrap: balance;
     }
 

@@ -1,4 +1,23 @@
-/* Final typography guardrails: loaded last so Vietnamese diacritics keep enough breathing room. */
+/* ==============================================================================
+   CinemaFlow Master Typography System & Polish
+   Calibrated for Vietnamese Diacritics, Taste-Skill & High-End Visual Design
+   ============================================================================== */
+
+/* 1. GLOBAL SMOOTHING & ROOT FONT TOKENS */
+:root {
+    --font-body: "Be Vietnam Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-display: "Be Vietnam Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", "Cascadia Code", "Fira Code", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+html, body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+/* 2. VIETNAMESE DISPLAY HEADINGS (ZERO ACCENT CLIPPING, BALANCED LINE-HEIGHT) */
+/* Stacked diacritics (Ấ, Ắ, Ế, Ố, Ộ, Ở, Ự) require minimum 1.2 line-height and generous letter-spacing */
 body .site-main :is(
     .hero-title,
     .detail-main-title,
@@ -11,59 +30,221 @@ body .site-main :is(
     .roulette-visual h2,
     .vip-banner h2,
     .seo-heading h2,
-    .system-state-panel h1
+    .system-state-panel h1,
+    .cinema-recovery-page h1,
+    .vip-hero h1
 ) {
-    line-height: 1.08;
-    letter-spacing: -.035em;
+    font-family: var(--font-display);
+    font-weight: 700;
+    line-height: 1.22;
+    letter-spacing: -0.015em;
     text-wrap: balance;
+    word-break: normal;
+    overflow-wrap: break-word;
 }
 
-body .site-main .genre-index-card h2 {
-    line-height: 1.12;
-    letter-spacing: -.025em;
+/* Section Headings & Sub-banners */
+body .site-main :is(
+    .home-spotlight h2,
+    .home-discovery h2,
+    .bento-main-heading,
+    .section-title,
+    .section-title-arrow h2,
+    .genre-index-card h2,
+    .home-section-heading h2,
+    .admin-card-header h2,
+    .notification-popover-head h2,
+    .settings-page-intro .settings-title,
+    .watchlist-title,
+    .library-heading h1,
+    .library-welcome h2,
+    .roulette-title,
+    .showcase-title,
+    .error-404-title
+) {
+    font-family: var(--font-display);
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.012em;
     text-wrap: balance;
+    word-break: normal;
+    overflow-wrap: break-word;
 }
 
-body .site-main :is(.home-spotlight h2, .home-discovery h2, .bento-main-heading, .section-title-arrow h2) {
-    line-height: 1.18;
-    text-wrap: balance;
+/* Taste-Skill Font Scale Discipline: No oversized 7rem headlines that dominate the viewport */
+body .site-main .hero-title {
+    max-width: 22ch;
+    font-size: clamp(2.2rem, 4vw, 3.4rem);
 }
 
-body .site-main .movie-card .card-title {
-    min-height: 2.7em;
-    display: -webkit-box;
-    overflow: hidden;
-    line-height: 1.35;
-    text-overflow: clip;
+body .site-main .detail-main-title {
+    max-width: 24ch;
+    font-size: clamp(2rem, 3.8vw, 3.2rem);
+}
+
+body .site-main .auth-intro h1 {
+    font-size: clamp(2rem, 3.6vw, 2.8rem);
+}
+
+body .site-main .editorial-page-head h1 {
+    font-size: clamp(2.4rem, 4.2vw, 3.4rem);
+}
+
+body .site-main .vip-headline {
+    font-size: clamp(2rem, 3.8vw, 3rem);
+}
+
+/* 3. CARD TITLES & SYLLABLE-PRESERVING TRUNCATION */
+/* Replaces 'overflow-wrap: anywhere' which tore Vietnamese syllables in half */
+body .site-main :is(
+    .movie-card .card-title,
+    .trending-card-title,
+    .update-card-title,
+    .leaderboard-item-title,
+    .caption-title
+) {
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: -0.005em;
     white-space: normal;
-    overflow-wrap: anywhere;
+    word-break: normal;
+    overflow-wrap: break-word;
+    display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-height: 2.8em;
 }
 
-body .site-main :is(.update-card-title, .caption-title, .account-history-copy h2) {
+body .site-main .account-history-copy h2 {
+    font-size: 1.05rem;
+    font-weight: 600;
     line-height: 1.38;
+    word-break: normal;
+    overflow-wrap: break-word;
 }
 
-body .site-main :is(.button, .btn-cinema, .btn-hero-watch, .btn-hero-watchlist, .btn-detail-play, .btn-detail-trailer, .btn-detail-watchlist) {
-    line-height: 1.25;
-}
-
+/* Cast Info & Actor Names */
 body .site-main .cast-info {
     min-width: 0;
 }
 
 body .site-main .cast-info strong {
     display: block;
+    font-size: 0.92rem;
+    font-weight: 600;
     line-height: 1.35;
     white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
-    overflow-wrap: anywhere;
+    word-break: normal;
+    overflow-wrap: break-word;
+    text-overflow: ellipsis;
 }
 
-@media (max-width: 760px) {
-    body .nav-user-label { max-width: 96px; }
+body .site-main .cast-info small {
+    display: block;
+    font-size: 0.8rem;
+    line-height: 1.3;
+    color: var(--muted, #9296a1);
+}
+
+/* 4. TABULAR NUMBERS, TIMECODES & TELEMETRY */
+/* Eliminates number jittering during video playback, scrubbing, countdowns, and ranking tables */
+body :is(
+    .cp-time-display,
+    .cp-seek-tag,
+    .rank-badge-num,
+    .trending-rank-num,
+    .detail-rating-pill strong,
+    .review-score-lockup strong,
+    .rating-meta,
+    .stat-number,
+    .stat-value,
+    .summary-stat-val,
+    .kpi-val,
+    .order-amount,
+    .price,
+    .plan-price,
+    .badge-pill-outline,
+    .stream-chip,
+    .specs-table-card td,
+    .video-telemetry-tag,
+    .admin-kpi-metric,
+    .countdown-clock,
+    .card-number-display,
+    .user-cell-email
+) {
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "cv02" 1;
+    letter-spacing: 0.015em;
+}
+
+/* 5. DEVELOPER-GRADE MONOSPACE TOKENS & LOGS */
+body :is(
+    code,
+    pre,
+    kbd,
+    samp,
+    .admin-code,
+    .audit-token,
+    .audit-timeline-time,
+    .tx-id,
+    .stream-session-id,
+    .mono-text,
+    .admin-table td.mono,
+    .watermark-overlay,
+    .countdown-clock,
+    .card-number-display,
+    .user-cell-email
+) {
+    font-family: var(--font-mono);
+    font-size: 0.84em;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    font-feature-settings: "calt" 1;
+}
+
+/* 6. BUTTONS & INTERACTIVE CONTROLS */
+/* Enforces single-line CTA labels without wrapping, comfortable touch padding, and crisp weights */
+body .site-main :is(
+    .button,
+    .btn-cinema,
+    .btn-hero-watch,
+    .btn-hero-watchlist,
+    .btn-detail-play,
+    .btn-detail-trailer,
+    .btn-detail-watchlist,
+    .pill-btn,
+    .tab-item
+) {
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+}
+
+/* 7. HIGH-CONTRAST METADATA & MICRO-TYPOGRAPHY */
+body .site-main :is(.detail-original-label, .eyebrow-badge, .kpi-title, .admin-table th) {
+    font-size: 0.74rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+}
+
+/* Movie Detail Synopsis - Comfortable Editorial Reading */
+body .site-main .detail-hero-synopsis {
+    font-size: clamp(0.95rem, 1.1vw, 1.05rem);
+    line-height: 1.68;
+    color: var(--text-2, #c5c7ce);
+    max-width: 68ch;
+    word-break: normal;
+    overflow-wrap: break-word;
+}
+
+/* 8. RESPONSIVE BREAKPOINT REFINEMENTS */
+@media (max-width: 768px) {
+    body .nav-user-label { max-width: 110px; }
     body .nav-user-label small { white-space: nowrap; }
 
     body .site-main :is(
@@ -75,24 +256,32 @@ body .site-main .cast-info strong {
         .roulette-page header h1,
         .account-workspace-head h1
     ) {
-        line-height: 1.1;
-        letter-spacing: -.03em;
+        line-height: 1.24;
+        letter-spacing: -0.01em;
+    }
+
+    body .site-main .hero-title {
+        font-size: clamp(1.85rem, 6.5vw, 2.4rem);
+    }
+
+    body .site-main .detail-main-title {
+        font-size: clamp(1.8rem, 6.2vw, 2.3rem);
     }
 
     body .site-main .hero-actions-group {
         width: 100%;
         display: grid;
-        grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr);
-        gap: .55rem;
+        grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+        gap: 0.6rem;
     }
 
     body .site-main .btn-hero-watch,
     body .site-main .btn-hero-watchlist {
         width: 100%;
         min-width: 0;
-        padding-inline: .65rem;
-        gap: .45rem;
-        font-size: .84rem;
+        padding-inline: 0.75rem;
+        gap: 0.45rem;
+        font-size: 0.86rem;
         white-space: nowrap;
     }
 
@@ -100,9 +289,9 @@ body .site-main .cast-info strong {
         width: 100%;
         max-width: 100%;
         margin: 0 auto 1.5rem;
-        padding-inline: .75rem;
+        padding-inline: 0.75rem;
         display: flex;
-        gap: .2rem;
+        gap: 0.35rem;
         overflow-x: auto;
         box-sizing: border-box;
         scrollbar-width: none;
@@ -113,46 +302,33 @@ body .site-main .cast-info strong {
 
     body .site-main .detail-tabs-bar .tab-item {
         flex: 0 0 auto;
-        min-height: 52px;
-        padding: .8rem .85rem;
+        min-height: 48px;
+        padding: 0.75rem 0.95rem;
         line-height: 1.25;
         white-space: nowrap;
     }
 
-    body .site-main .account-workspace-nav > a {
-        min-width: 166px;
-        min-height: 56px;
-        white-space: nowrap;
-    }
-
-    body .site-main .account-workspace-nav > a strong { white-space: nowrap; }
-
     body .site-main .movie-card .card-title {
-        min-height: 4.05em;
-        -webkit-line-clamp: 3;
+        min-height: 2.8em;
+        font-size: 0.92rem;
+        line-height: 1.4;
     }
 
     body .site-main .cast-cards-row {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: .8rem;
+        gap: 0.8rem;
     }
 
-    body .site-main .cast-info { gap: .25rem; }
-
     body .site-main .cast-info strong {
+        font-size: 0.88rem;
         min-height: 2.7em;
-        display: -webkit-box;
-        overflow: hidden;
         line-height: 1.35;
-        white-space: normal;
-        overflow-wrap: anywhere;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2;
     }
 }
 
-@media (max-width: 400px) {
-    body .site-main .detail-main-title { font-size: clamp(3rem, 14vw, 4.2rem); }
-    body .site-main .auth-intro h1 { font-size: 3.2rem; }
-    body .site-main .editorial-page-head h1 { font-size: clamp(3.25rem, 15vw, 4.2rem); }
+@media (max-width: 480px) {
+    body .site-main .hero-title { font-size: 1.75rem; line-height: 1.25; }
+    body .site-main .detail-main-title { font-size: 1.7rem; line-height: 1.25; }
+    body .site-main .auth-intro h1 { font-size: 1.75rem; line-height: 1.25; }
+    body .site-main .editorial-page-head h1 { font-size: 1.85rem; line-height: 1.25; }
 }

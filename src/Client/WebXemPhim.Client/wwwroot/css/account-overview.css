@@ -52,7 +52,7 @@ body .site-main .account-overview-identity h2 { margin: 0 0 .4rem; font-size: cl
 body .site-main .account-overview-identity p { margin: 0; color: #bbc0c7; font-size: .88rem; overflow-wrap: anywhere; }
 body .site-main .account-session-state { margin-top: .65rem; display: inline-flex; align-items: center; gap: .5rem; color: #91d8ae; font-size: .78rem; }
 body .site-main .account-session-state i { width: 7px; height: 7px; border-radius: 50%; background: #67c590; }
-body .site-main .account-hero-edit { min-height: 46px; padding: .7rem 1.05rem; display: inline-flex; align-items: center; justify-content: center; gap: .6rem; border: 1px solid rgb(255 255 255 / 14%); border-radius: 8px; background: #ba2030; color: #fff; text-decoration: none; font-size: .82rem; font-weight: 650; white-space: nowrap; transition: background-color .18s; }
+body .site-main .account-hero-edit { min-height: 46px; padding: .7rem 1.05rem; display: inline-flex; align-items: center; justify-content: center; gap: .6rem; border: 1px solid rgb(255 255 255 / 14%); border-radius: 8px; background: #ba2030; color: #fff; text-decoration: none; font-size: .82rem; font-weight: 600; white-space: nowrap; transition: background-color .18s; }
 body .site-main .account-hero-edit:hover { background: #d02639; }
 body .site-main .account-overview-metrics { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .85rem; }
 body .site-main .account-overview-metrics > a { min-width: 0; min-height: 88px; padding: 1rem 1.15rem; display: grid; grid-template-columns: 24px minmax(0, 1fr) 16px; align-items: center; gap: 1rem; border: 1px solid #2b2c30; border-radius: 8px; color: #eeeef0; text-decoration: none; background: rgb(12 14 17 / 80%); transition: background-color .2s, border-color .2s; }
@@ -72,7 +72,7 @@ body .site-main .account-membership-main p { max-width: 34ch; margin: 0; color: 
 body .site-main .account-membership-feature dl { margin: .15rem 0; display: flex; flex-wrap: wrap; gap: 1rem 2rem; }
 body .site-main .account-membership-feature dl > div { display: grid; gap: .3rem; }
 body .site-main .account-membership-feature dt { color: #aaa49b; font-size: .73rem; }
-body .site-main .account-membership-feature dd { margin: 0; color: #eee4d5; font-size: .85rem; font-weight: 650; }
+body .site-main .account-membership-feature dd { margin: 0; color: #eee4d5; font-size: .85rem; font-weight: 600; }
 body .site-main .account-membership-feature .button { justify-self: start; min-height: 44px; margin-top: .4rem; border-radius: 8px; font-size: .83rem; }
 body .site-main .account-health { margin-top: 2rem; min-width: 0; padding: 1.5rem; border: 1px solid var(--line); border-radius: 10px; background: #0e1013; }
 body .site-main .account-health h2 { margin: 0 0 1rem; font-size: 1.2rem; line-height: 1.4; letter-spacing: -.025em; }

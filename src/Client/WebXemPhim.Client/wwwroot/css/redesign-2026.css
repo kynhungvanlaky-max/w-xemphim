@@ -103,7 +103,7 @@ body .navbar-left { gap: clamp(2rem, 4vw, 4rem); }
 body .cinema-brand-title {
     font-size: clamp(1.25rem, 1.8vw, 1.7rem);
     font-weight: 800;
-    letter-spacing: -.055em;
+    letter-spacing: -0.015em;
 }
 body .cinema-brand-title .brand-flow { color: var(--accent); }
 body .nav-links { gap: clamp(1.15rem, 2.6vw, 2.8rem); }
@@ -112,7 +112,7 @@ body .nav-links .nav-link {
     padding: 1.55rem 0 1.45rem;
     color: #b8b7b2;
     font-size: .89rem;
-    font-weight: 550;
+    font-weight: 500;
 }
 body .nav-links .nav-link::after {
     content: "";
@@ -174,11 +174,11 @@ body .site-main .hero-content-wrapper {
 body .site-main .hero-info-column { max-width: 760px; gap: 1rem; animation: cinema-rise .8s var(--ease) both; }
 body .site-main .hero-kicker { color: #d9d3c8; font-size: .72rem; letter-spacing: .34em; }
 body .site-main .hero-title {
-    max-width: 12ch;
+    max-width: 14ch;
     font-family: var(--font-display);
-    font-size: clamp(3.4rem, 5.7vw, 5.9rem);
-    line-height: 1.02;
-    letter-spacing: -.045em;
+    font-size: clamp(2.4rem, 4.5vw, 3.8rem);
+    line-height: 1.22;
+    letter-spacing: -0.015em;
     color: #e8dfce;
     text-shadow: 0 5px 35px rgb(0 0 0 / 78%);
 }
@@ -394,9 +394,9 @@ body .site-main .explore-search-box { position: relative; z-index: 1; }
 body .site-main .explore-kicker { color: #aaa69d; letter-spacing: .3em; }
 body .site-main .explore-heading {
     font-family: var(--font-display);
-    font-size: clamp(3.2rem, 6.5vw, 6rem);
-    line-height: .98;
-    letter-spacing: -.045em;
+    font-size: clamp(2.2rem, 4vw, 3.2rem);
+    line-height: 1.22;
+    letter-spacing: -0.015em;
 }
 body .site-main .explore-subheading { margin-top: 0.75rem; color: #aaa8a2; }
 body .site-main .explore-search-box { width: auto; max-width: 440px; }
@@ -449,9 +449,9 @@ body .site-main .poster-card-frame { border: 1px solid var(--line-strong); borde
 body .site-main .detail-main-title {
     max-width: 26ch;
     font-family: var(--font-display);
-    font-size: clamp(3rem, 4.8vw, 5.2rem);
-    line-height: 1.05;
-    letter-spacing: -.04em;
+    font-size: clamp(2rem, 3.8vw, 3.2rem);
+    line-height: 1.22;
+    letter-spacing: -0.015em;
     color: #e8dfce;
 }
 body .site-main .detail-quote-aside { display: none; }
@@ -503,7 +503,7 @@ body .site-main .sidebar-ep-badge,
 body .site-main .watch-select-pill,
 body .site-main .theater-control-btn { border-radius: var(--radius-control); }
 body .site-main .watch-ep-bar { margin-top: .9rem; padding: 1.4rem 0 0; border: 0; background: transparent; }
-body .site-main .watch-ep-title { font-size: clamp(1.8rem, 3vw, 3rem); letter-spacing: -.04em; }
+body .site-main .watch-ep-title { font-size: clamp(1.8rem, 3vw, 2.8rem); line-height: 1.25; letter-spacing: -0.012em; }
 
 /* Account hub */
 body .site-main .account-workspace {
@@ -567,7 +567,7 @@ body .site-main .account-workspace-nav > a {
     transition: color .2s, background-color .2s, border-color .2s;
 }
 body .site-main .account-workspace-nav > a > span { display: grid; }
-body .site-main .account-workspace-nav > a strong { color: inherit; font-size: .79rem; font-weight: 650; }
+body .site-main .account-workspace-nav > a strong { color: inherit; font-size: .79rem; font-weight: 600; }
 body .site-main .account-workspace-nav > a small { margin-top: .08rem; color: #666a70; font-size: .62rem; }
 body .site-main .account-workspace-nav > a:hover { color: #fff; background: rgb(255 255 255 / 3%); }
 body .site-main .account-workspace-nav > a.active { border-left-color: var(--accent); color: #fff; background: linear-gradient(90deg, rgb(211 25 32 / 18%), transparent 88%); }
@@ -601,7 +601,7 @@ body .site-main .account-workspace-head {
     border-bottom: 1px solid var(--line);
     background: linear-gradient(105deg, #101216, #0a0c0f 70%);
 }
-body .site-main .account-workspace-head h1 { margin: .35rem 0 .55rem; font-size: clamp(2.8rem, 5vw, 5.4rem); letter-spacing: -.055em; line-height: 1; }
+body .site-main .account-workspace-head h1 { margin: .35rem 0 .55rem; font-size: clamp(2rem, 3.6vw, 2.8rem); letter-spacing: -0.015em; line-height: 1.22; }
 body .site-main .account-workspace-head > div > p:last-child { max-width: 62ch; margin: 0; color: #96999e; line-height: 1.7; }
 body .site-main .account-workspace-status { flex: 0 0 auto; padding: .55rem .7rem; display: flex; align-items: center; gap: .5rem; border: 1px solid var(--line); color: #9c9fa4; font-size: .67rem; }
 body .site-main .account-workspace-status i { width: 6px; height: 6px; border-radius: 50%; background: #44b875; box-shadow: 0 0 0 4px rgb(68 184 117 / 10%); }
@@ -706,7 +706,7 @@ body .site-main .account-profile-hero {
 body .site-main .account-avatar-wrap { position: relative; width: 126px; height: 126px; }
 body .site-main .account-avatar-wrap img { width: 100%; height: 100%; object-fit: cover; border: 2px solid var(--amber); border-radius: 50%; }
 body .site-main .account-avatar-wrap > span { position: absolute; right: -3px; top: -3px; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--amber); color: #16120b; }
-body .site-main .account-identity h1 { margin: 0; font-size: clamp(2rem, 4vw, 3.2rem); letter-spacing: -.05em; }
+body .site-main .account-identity h1 { margin: 0; font-size: clamp(2rem, 3.8vw, 3rem); line-height: 1.22; letter-spacing: -0.015em; }
 body .site-main .account-identity p { margin: .2rem 0 .8rem; color: #b0b0ac; }
 body .site-main .account-vip-line { display: flex; align-items: center; gap: .45rem; color: var(--amber); }
 body .site-main .account-hero-quote { justify-self: end; max-width: 16ch; color: #b4afa6; font-family: var(--font-display); font-size: 1.35rem; font-style: italic; }
@@ -747,9 +747,9 @@ body .site-main .auth-intro {
     background: linear-gradient(0deg, rgb(5 6 7 / 97%), rgb(5 6 7 / 22%)), url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.png') center/cover;
 }
 body .site-main .auth-intro::after { background: linear-gradient(90deg, transparent, rgb(8 9 11 / 46%)); }
-body .site-main .auth-intro h1 { font-family: var(--font-display); font-size: clamp(3.4rem, 6vw, 6.5rem); line-height: 1; }
+body .site-main .auth-intro h1 { font-family: var(--font-display); font-size: clamp(2.2rem, 4vw, 3.2rem); line-height: 1.22; letter-spacing: -0.015em; }
 body .site-main .auth-panel { background: #0d0f12; border-left: 1px solid var(--line); }
-body .site-main .auth-panel h2 { font-size: clamp(2.6rem, 4vw, 4.5rem); }
+body .site-main .auth-panel h2 { font-size: clamp(1.8rem, 3vw, 2.4rem); line-height: 1.25; letter-spacing: -0.015em; }
 body .site-main .auth-quick-card { border-radius: var(--radius-control); background: #121419; }
 body .site-main .quick-chip { border-radius: 5px; }
 body .site-main .form-field input,
@@ -759,7 +759,7 @@ body .site-main .library-masthead {
     background: linear-gradient(90deg, rgb(7 8 10 / 97%), rgb(7 8 10 / 34%)), url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.png') center/cover;
 }
 body .site-main .library-masthead h1,
-body .site-main .editorial-page-head h1 { font-family: var(--font-display); font-size: clamp(3.8rem, 7vw, 7rem); line-height: .98; }
+body .site-main .editorial-page-head h1 { font-family: var(--font-display); font-size: clamp(2.2rem, 4vw, 3.2rem); line-height: 1.22; letter-spacing: -0.015em; }
 body .site-main .watchlist-header::before,
 body .site-main .account-header::before { background-image: url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.png'); }
 body .site-main .watchlist-stats-bar,
@@ -803,7 +803,7 @@ body .site-main .merged-history-head {
     justify-content: space-between;
     gap: 1rem;
 }
-body .site-main .merged-history-head h2 { margin: 0; font-size: clamp(1.6rem, 2.4vw, 2.25rem); letter-spacing: -.04em; }
+body .site-main .merged-history-head h2 { margin: 0; font-size: clamp(1.6rem, 2.4vw, 2.25rem); line-height: 1.25; letter-spacing: -0.012em; }
 body .site-main .merged-history-head p,
 body .site-main .merged-history-head > span { margin: .25rem 0 0; color: var(--muted); font-size: .76rem; }
 body .site-main .merged-history .history-list { border-top-color: var(--line); }
@@ -830,7 +830,7 @@ body .site-main .history-row { border-radius: var(--radius-control); }
 
 /* VIP */
 body .site-main .vip-hero { background: linear-gradient(90deg, rgb(8 9 11 / 96%), rgb(8 9 11 / 30%)), url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.png') center/cover; }
-body .site-main .vip-hero h1 { font-family: var(--font-display); letter-spacing: -.045em; }
+body .site-main .vip-hero h1 { font-family: var(--font-display); font-size: clamp(2rem, 3.8vw, 3rem); line-height: 1.22; letter-spacing: -0.015em; }
 body .site-main .vip-plan-card { border-radius: var(--radius-card); }
 
 /* Admin */
@@ -838,13 +838,13 @@ body .site-main .vip-plan-card { border-radius: var(--radius-card); }
 .admin-app-root .admin-stage-container { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
 .admin-app-root .admin-left-sidebar { width: 230px; background: #0a0c0f; border-color: var(--line); }
 .admin-app-root .sidebar-brand-block { border-color: var(--line); }
-.admin-app-root .brand-name { letter-spacing: -.04em; }
+.admin-app-root .brand-name { letter-spacing: 0.05em; }
 .admin-app-root .brand-tag { color: var(--muted); }
 .admin-app-root .sidebar-nav-menu .nav-btn { min-height: 48px; border-radius: 0; color: #aaa; }
 .admin-app-root .sidebar-nav-menu .nav-btn.active { background: linear-gradient(90deg, rgb(211 25 32 / 24%), transparent); box-shadow: inset 3px 0 var(--accent); }
 .admin-app-root .admin-main-stage { margin-left: 0; padding: 1.75rem clamp(1.25rem, 2vw, 2.5rem) 4rem; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 .admin-app-root .admin-topbar { padding-bottom: 1.25rem; border-bottom: 1px solid var(--line); margin-bottom: 1.75rem; position: relative; }
-.admin-app-root .topbar-title { font-family: var(--font-display); font-size: clamp(2rem, 3.2vw, 3.2rem); letter-spacing: -.04em; }
+.admin-app-root .topbar-title { font-family: var(--font-display); font-size: clamp(1.6rem, 2.5vw, 2.2rem); line-height: 1.25; letter-spacing: -0.015em; }
 .admin-app-root .topbar-search-pill,
 .admin-app-root .btn-add-movie { border-radius: var(--radius-control); }
 .admin-app-root .btn-add-movie { background: var(--accent); }

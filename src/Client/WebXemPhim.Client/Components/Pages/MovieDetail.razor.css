@@ -105,7 +105,7 @@
     font-weight: 900;
     letter-spacing: -0.015em;
     color: #ffffff;
-    line-height: 1.12;
+    line-height: 1.24;
     margin: 0;
     max-width: 26ch;
     text-shadow: 0 4px 24px rgba(0, 0, 0, 0.8);
@@ -1008,12 +1008,12 @@
 }
 
 .detail-main-title {
-    max-width: 18ch;
+    max-width: 22ch;
     color: var(--detail-ink);
-    font-size: clamp(2.8rem, 5.1vw, 5.6rem);
-    font-weight: 900;
-    line-height: 0.94;
-    letter-spacing: -0.045em;
+    font-size: clamp(2rem, 3.8vw, 3.2rem);
+    font-weight: 800;
+    line-height: 1.22;
+    letter-spacing: -0.015em;
     text-wrap: balance;
     text-shadow: 0 5px 30px rgba(0, 0, 0, 0.75);
 }
@@ -1021,9 +1021,9 @@
 .detail-original-title {
     margin-top: 0.65rem;
     color: rgba(245, 241, 232, 0.72);
-    font-family: Georgia, serif;
+    font-family: var(--font-display, "Be Vietnam Pro", sans-serif);
     font-size: clamp(1rem, 1.4vw, 1.3rem);
-    letter-spacing: 0.13em;
+    letter-spacing: 0.08em;
 }
 
 .detail-hero-synopsis {
@@ -1076,7 +1076,7 @@
     border: 1px solid rgba(255, 255, 255, 0.16);
     color: #e2e8f0;
     font-size: 0.82rem;
-    font-weight: 550;
+    font-weight: 500;
     line-height: 1.25;
     text-decoration: none;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1190,7 +1190,7 @@
 .section-sub-heading {
     color: var(--detail-ink);
     font-size: clamp(1.35rem, 2vw, 1.75rem);
-    letter-spacing: -0.025em;
+    letter-spacing: -0.012em;
 }
 
 .synopsis-block {
@@ -1400,8 +1400,8 @@
     }
 
     .detail-main-title {
-        font-size: clamp(2rem, 10vw, 3rem);
-        line-height: 0.98;
+        font-size: clamp(1.8rem, 8vw, 2.4rem);
+        line-height: 1.24;
     }
 
     .detail-original-title {

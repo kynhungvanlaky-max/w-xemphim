@@ -272,7 +272,7 @@
 .notification-popover-head { min-height: 80px; padding: 1rem 1.1rem .9rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--popup-line); }
 .notification-popover-head > div { display: grid; gap: .18rem; }
 .notification-popover-head span { color: var(--popup-muted); font-size: .59rem; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
-.notification-popover-head h2 { margin: 0; font-size: 1.1rem; letter-spacing: -.03em; }
+.notification-popover-head h2 { margin: 0; font-size: 1.1rem; line-height: 1.25; letter-spacing: -0.012em; }
 .notification-popover-head > strong { padding: .3rem .5rem; border: 1px solid rgb(224 27 47 / 25%); border-radius: 999px; color: #ff929d; background: rgb(224 27 47 / 8%); font-size: .58rem; }
 .notification-popover-head, .notification-popover-all { flex-shrink: 0; }
 .notification-popover-list { display: grid; }

@@ -1,5 +1,5 @@
-/* ============================================================
-   ReviewPanel — CinemaFlow Obsidian Theme
+﻿/* ============================================================
+   ReviewPanel â€” CinemaFlow Obsidian Theme
    ============================================================ */
 
 .reviews-section {
@@ -24,7 +24,7 @@
     gap: clamp(1.4rem, 2.5vw, 2.2rem);
     color: var(--r-text);
     width: 100%;
-    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    font-family: var(--font-body, "Be Vietnam Pro", sans-serif);
 }
 
 /* The page-level cinema theme adds a legacy 5rem review offset. The review
@@ -36,7 +36,7 @@
 }
 
 /* ==========================================================================
-   1. COMMAND CENTER — 3 Card Row
+   1. COMMAND CENTER â€” 3 Card Row
    ========================================================================== */
 .reviews-command-center {
     display: grid;
@@ -55,7 +55,7 @@
     overflow: hidden;
 }
 
-/* --- Card 1: Đánh giá cộng đồng --- */
+/* --- Card 1: ÄÃ¡nh giÃ¡ cá»™ng Ä‘á»“ng --- */
 .review-score-hero {
     display: grid;
     grid-template-columns: 1fr 140px;
@@ -88,9 +88,10 @@
 .review-score-lockup strong {
     color: var(--r-amber);
     font-size: clamp(2.8rem, 4.2vw, 3.8rem);
-    font-weight: 900;
-    letter-spacing: -0.04em;
-    line-height: 0.95;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
     text-shadow: 0 0 20px rgba(245, 158, 11, 0.35);
 }
 
@@ -136,7 +137,7 @@
 
 .caption-positive {
     color: #10b981;
-    font-weight: 750;
+    font-weight: 700;
 }
 
 /* Film mark right half */
@@ -151,7 +152,7 @@
 }
 
 .review-film-mark::before {
-    content: "🎞️";
+    content: "ðŸŽžï¸";
     position: absolute;
     top: 15%;
     right: 10%;
@@ -187,7 +188,7 @@
     border-radius: 1px;
 }
 
-/* --- Card 2: Cảm xúc khán giả --- */
+/* --- Card 2: Cáº£m xÃºc khÃ¡n giáº£ --- */
 .review-sentiment-panel {
     padding: clamp(1.2rem, 2vw, 1.55rem);
 }
@@ -253,12 +254,12 @@
 .sentiment-count {
     color: rgba(255, 255, 255, 0.55);
     font-size: 0.78rem;
-    font-weight: 650;
+    font-weight: 600;
     text-align: right;
     white-space: nowrap;
 }
 
-/* --- Card 3: Viết cảm nhận --- */
+/* --- Card 3: Viáº¿t cáº£m nháº­n --- */
 .review-action-panel {
     padding: clamp(1.2rem, 2vw, 1.55rem);
     display: flex;
@@ -357,14 +358,14 @@
     flex-direction: column;
     text-align: right;
     font-size: 0.58rem;
-    font-weight: 850;
+    font-weight: 800;
     letter-spacing: 0.2em;
     line-height: 1.35;
     color: var(--r-muted);
 }
 
 /* ==========================================================================
-   2. COMPOSER — Review Form (Logged In)
+   2. COMPOSER â€” Review Form (Logged In)
    ========================================================================== */
 .reviews-composer-card {
     padding: clamp(1.4rem, 2.8vw, 2rem);
@@ -411,7 +412,7 @@
     border-radius: 50%;
     color: #fff;
     font-size: 1.05rem;
-    font-weight: 850;
+    font-weight: 800;
     display: grid;
     place-items: center;
     background: linear-gradient(135deg, var(--r-crimson), var(--r-crimson-2));
@@ -442,7 +443,7 @@
     background: linear-gradient(135deg, var(--r-amber), #ffe0a3);
     border-radius: 999px;
     font-size: 0.68rem;
-    font-weight: 850;
+    font-weight: 800;
     line-height: 1;
 }
 
@@ -461,7 +462,7 @@
     background: rgba(255, 255, 255, 0.045);
     border-radius: 999px;
     font-size: 0.76rem;
-    font-weight: 750;
+    font-weight: 700;
     flex-shrink: 0;
     white-space: nowrap;
 }
@@ -488,7 +489,7 @@
     gap: 0.5rem;
     color: var(--r-text);
     font-size: 0.95rem;
-    font-weight: 750;
+    font-weight: 700;
 }
 
 .rating-spark-icon {
@@ -513,7 +514,7 @@
 }
 
 .score-sentiment-pill .pill-label {
-    font-weight: 850;
+    font-weight: 800;
 }
 
 .score-sentiment-pill .sentiment-score-badge,
@@ -602,7 +603,7 @@
 .cinema-star-item.active .star-number,
 .cinema-star-btn.active .star-number {
     color: #ffd58b;
-    font-weight: 850;
+    font-weight: 800;
 }
 
 /* Selected (the exact chosen score) */
@@ -671,7 +672,7 @@
 .quick-tags-label {
     font-size: 0.76rem;
     color: var(--r-muted);
-    font-weight: 650;
+    font-weight: 600;
 }
 
 .quick-chip {
@@ -759,7 +760,7 @@
     padding: 0.65rem 1.4rem;
     font: inherit;
     font-size: 0.88rem;
-    font-weight: 850;
+    font-weight: 800;
     color: #fff;
     border: 1px solid rgba(255, 255, 255, 0.15);
     background: linear-gradient(135deg, var(--r-crimson), var(--r-crimson-2));
@@ -782,7 +783,7 @@
     padding: 0.65rem 1.1rem;
     font: inherit;
     font-size: 0.85rem;
-    font-weight: 750;
+    font-weight: 700;
     color: #ff9aa3;
     border: 1px solid rgba(229, 9, 20, 0.3);
     background: rgba(229, 9, 20, 0.08);
@@ -800,7 +801,7 @@
     align-items: center;
     gap: 0.45rem;
     font-size: 0.82rem;
-    font-weight: 750;
+    font-weight: 700;
     padding: 0.45rem 0.85rem;
     border-radius: 999px;
 }
@@ -816,7 +817,7 @@
 }
 
 /* ==========================================================================
-   3. TWO COLUMN LAYOUT — Reviews Feed + Sidebar Quote
+   3. TWO COLUMN LAYOUT â€” Reviews Feed + Sidebar Quote
    ========================================================================== */
 .reviews-two-cols-layout {
     display: grid;
@@ -850,7 +851,7 @@
 .toolbar-heading {
     margin: 0;
     font-size: clamp(1.4rem, 2.2vw, 1.85rem);
-    font-weight: 850;
+    font-weight: 800;
     color: var(--r-text);
     letter-spacing: -0.025em;
 }
@@ -877,7 +878,7 @@
     color: var(--r-pill-text, rgba(255, 255, 255, 0.75));
     font: inherit;
     font-size: 0.85rem;
-    font-weight: 750;
+    font-weight: 700;
     cursor: pointer;
     transition: all 0.18s;
 }
@@ -900,7 +901,7 @@
     gap: 0.45rem;
     color: var(--r-muted);
     font-size: 0.85rem;
-    font-weight: 650;
+    font-weight: 600;
 }
 
 .sort-select-cinema {
@@ -909,7 +910,7 @@
     color: var(--r-select-text, #ffffff);
     font: inherit;
     font-size: 0.85rem;
-    font-weight: 750;
+    font-weight: 700;
     padding: 0.42rem 0.85rem;
     border-radius: 8px;
     outline: none;
@@ -968,7 +969,7 @@
 .teardrop-score-badge strong {
     color: var(--r-amber);
     font-size: 1.4rem;
-    font-weight: 850;
+    font-weight: 800;
     letter-spacing: -0.02em;
     line-height: 1;
 }
@@ -1031,7 +1032,7 @@
     background: rgba(255, 255, 255, 0.08);
     border-radius: 999px;
     font-size: 0.68rem;
-    font-weight: 750;
+    font-weight: 700;
     color: rgba(255, 255, 255, 0.7);
 }
 
@@ -1081,7 +1082,7 @@
     border: 1px solid rgba(245, 158, 11, 0.26);
     color: #ffd58b;
     font-size: 0.78rem;
-    font-weight: 750;
+    font-weight: 700;
 }
 
 .recommend-thumb {
@@ -1117,7 +1118,7 @@
     margin: 0;
     color: var(--r-soft);
     font-size: 0.78rem;
-    font-weight: 750;
+    font-weight: 700;
     letter-spacing: 0.18em;
     line-height: 1.85;
     text-transform: uppercase;
@@ -1150,7 +1151,7 @@
 .brand-sub-title {
     color: var(--r-muted);
     font-size: 0.72rem;
-    font-weight: 850;
+    font-weight: 800;
     letter-spacing: 0.22em;
     text-transform: uppercase;
 }
@@ -1209,7 +1210,7 @@
     border-radius: 999px;
     font: inherit;
     font-size: 0.85rem;
-    font-weight: 750;
+    font-weight: 700;
     cursor: pointer;
     transition: all 0.18s;
 }
@@ -1227,7 +1228,7 @@
 }
 
 /* ==========================================================================
-   5. REVIEW UX — trạng thái tải, biểu đồ thật, avatar chữ cái, menu của bạn
+   5. REVIEW UX â€” tráº¡ng thÃ¡i táº£i, biá»ƒu Ä‘á»“ tháº­t, avatar chá»¯ cÃ¡i, menu cá»§a báº¡n
    ========================================================================== */
 .reviews-skeleton {
     display: grid;
@@ -1237,7 +1238,7 @@
 .reviews-loading-note {
     color: var(--r-muted);
     font-size: 0.86rem;
-    font-weight: 650;
+    font-weight: 600;
     letter-spacing: 0.02em;
 }
 
@@ -1305,7 +1306,7 @@
     color: #fff;
     font: inherit;
     font-size: 0.85rem;
-    font-weight: 750;
+    font-weight: 700;
     transition: background 0.18s ease, transform 0.18s ease;
 }
 
@@ -1366,7 +1367,7 @@
 
 .dist-label {
     font-size: 0.62rem;
-    font-weight: 750;
+    font-weight: 700;
     letter-spacing: 0.02em;
 }
 
@@ -1441,7 +1442,7 @@
     color: var(--r-amber-light);
     font: inherit;
     font-size: 0.76rem;
-    font-weight: 750;
+    font-weight: 700;
 }
 
 .active-filter-chip:hover { background: rgba(245, 158, 11, 0.2); }
@@ -1460,7 +1461,7 @@
     background: linear-gradient(135deg, hsl(var(--avatar-hue, 12) 62% 42%), hsl(calc(var(--avatar-hue, 12) + 26) 58% 20%));
     color: #fff;
     font-size: 0.95rem;
-    font-weight: 850;
+    font-weight: 800;
     letter-spacing: 0.03em;
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
@@ -1599,7 +1600,7 @@
     color: #fff;
     font: inherit;
     font-size: 0.86rem;
-    font-weight: 780;
+    font-weight: 800;
     transition: background 0.18s ease, transform 0.18s ease;
 }
 
@@ -1690,7 +1691,7 @@
     color: var(--r-amber-light);
     font: inherit;
     font-size: 0.82rem;
-    font-weight: 750;
+    font-weight: 700;
     cursor: pointer;
     padding: 0 0.3rem;
     margin-left: 0.2rem;
@@ -1732,7 +1733,7 @@
     border: 1px solid rgba(239, 68, 68, 0.28);
     color: #fca5a5;
     font-size: 0.78rem;
-    font-weight: 750;
+    font-weight: 700;
 }
 
 .consider-icon {
@@ -1750,7 +1751,7 @@
     color: var(--r-muted);
     font: inherit;
     font-size: 0.78rem;
-    font-weight: 750;
+    font-weight: 700;
     cursor: pointer;
     transition: all 0.18s ease;
 }

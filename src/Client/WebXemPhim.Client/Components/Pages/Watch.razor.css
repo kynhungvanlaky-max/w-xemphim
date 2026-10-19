@@ -160,7 +160,7 @@
 .wv-select { display:none; }
 .wv-utility { display:none; }
 .wv-heading { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-top:20px; }
-.wv-heading h1 { font-size:clamp(24px,2.2vw,34px); font-weight:700; line-height:1.25; letter-spacing:-.035em; margin:0 0 8px; overflow-wrap:anywhere; }
+.wv-heading h1 { font-size:clamp(20px,2.2vw,30px); font-weight:700; line-height:1.25; letter-spacing:-0.015em; margin:0 0 8px; overflow-wrap:break-word; word-break:normal; }
 .wv-heading p { color:var(--wv-muted); font-size:15px; line-height:1.5; margin:0; }
 .wv-episode-nav { display:flex; gap:10px; flex-shrink:0; }
 .wv-button { display:inline-flex; gap:9px; align-items:center; justify-content:center; min-height:44px; padding:10px 16px; border:1px solid #3c4049; border-radius:8px; color:var(--wv-text); background:#252830; text-decoration:none; font:inherit; font-size:12px; white-space:nowrap; cursor:pointer; transition:background .2s,transform .2s; }
