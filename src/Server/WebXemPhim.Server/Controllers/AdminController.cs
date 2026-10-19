@@ -11,6 +11,7 @@ using WebXemPhim.Shared.Responses;
 
 namespace WebXemPhim.Server.Controllers;
 
+[NonController]
 [ApiController]
 [Authorize(Policy = "Admin")]
 [Route("api/[controller]")]
@@ -299,7 +300,20 @@ public sealed class AdminController(
 
         movie.Title = request.Title.Trim();
         movie.OriginalTitle = string.IsNullOrWhiteSpace(request.OriginalTitle) ? request.Title.Trim() : request.OriginalTitle.Trim();
-        if (!string.IsNullOrWhiteSpace(request.Slug)) movie.Slug = GenerateSlug(request.Slug);
+        if (!string.IsNullOrWhiteSpace(request.Slug))
+        {
+            var targetSlug = GenerateSlug(request.Slug);
+            if (string.IsNullOrWhiteSpace(targetSlug))
+            {
+                return BadRequest(ApiResponse<MovieDetailDto>.Fail("Đường dẫn tĩnh (slug) không hợp lệ."));
+            }
+            var slugExists = await context.Movies.AnyAsync(m => m.Id != id && m.Slug == targetSlug);
+            if (slugExists)
+            {
+                return Conflict(ApiResponse<MovieDetailDto>.Fail($"Đường dẫn tĩnh (slug) '{targetSlug}' đã tồn tại ở một phim khác."));
+            }
+            movie.Slug = targetSlug;
+        }
         movie.Overview = request.Overview.Trim();
         movie.PosterUrl = request.PosterUrl.Trim();
         movie.BackdropUrl = request.BackdropUrl.Trim();
@@ -347,7 +361,34 @@ public sealed class AdminController(
             }
         }
 
-        await context.SaveChangesAsync();
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? tx = null;
+        if (context.Database.IsRelational())
+        {
+            tx = await context.Database.BeginTransactionAsync();
+        }
+        try
+        {
+            await context.SaveChangesAsync();
+            if (tx != null) await tx.CommitAsync();
+        }
+        catch (DbUpdateException)
+        {
+            if (tx != null) await tx.RollbackAsync();
+            if (await context.Movies.AnyAsync(m => m.Id != id && m.Slug == movie.Slug))
+            {
+                return Conflict(ApiResponse<MovieDetailDto>.Fail($"Đường dẫn tĩnh (slug) '{movie.Slug}' đã tồn tại ở một phim khác."));
+            }
+            throw;
+        }
+        catch
+        {
+            if (tx != null) await tx.RollbackAsync();
+            throw;
+        }
+        finally
+        {
+            if (tx != null) await tx.DisposeAsync();
+        }
 
         var updated = await context.Movies
             .Include(m => m.MovieGenres).ThenInclude(mg => mg.Genre)
@@ -667,8 +708,23 @@ public sealed class AdminController(
             return NotFound(ApiResponse<bool>.Fail("Không tìm thấy đánh giá."));
         }
 
+        var movieId = review.MovieId;
         context.Reviews.Remove(review);
         await context.SaveChangesAsync();
+
+        var movieReviews = await context.Reviews
+            .Where(r => r.MovieId == movieId)
+            .ToListAsync();
+        var movie = await context.Movies.FindAsync(movieId);
+        if (movie is not null)
+        {
+            movie.VoteCount = movieReviews.Count;
+            movie.Rating = movieReviews.Count > 0
+                ? Math.Round(movieReviews.Average(r => (double)r.Rating), 1)
+                : 0;
+            await context.SaveChangesAsync();
+        }
+
         await LogAuditAsync(context, "DELETE_REVIEW", "Review", id.ToString(), $"Đã xóa đánh giá của người dùng {review.UserId}.");
         return Ok(ApiResponse<bool>.Ok(true, "Đã xóa đánh giá thành công."));
     }
@@ -791,62 +847,89 @@ public sealed class AdminController(
         var movies = await context.Movies.Where(m => request.MovieIds.Contains(m.Id)).ToListAsync();
         var count = 0;
 
-        switch (request.Action.ToLowerInvariant())
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? tx = null;
+        if (context.Database.IsRelational())
         {
-            case "delete":
-                context.Movies.RemoveRange(movies);
-                count = movies.Count;
-                await context.SaveChangesAsync();
-                await LogAuditAsync(context, "BULK_DELETE", "Movie", string.Join(",", request.MovieIds), $"Đã xóa {count} phim hàng loạt.");
-                break;
+            tx = await context.Database.BeginTransactionAsync();
+        }
 
-            case "set_trending":
-                foreach (var m in movies) m.IsTrending = true;
-                count = movies.Count;
-                await context.SaveChangesAsync();
-                await LogAuditAsync(context, "BULK_SET_TRENDING", "Movie", string.Join(",", request.MovieIds), $"Bật Thịnh hành cho {count} phim.");
-                break;
-
-            case "unset_trending":
-                foreach (var m in movies) m.IsTrending = false;
-                count = movies.Count;
-                await context.SaveChangesAsync();
-                await LogAuditAsync(context, "BULK_UNSET_TRENDING", "Movie", string.Join(",", request.MovieIds), $"Tắt Thịnh hành cho {count} phim.");
-                break;
-
-            case "set_featured":
-                foreach (var m in movies) m.IsFeatured = true;
-                count = movies.Count;
-                await context.SaveChangesAsync();
-                await LogAuditAsync(context, "BULK_SET_FEATURED", "Movie", string.Join(",", request.MovieIds), $"Bật Nổi bật cho {count} phim.");
-                break;
-
-            case "unset_featured":
-                foreach (var m in movies) m.IsFeatured = false;
-                count = movies.Count;
-                await context.SaveChangesAsync();
-                await LogAuditAsync(context, "BULK_UNSET_FEATURED", "Movie", string.Join(",", request.MovieIds), $"Tắt Nổi bật cho {count} phim.");
-                break;
-
-            case "change_genre":
-                if (request.TargetGenreId.HasValue && await context.Genres.AnyAsync(g => g.Id == request.TargetGenreId.Value))
-                {
-                    var gid = request.TargetGenreId.Value;
-                    foreach (var m in movies)
-                    {
-                        if (!await context.MovieGenres.AnyAsync(mg => mg.MovieId == m.Id && mg.GenreId == gid))
-                        {
-                            context.MovieGenres.Add(new MovieGenreEntity { MovieId = m.Id, GenreId = gid });
-                        }
-                    }
+        try
+        {
+            switch (request.Action.ToLowerInvariant())
+            {
+                case "delete":
+                    context.Movies.RemoveRange(movies);
                     count = movies.Count;
                     await context.SaveChangesAsync();
-                    await LogAuditAsync(context, "BULK_ADD_GENRE", "Movie", string.Join(",", request.MovieIds), $"Thêm thể loại ID {gid} cho {count} phim.");
-                }
-                break;
+                    await LogAuditAsync(context, "BULK_DELETE", "Movie", string.Join(",", request.MovieIds), $"Đã xóa {count} phim hàng loạt.");
+                    break;
 
-            default:
-                return BadRequest(ApiResponse<int>.Fail($"Hành động không hợp lệ: {request.Action}"));
+                case "set_trending":
+                    foreach (var m in movies) m.IsTrending = true;
+                    count = movies.Count;
+                    await context.SaveChangesAsync();
+                    await LogAuditAsync(context, "BULK_SET_TRENDING", "Movie", string.Join(",", request.MovieIds), $"Bật Thịnh hành cho {count} phim.");
+                    break;
+
+                case "unset_trending":
+                    foreach (var m in movies) m.IsTrending = false;
+                    count = movies.Count;
+                    await context.SaveChangesAsync();
+                    await LogAuditAsync(context, "BULK_UNSET_TRENDING", "Movie", string.Join(",", request.MovieIds), $"Tắt Thịnh hành cho {count} phim.");
+                    break;
+
+                case "set_featured":
+                    foreach (var m in movies) m.IsFeatured = true;
+                    count = movies.Count;
+                    await context.SaveChangesAsync();
+                    await LogAuditAsync(context, "BULK_SET_FEATURED", "Movie", string.Join(",", request.MovieIds), $"Bật Nổi bật cho {count} phim.");
+                    break;
+
+                case "unset_featured":
+                    foreach (var m in movies) m.IsFeatured = false;
+                    count = movies.Count;
+                    await context.SaveChangesAsync();
+                    await LogAuditAsync(context, "BULK_UNSET_FEATURED", "Movie", string.Join(",", request.MovieIds), $"Tắt Nổi bật cho {count} phim.");
+                    break;
+
+                case "change_genre":
+                    if (request.TargetGenreId.HasValue && await context.Genres.AnyAsync(g => g.Id == request.TargetGenreId.Value))
+                    {
+                        var gid = request.TargetGenreId.Value;
+                        var movieIds = movies.Select(m => m.Id).ToList();
+                        var existingGenreMovieIds = (await context.MovieGenres
+                            .Where(mg => movieIds.Contains(mg.MovieId) && mg.GenreId == gid)
+                            .Select(mg => mg.MovieId)
+                            .ToListAsync())
+                            .ToHashSet();
+
+                        foreach (var m in movies)
+                        {
+                            if (!existingGenreMovieIds.Contains(m.Id))
+                            {
+                                context.MovieGenres.Add(new MovieGenreEntity { MovieId = m.Id, GenreId = gid });
+                            }
+                        }
+                        count = movies.Count;
+                        await context.SaveChangesAsync();
+                        await LogAuditAsync(context, "BULK_ADD_GENRE", "Movie", string.Join(",", request.MovieIds), $"Thêm thể loại ID {gid} cho {count} phim.");
+                    }
+                    break;
+
+                default:
+                    return BadRequest(ApiResponse<int>.Fail($"Hành động không hợp lệ: {request.Action}"));
+            }
+
+            if (tx != null) await tx.CommitAsync();
+        }
+        catch
+        {
+            if (tx != null) await tx.RollbackAsync();
+            throw;
+        }
+        finally
+        {
+            if (tx != null) await tx.DisposeAsync();
         }
 
         return Ok(ApiResponse<int>.Ok(count, $"Đã hoàn tất thao tác '{request.Action}' trên {count} phim."));
@@ -922,17 +1005,14 @@ public sealed class AdminController(
             CurrentEpisode = source.CurrentEpisode
         };
 
-        context.Movies.Add(cloned);
-        await context.SaveChangesAsync();
-
         foreach (var mg in source.MovieGenres)
         {
-            context.MovieGenres.Add(new MovieGenreEntity { MovieId = cloned.Id, GenreId = mg.GenreId });
+            cloned.MovieGenres.Add(new MovieGenreEntity { GenreId = mg.GenreId });
         }
 
         foreach (var cm in source.CastMembers)
         {
-            context.CastMembers.Add(new CastMemberEntity { MovieId = cloned.Id, Position = cm.Position, Name = cm.Name });
+            cloned.CastMembers.Add(new CastMemberEntity { Position = cm.Position, Name = cm.Name });
         }
 
         if (request.CopyEpisodes)
@@ -941,21 +1021,17 @@ public sealed class AdminController(
             {
                 var newEp = new EpisodeEntity
                 {
-                    MovieId = cloned.Id,
                     EpisodeNumber = ep.EpisodeNumber,
                     Title = ep.Title,
                     DurationMinutes = ep.DurationMinutes,
                     ThumbnailUrl = ep.ThumbnailUrl,
                     Overview = ep.Overview
                 };
-                context.Episodes.Add(newEp);
-                await context.SaveChangesAsync();
 
                 foreach (var str in ep.Streams)
                 {
-                    context.StreamSources.Add(new StreamSourceEntity
+                    newEp.Streams.Add(new StreamSourceEntity
                     {
-                        EpisodeId = newEp.Id,
                         Position = str.Position,
                         ServerName = str.ServerName,
                         ServerType = str.ServerType,
@@ -963,11 +1039,32 @@ public sealed class AdminController(
                         StreamUrl = str.StreamUrl
                     });
                 }
+                cloned.Episodes.Add(newEp);
             }
         }
 
-        await context.SaveChangesAsync();
-        await LogAuditAsync(context, "CLONE_MOVIE", "Movie", cloned.Id.ToString(), $"Nhân bản phim '{source.Title}' thành '{cloned.Title}'.");
+        context.Movies.Add(cloned);
+
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? tx = null;
+        if (context.Database.IsRelational())
+        {
+            tx = await context.Database.BeginTransactionAsync();
+        }
+        try
+        {
+            await context.SaveChangesAsync();
+            await LogAuditAsync(context, "CLONE_MOVIE", "Movie", cloned.Id.ToString(), $"Nhân bản phim '{source.Title}' thành '{cloned.Title}'.");
+            if (tx != null) await tx.CommitAsync();
+        }
+        catch
+        {
+            if (tx != null) await tx.RollbackAsync();
+            throw;
+        }
+        finally
+        {
+            if (tx != null) await tx.DisposeAsync();
+        }
 
         var created = await context.Movies
             .Include(m => m.MovieGenres).ThenInclude(mg => mg.Genre)
@@ -1145,10 +1242,16 @@ public sealed class AdminController(
         var movie = await context.Movies.FindAsync(request.MovieId);
         if (movie is null) return NotFound(ApiResponse<int>.Fail("Không tìm thấy phim."));
 
+        var existingEpisodes = (await context.Episodes
+            .Where(e => e.MovieId == request.MovieId && e.EpisodeNumber >= request.StartEpisode && e.EpisodeNumber <= request.EndEpisode)
+            .Select(e => e.EpisodeNumber)
+            .ToListAsync())
+            .ToHashSet();
+
         var createdCount = 0;
         for (var epNum = request.StartEpisode; epNum <= request.EndEpisode; epNum++)
         {
-            if (await context.Episodes.AnyAsync(e => e.MovieId == request.MovieId && e.EpisodeNumber == epNum))
+            if (existingEpisodes.Contains(epNum))
             {
                 continue;
             }
@@ -1165,26 +1268,43 @@ public sealed class AdminController(
                 ThumbnailUrl = movie.BackdropUrl,
                 Overview = $"Diễn biến kịch tính của {title}."
             };
-            context.Episodes.Add(episode);
-            await context.SaveChangesAsync();
 
-            context.StreamSources.Add(new StreamSourceEntity
+            episode.Streams.Add(new StreamSourceEntity
             {
-                EpisodeId = episode.Id,
                 Position = 1,
                 ServerName = request.ServerName,
                 ServerType = request.ServerType,
                 Quality = request.Quality,
                 StreamUrl = streamUrl
             });
+
+            context.Episodes.Add(episode);
             createdCount++;
         }
 
         if (request.EndEpisode > movie.TotalEpisodes) movie.TotalEpisodes = request.EndEpisode;
         if (request.EndEpisode > movie.CurrentEpisode) movie.CurrentEpisode = request.EndEpisode;
 
-        await context.SaveChangesAsync();
-        await LogAuditAsync(context, "BATCH_GENERATE_EPISODES", "Movie", request.MovieId.ToString(), $"Tạo tự động {createdCount} tập cho phim '{movie.Title}'.");
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? tx = null;
+        if (context.Database.IsRelational())
+        {
+            tx = await context.Database.BeginTransactionAsync();
+        }
+        try
+        {
+            await context.SaveChangesAsync();
+            await LogAuditAsync(context, "BATCH_GENERATE_EPISODES", "Movie", request.MovieId.ToString(), $"Tạo tự động {createdCount} tập cho phim '{movie.Title}'.");
+            if (tx != null) await tx.CommitAsync();
+        }
+        catch
+        {
+            if (tx != null) await tx.RollbackAsync();
+            throw;
+        }
+        finally
+        {
+            if (tx != null) await tx.DisposeAsync();
+        }
 
         return Ok(ApiResponse<int>.Ok(createdCount, $"Đã tạo tự động thành công {createdCount} tập phim mới."));
     }
@@ -1441,13 +1561,14 @@ public sealed class AdminController(
             payment.Note = request.Note.Trim();
         }
 
-        var extendDays = payment.PlanId switch
+        var plan = await context.VipPlans.FindAsync(payment.PlanId);
+        var extendDays = plan?.DurationDays ?? (payment.PlanId switch
         {
             "vip-365" => 365,
             "vip-180" => 180,
             "vip-90" => 90,
             _ => 30
-        };
+        });
 
         var user = payment.User;
         if (user is not null)
@@ -1460,8 +1581,31 @@ public sealed class AdminController(
             payment.VipExpiresAtUtc = user.VipExpiresAtUtc;
         }
 
-        await context.SaveChangesAsync();
-        await LogAuditAsync(context, "APPROVE_PAYMENT", "Payment", payment.OrderCode, $"Duyệt thanh toán thủ công cho đơn '{payment.OrderCode}', mã GD: {request.TransactionReference}.");
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? tx = null;
+        if (context.Database.IsRelational())
+        {
+            tx = await context.Database.BeginTransactionAsync();
+        }
+        try
+        {
+            await context.SaveChangesAsync();
+            await LogAuditAsync(context, "APPROVE_PAYMENT", "Payment", payment.OrderCode, $"Duyệt thanh toán thủ công cho đơn '{payment.OrderCode}', mã GD: {request.TransactionReference}.");
+            if (tx != null) await tx.CommitAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (tx != null) await tx.RollbackAsync();
+            return BadRequest(ApiResponse<PaymentDto>.Fail("Đơn hàng này đã được xử lý hoặc thanh toán trước đó."));
+        }
+        catch
+        {
+            if (tx != null) await tx.RollbackAsync();
+            throw;
+        }
+        finally
+        {
+            if (tx != null) await tx.DisposeAsync();
+        }
 
         var dto = new PaymentDto
         {

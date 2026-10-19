@@ -43,7 +43,7 @@ public sealed class ApiIntegrationTests : IClassFixture<TestApiFactory>, IDispos
         Assert.True(response.Success);
         Assert.Null(response.Message);
         Assert.NotNull(response.Data);
-        Assert.Equal(MockMovieDatabase.Movies.Count, response.Data.TotalItems);
+        Assert.Equal(DatabaseSeeder.CatalogMovies.Count, response.Data.TotalItems);
         Assert.Equal(18, response.Data.Items.Count);
         Assert.Equal(1, response.Data.Page);
         Assert.Equal(18, response.Data.PageSize);
@@ -258,7 +258,18 @@ public sealed class ApiIntegrationTests : IClassFixture<TestApiFactory>, IDispos
 
         Assert.Equal(movieId, response.Data!.MovieId);
         Assert.NotEmpty(response.Data.Streams);
-        Assert.All(response.Data.Streams, stream => Assert.NotEmpty(stream.StreamUrl));
+        // Standard streams should be available to anonymous users
+        var standardStreams = response.Data.Streams
+            .Where(s => s.ServerType != StreamServerType.VipFastServer && (string.IsNullOrEmpty(s.Quality) || !s.Quality.Contains("4K")))
+            .ToList();
+        Assert.NotEmpty(standardStreams);
+        Assert.All(standardStreams, stream => Assert.NotEmpty(stream.StreamUrl));
+
+        // VIP streams and 4K streams should be gated (empty StreamUrl) for non-VIP callers
+        var vipStreams = response.Data.Streams
+            .Where(s => s.ServerType == StreamServerType.VipFastServer || (!string.IsNullOrEmpty(s.Quality) && s.Quality.Contains("4K")))
+            .ToList();
+        Assert.All(vipStreams, stream => Assert.Empty(stream.StreamUrl));
     }
 
     [Theory]

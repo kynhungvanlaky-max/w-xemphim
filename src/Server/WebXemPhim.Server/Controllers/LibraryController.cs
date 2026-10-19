@@ -110,6 +110,45 @@ public sealed class LibraryController(IDbContextFactory<AppDbContext> factory, T
         return Ok(ApiResponse<List<WatchProgressDto>>.Ok(result));
     }
 
+    [HttpGet("progress/{movieId:int}")]
+    public async Task<ActionResult<ApiResponse<WatchProgressDto?>>> GetProgress(int movieId)
+    {
+        await using var db = await factory.CreateDbContextAsync();
+        var p = await db.WatchProgress
+            .AsNoTracking()
+            .Include(p => p.Movie)
+            .FirstOrDefaultAsync(p => p.UserId == UserId && p.MovieId == movieId);
+
+        if (p is null)
+        {
+            return Ok(ApiResponse<WatchProgressDto?>.Ok(null));
+        }
+
+        var totalSec = p.DurationSeconds > 0 ? p.DurationSeconds : (p.Movie.DurationMinutes * 60);
+        if (totalSec <= 0) totalSec = 120 * 60;
+        var pct = Math.Clamp((int)Math.Round((double)p.ProgressSeconds / totalSec * 100), 1, 99);
+        var remainingSec = Math.Max(0, totalSec - p.ProgressSeconds);
+        var remainingMin = Math.Max(1, (int)Math.Ceiling(remainingSec / 60.0));
+
+        var dto = new WatchProgressDto
+        {
+            MovieId = p.MovieId,
+            MovieTitle = p.Movie.Title,
+            PosterUrl = p.Movie.PosterUrl,
+            BackdropUrl = p.Movie.BackdropUrl,
+            EpisodeNumber = p.EpisodeNumber,
+            EpisodeTitle = p.EpisodeNumber > 1 ? $"Tập {p.EpisodeNumber:00}" : (p.Movie.Type == Shared.Enums.MovieType.Series ? $"Tập {p.EpisodeNumber:00}" : "Bản đầy đủ"),
+            DurationMinutes = p.Movie.DurationMinutes,
+            ProgressSeconds = p.ProgressSeconds,
+            DurationSeconds = totalSec,
+            ProgressPercent = pct,
+            RemainingMinutes = remainingMin,
+            LastWatchedAt = new DateTimeOffset(p.LastWatchedAtUtc, TimeSpan.Zero)
+        };
+
+        return Ok(ApiResponse<WatchProgressDto?>.Ok(dto));
+    }
+
     [HttpPost("progress")]
     public async Task<ActionResult<ApiResponse<bool>>> UpdateProgress([FromBody] WebXemPhim.Shared.Requests.UpdateWatchProgressRequest request)
     {

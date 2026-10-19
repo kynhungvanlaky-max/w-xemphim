@@ -1,4 +1,5 @@
 @page "/movie/{Id:int}"
+@page "/movie/{Slug}"
 @using WebXemPhim.Shared.Models
 @using WebXemPhim.Shared.Enums
 @using WebXemPhim.Client.Components.Icons
@@ -8,6 +9,7 @@
 @inject WatchlistState Watchlist
 @inject AuthState Auth
 @inject NavigationManager Navigation
+@implements IDisposable
 
 <PageTitle>@DisplayTitle - CinemaFlow</PageTitle>
 
@@ -77,7 +79,7 @@
                 }
 
                 <div class="detail-cta-group">
-                    <a href="@($"/watch/{Id}")" class="btn-detail-play" title="Xem phim ngay">
+                    <a href="@($"/watch/{EffectiveMovieId}")" class="btn-detail-play" title="Xem phim ngay">
                         <CinemaIcon Name="CinemaIconName.Play" Size="16" Filled="true" />
                         <span>Xem phim</span>
                     </a>
@@ -191,16 +193,22 @@
         {
             <div class="episodes-tab-view">
                 <h2 class="section-sub-heading">Danh sách tập</h2>
-                <div class="episodes-simple-grid">
-                    @for (var ep = 1; ep <= (movie?.TotalEpisodes > 1 ? movie.TotalEpisodes : 12); ep++)
-                    {
-                        var epNum = ep;
-                        <a href="@($"/watch/{Id}?ep={epNum}")" class="episode-pill-link">
-                            <span>Tập @epNum.ToString("00")</span>
-                            <small>45 phút</small>
-                        </a>
-                    }
-                </div>
+                @if (movie?.Episodes is { Count: > 0 })
+                {
+                    <div class="episodes-simple-grid">
+                        @foreach (var ep in movie.Episodes.OrderBy(e => e.EpisodeNumber))
+                        {
+                            <a href="@($"/watch/{movie.Id}?ep={ep.EpisodeNumber}")" class="episode-pill-link">
+                                <span>Tập @ep.EpisodeNumber.ToString("00")@(string.IsNullOrWhiteSpace(ep.Title) ? "" : $": {ep.Title}")</span>
+                                <small>@ep.DurationMinutes phút</small>
+                            </a>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="episodes-empty-note">Chưa có danh sách tập cho phim này.</p>
+                }
             </div>
         }
         else if (activeTab == "trailer")
@@ -241,7 +249,7 @@
                 </div>
 
                 <div class="trailer-action-bar">
-                    <a href="@($"/watch/{Id}")" class="btn-trailer-watch-full" title="Xem phim bản đầy đủ">
+                    <a href="@($"/watch/{EffectiveMovieId}")" class="btn-trailer-watch-full" title="Xem phim bản đầy đủ">
                         <CinemaIcon Name="CinemaIconName.Play" Size="16" Filled="true" />
                         <span>Xem phim ngay</span>
                     </a>
@@ -258,7 +266,7 @@
         else if (activeTab == "reviews")
         {
             <div class="reviews-tab-view">
-                <ReviewPanel MovieId="@Id" />
+                <ReviewPanel MovieId="@EffectiveMovieId" />
             </div>
         }
         else
@@ -334,12 +342,15 @@
 
 @code {
     [Parameter] public int Id { get; set; }
+    [Parameter] public string? Slug { get; set; }
 
     private MovieDetailDto? movie;
     private string activeTab = "overview";
     private bool showLoginPrompt;
     private bool backdropFailed;
-    private bool isInWatchlist => Watchlist.IsInWatchlist(Id);
+    private bool disposed;
+    private int EffectiveMovieId => movie?.Id ?? (Id > 0 ? Id : 0);
+    private bool isInWatchlist => EffectiveMovieId > 0 && Watchlist.IsInWatchlist(EffectiveMovieId);
 
     private static readonly string[] CastImages =
     [
@@ -404,17 +415,81 @@
         }
     }
 
+    protected override void OnInitialized()
+    {
+        Watchlist.OnChange += HandleWatchlistChanged;
+        Auth.Changed += HandleAuthChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Auth.InitializeAsync();
+            if (Auth.IsAuthenticated)
+            {
+                await Watchlist.InitializeAsync();
+            }
+        }
+        catch
+        {
+            // Ignore during static prerendering
+        }
+    }
+
     protected override async Task OnParametersSetAsync()
     {
         backdropFailed = false;
         try
         {
-            movie = await ApiClient.GetMovieByIdAsync(Id);
+            if (!string.IsNullOrWhiteSpace(Slug))
+            {
+                movie = await ApiClient.GetMovieBySlugAsync(Slug);
+            }
+            else if (Id > 0)
+            {
+                movie = await ApiClient.GetMovieByIdAsync(Id);
+            }
+
+            if (Auth.IsAuthenticated && !Watchlist.IsInitialized)
+            {
+                await Watchlist.InitializeAsync();
+            }
         }
         catch
         {
             // Use defaults if not found
         }
+    }
+
+    private void HandleWatchlistChanged()
+    {
+        if (!disposed)
+        {
+            _ = InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void HandleAuthChanged()
+    {
+        if (!disposed)
+        {
+            _ = InvokeAsync(async () =>
+            {
+                if (Auth.IsAuthenticated)
+                {
+                    await Watchlist.InitializeAsync();
+                }
+                StateHasChanged();
+            });
+        }
+    }
+
+    public void Dispose()
+    {
+        disposed = true;
+        Watchlist.OnChange -= HandleWatchlistChanged;
+        Auth.Changed -= HandleAuthChanged;
     }
 
     private void HandleBackdropError()
@@ -454,6 +529,7 @@
     private void ConfirmLogin()
     {
         showLoginPrompt = false;
-        Navigation.NavigateTo($"/login?returnUrl=/movie/{Id}");
+        var returnTarget = !string.IsNullOrWhiteSpace(Slug) ? $"/movie/{Slug}" : $"/movie/{EffectiveMovieId}";
+        Navigation.NavigateTo($"/login?returnUrl={returnTarget}");
     }
 }

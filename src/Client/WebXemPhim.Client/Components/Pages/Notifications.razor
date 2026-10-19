@@ -2,6 +2,7 @@
 @inject AuthState Auth
 @inject IAccountApiClient Api
 @inject NavigationManager Nav
+@inject CinemaHubClient HubClient
 @using WebXemPhim.Shared.Models
 @using WebXemPhim.Client.Components.Common
 @using WebXemPhim.Client.Components.Icons
@@ -230,6 +231,14 @@
     protected override void OnInitialized()
     {
         Auth.OnChange += StateHasChanged;
+        HubClient.OnNotificationReceived += HandleLiveNotification;
+    }
+
+    private void HandleLiveNotification(NotificationDto notification)
+    {
+        if (notification == null) return;
+        notices = [notification, .. notices];
+        _ = InvokeAsync(StateHasChanged);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -240,6 +249,7 @@
             if (Auth.IsAuthenticated)
             {
                 await LoadNotificationsAsync();
+                _ = HubClient.StartAsync();
             }
             else
             {
@@ -326,5 +336,6 @@
     public void Dispose()
     {
         Auth.OnChange -= StateHasChanged;
+        HubClient.OnNotificationReceived -= HandleLiveNotification;
     }
 }

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Shared.Models;
@@ -36,7 +37,14 @@ public sealed class Phase2_RateLimitingTests(TestApiFactory factory) : IClassFix
     [Fact]
     public async Task Phase2_CouponBruteForceIsThrottled()
     {
-        using var client = factory.CreateClient();
+        using var throttledFactory = factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Security:RateLimits:CouponsPerMinute"] = "10"
+            }));
+        });
+        using var client = throttledFactory.CreateClient();
         var auth = await RegisterUser(client);
         SetBearer(client, auth.AccessToken);
 

@@ -63,6 +63,9 @@ public sealed class ReviewService(
         review.Comment = request.Comment.Trim();
         review.UpdatedAtUtc = now;
         await context.SaveChangesAsync();
+
+        await RecalculateMovieRatingAsync(context, movieId);
+
         return MapReview(review);
     }
 
@@ -73,7 +76,27 @@ public sealed class ReviewService(
         if (review is null) return false;
         context.Reviews.Remove(review);
         await context.SaveChangesAsync();
+
+        await RecalculateMovieRatingAsync(context, movieId);
+
         return true;
+    }
+
+    private static async Task RecalculateMovieRatingAsync(AppDbContext context, int movieId)
+    {
+        var movie = await context.Movies.FindAsync(movieId);
+        if (movie is null) return;
+
+        var movieReviews = await context.Reviews
+            .Where(r => r.MovieId == movieId)
+            .ToListAsync();
+
+        movie.VoteCount = movieReviews.Count;
+        movie.Rating = movieReviews.Count > 0
+            ? Math.Round(movieReviews.Average(r => (double)r.Rating), 1)
+            : 0;
+
+        await context.SaveChangesAsync();
     }
 
     private static ReviewDto MapReview(ReviewEntity review) => new()

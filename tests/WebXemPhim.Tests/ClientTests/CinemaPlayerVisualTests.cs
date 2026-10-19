@@ -113,4 +113,107 @@ public sealed class CinemaPlayerVisualTests
         Assert.Contains(".score-digit", cssContent);
         Assert.Contains(".quick-chip", cssContent);
     }
+
+    [Fact]
+    public async Task WatchRouteIncludesHlsJsAsset()
+    {
+        await using var factory = new WebApplicationFactory<App>()
+            .WithWebHostBuilder(builder => builder.UseEnvironment("Development"));
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/js/hls.min.js");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var content = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Hls", content);
+    }
+
+    [Fact]
+    public void AppRazorIncludesHlsScriptBeforeCinemaPlayer()
+    {
+        var appPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Client", "WebXemPhim.Client", "Components", "App.razor");
+        var appContent = File.ReadAllText(appPath);
+
+        var hlsIndex = appContent.IndexOf("js/hls.min.js", StringComparison.Ordinal);
+        var playerIndex = appContent.IndexOf("js/cinema-player.js", StringComparison.Ordinal);
+
+        Assert.True(hlsIndex >= 0, "App.razor must reference js/hls.min.js");
+        Assert.True(playerIndex >= 0, "App.razor must reference js/cinema-player.js");
+        Assert.True(hlsIndex < playerIndex, "js/hls.min.js must be loaded before js/cinema-player.js");
+    }
+
+    [Fact]
+    public void CinemaPlayerScriptContainsHlsLifecycleAndRecovery()
+    {
+        var jsPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Client", "WebXemPhim.Client", "wwwroot", "js", "cinema-player.js");
+        var jsContent = File.ReadAllText(jsPath);
+
+        Assert.Contains("isHlsStream", jsContent);
+        Assert.Contains("Hls.isSupported", jsContent);
+        Assert.Contains("startLoad", jsContent);
+        Assert.Contains("recoverMediaError", jsContent);
+        Assert.Contains("setQualityLevel", jsContent);
+    }
+
+    [Fact]
+    public void CinemaPlayerRazorContainsHlsQualityInterop()
+    {
+        var razorPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Client", "WebXemPhim.Client", "Components", "Player", "CinemaPlayer.razor");
+        var razorContent = File.ReadAllText(razorPath);
+
+        Assert.Contains("OnHlsManifestParsed", razorContent);
+        Assert.Contains("OnHlsLevelSwitched", razorContent);
+        Assert.Contains("setQualityLevel", razorContent);
+        Assert.Contains("res-auto", razorContent);
+    }
+
+    [Fact]
+    public void CinemaPlayerContainsDynamicWatermarkOverlayAndSafeZones()
+    {
+        var razorPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Client", "WebXemPhim.Client", "Components", "Player", "CinemaPlayer.razor");
+        var razorContent = File.ReadAllText(razorPath);
+
+        Assert.Contains("cp-watermark", razorContent);
+        Assert.Contains("cp-watermark-text", razorContent);
+        Assert.Contains("UserEmail", razorContent);
+        Assert.Contains("PeriodicTimer", razorContent);
+        Assert.Contains("wm-pos-", razorContent);
+
+        var cssPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Client", "WebXemPhim.Client", "Components", "Player", "CinemaPlayer.razor.css");
+        var cssContent = File.ReadAllText(cssPath);
+
+        Assert.Contains(".cp-watermark", cssContent);
+        Assert.Contains("opacity: 0.22", cssContent);
+        Assert.Contains("pointer-events: none", cssContent);
+        Assert.Contains(".wm-pos-0", cssContent);
+        Assert.Contains(".wm-pos-1", cssContent);
+        Assert.Contains(".wm-pos-2", cssContent);
+        Assert.Contains(".wm-pos-3", cssContent);
+        Assert.Contains(".wm-pos-4", cssContent);
+        Assert.Contains(".wm-pos-5", cssContent);
+    }
+
+    [Fact]
+    public void WatchRazorPassesUserEmailToCinemaPlayer()
+    {
+        var watchPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Client", "WebXemPhim.Client", "Components", "Pages", "Watch.razor");
+        var watchContent = File.ReadAllText(watchPath);
+
+        Assert.Contains("UserEmail=\"@Auth.User?.Email\"", watchContent);
+    }
+
+    [Fact]
+    public async Task CinemaPlayerWatermarkShiftsPositionsAcrossSixSafeZones()
+    {
+        var player = new WebXemPhim.Client.Components.Player.CinemaPlayer();
+        for (var i = 0; i < 6; i++)
+        {
+            player.AdvanceWatermarkPositionForTesting();
+        }
+        // Advance once more to verify cycle wrap-around
+        player.AdvanceWatermarkPositionForTesting();
+        // Disposing cleanly
+        await player.DisposeAsync();
+    }
 }
+

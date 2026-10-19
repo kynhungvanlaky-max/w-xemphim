@@ -1,9 +1,16 @@
 // CinemaFlow - Premium Cinema Video Player Controller
 (function () {
+    function isHlsStream(url) {
+        if (!url || typeof url !== 'string') return false;
+        const clean = url.split('?')[0].split('#')[0].toLowerCase();
+        return clean.endsWith('.m3u8') || url.includes('.m3u8');
+    }
+
     window.CinemaPlayer = {
-        init: function (containerEl, videoEl) {
+        init: function (containerEl, videoEl, dotNetHelper) {
             if (!containerEl || !videoEl) return;
             window.CinemaPlayer.dispose(containerEl);
+            containerEl._cinemaDotNet = dotNetHelper;
 
             const controlsEl = containerEl.querySelector('.cinema-controls');
             const playBtn = containerEl.querySelector('.cp-play-btn');
@@ -31,6 +38,7 @@
             let bufferDebounce = null;
             let pulseTimer = null;
             let disposed = false;
+            let lastProgressReportTime = 0;
 
             function formatTime(seconds) {
                 if (isNaN(seconds) || seconds < 0) return '00:00';
@@ -70,6 +78,13 @@
                 if (progressHandle) progressHandle.style.left = pct + '%';
                 if (timeDisplay) {
                     timeDisplay.textContent = `${formatTime(cur)} / ${formatTime(dur)}`;
+                }
+
+                if (dotNetHelper && !videoEl.paused && Math.abs(cur - lastProgressReportTime) >= 10) {
+                    lastProgressReportTime = cur;
+                    try {
+                        dotNetHelper.invokeMethodAsync('OnPlayerProgress', cur);
+                    } catch (e) { }
                 }
 
                 // Update buffer
@@ -114,6 +129,11 @@
                 if (pauseIcon) pauseIcon.style.display = isPaused ? 'none' : 'block';
                 if (isPaused) {
                     showControls();
+                    if (dotNetHelper) {
+                        try {
+                            dotNetHelper.invokeMethodAsync('OnPlayerPause', videoEl.currentTime || 0);
+                        } catch (e) { }
+                    }
                 } else {
                     resetHideTimer();
                 }
@@ -390,9 +410,14 @@
                 clearTimeout(bufferDebounce);
                 clearTimeout(pulseTimer);
                 if (cancelScrub) cancelScrub();
+                if (containerEl._cinemaHls) {
+                    try { containerEl._cinemaHls.destroy(); } catch (_) {}
+                    containerEl._cinemaHls = null;
+                }
                 videoEl.pause();
                 videoEl.removeAttribute('src');
                 videoEl.load();
+                containerEl._cinemaDotNet = null;
             };
         },
         dispose: function (containerEl) {
@@ -400,8 +425,143 @@
                 containerEl._cinemaDispose();
                 delete containerEl._cinemaDispose;
             }
+            if (containerEl && containerEl._cinemaHls) {
+                try { containerEl._cinemaHls.destroy(); } catch (_) {}
+                delete containerEl._cinemaHls;
+            }
+        },
+        isHlsStream: isHlsStream,
+        loadSource: function (containerEl, videoEl, streamUrl, autoPlay, resumeSeconds) {
+            if (!containerEl || !videoEl) return;
+            const dotNetHelper = containerEl._cinemaDotNet;
+
+            if (containerEl._cinemaHls) {
+                try { containerEl._cinemaHls.destroy(); } catch (_) {}
+                containerEl._cinemaHls = null;
+            }
+
+            if (!streamUrl) {
+                videoEl.pause();
+                videoEl.removeAttribute('src');
+                videoEl.load();
+                return;
+            }
+
+            if (isHlsStream(streamUrl)) {
+                if (window.Hls && window.Hls.isSupported()) {
+                    const hls = new window.Hls({
+                        enableWorker: true,
+                        lowLatencyMode: true,
+                        backBufferLength: 90
+                    });
+                    containerEl._cinemaHls = hls;
+
+                    hls.attachMedia(videoEl);
+
+                    hls.on(window.Hls.Events.MEDIA_ATTACHED, function () {
+                        hls.loadSource(streamUrl);
+                    });
+
+                    hls.on(window.Hls.Events.MANIFEST_PARSED, function (event, data) {
+                        const rawLevels = data.levels || [];
+                        const levels = rawLevels.map((lvl, idx) => ({
+                            index: idx,
+                            bitrate: lvl.bitrate || 0,
+                            width: lvl.width || 0,
+                            height: lvl.height || 0,
+                            name: lvl.name || (lvl.height ? `${lvl.height}p` : `Level ${idx + 1}`)
+                        }));
+
+                        if (dotNetHelper) {
+                            try {
+                                dotNetHelper.invokeMethodAsync('OnHlsManifestParsed', levels);
+                            } catch (_) {}
+                        }
+
+                        if (resumeSeconds > 0) {
+                            videoEl.currentTime = resumeSeconds;
+                        }
+
+                        if (autoPlay) {
+                            videoEl.play().catch(() => {});
+                        }
+                    });
+
+                    hls.on(window.Hls.Events.LEVEL_SWITCHED, function (event, data) {
+                        if (dotNetHelper) {
+                            try {
+                                dotNetHelper.invokeMethodAsync('OnHlsLevelSwitched', data.level);
+                            } catch (_) {}
+                        }
+                    });
+
+                    hls.on(window.Hls.Events.ERROR, function (event, data) {
+                        if (!data.fatal) return;
+
+                        switch (data.type) {
+                            case window.Hls.ErrorTypes.NETWORK_ERROR:
+                                console.warn('[CinemaPlayer] HLS network error, attempting startLoad recovery...', data);
+                                hls.startLoad();
+                                break;
+                            case window.Hls.ErrorTypes.MEDIA_ERROR:
+                                console.warn('[CinemaPlayer] HLS media error, attempting recoverMediaError...', data);
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                console.error('[CinemaPlayer] Unrecoverable HLS fatal error:', data);
+                                try { hls.destroy(); } catch (_) {}
+                                containerEl._cinemaHls = null;
+                                if (dotNetHelper) {
+                                    try {
+                                        dotNetHelper.invokeMethodAsync('OnHlsFatalError', data.details || 'HLS fatal error');
+                                    } catch (_) {}
+                                }
+                                break;
+                        }
+                    });
+                } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+                    videoEl.src = streamUrl;
+                    const onLoaded = function () {
+                        videoEl.removeEventListener('loadedmetadata', onLoaded);
+                        if (resumeSeconds > 0) {
+                            videoEl.currentTime = resumeSeconds;
+                        }
+                        if (autoPlay) {
+                            videoEl.play().catch(() => {});
+                        }
+                    };
+                    videoEl.addEventListener('loadedmetadata', onLoaded);
+                    videoEl.load();
+                } else {
+                    videoEl.src = streamUrl;
+                    videoEl.load();
+                }
+            } else {
+                videoEl.src = streamUrl;
+                if (resumeSeconds > 0) {
+                    const onLoaded = function () {
+                        videoEl.removeEventListener('loadedmetadata', onLoaded);
+                        videoEl.currentTime = resumeSeconds;
+                        if (autoPlay) {
+                            videoEl.play().catch(() => {});
+                        }
+                    };
+                    videoEl.addEventListener('loadedmetadata', onLoaded);
+                } else if (autoPlay) {
+                    videoEl.play().catch(() => {});
+                }
+                videoEl.load();
+            }
+        },
+        setQualityLevel: function (containerEl, levelIndex) {
+            if (containerEl && containerEl._cinemaHls) {
+                containerEl._cinemaHls.currentLevel = levelIndex;
+                return true;
+            }
+            return false;
         },
         reload: function (videoEl) { videoEl.load(); },
+        pause: function (videoEl) { if (videoEl && !videoEl.paused) { videoEl.pause(); } },
         cursor: function (videoEl) { return { seconds:videoEl.currentTime || 0, playing:!videoEl.paused && !videoEl.ended }; },
         seekTo: function (videoEl, seconds) { if (Number.isFinite(videoEl.duration)) videoEl.currentTime = Math.max(0, Math.min(seconds, videoEl.duration)); },
         selectShareLink: function () { document.getElementById('watch-share-link')?.select(); },

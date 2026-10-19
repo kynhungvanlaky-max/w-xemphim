@@ -445,6 +445,7 @@
                 quality = settings.DefaultQuality;
                 autoplay = settings.AutoplayNext;
                 notifications = settings.NotifyNewEpisodes;
+                language = !string.IsNullOrWhiteSpace(settings.Language) ? settings.Language : "vi";
                 fullName = !string.IsNullOrWhiteSpace(settings.FullName) ? settings.FullName : (Auth.User?.FullName ?? "");
             }
             else if (Auth.User is not null)
@@ -521,6 +522,7 @@
                 DefaultQuality = quality,
                 AutoplayNext = autoplay,
                 NotifyNewEpisodes = notifications,
+                Language = language,
                 FullName = fullName
             };
 

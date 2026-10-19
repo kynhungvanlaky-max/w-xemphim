@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.DependencyInjection;
 using WebXemPhim.Server.Security;
 using WebXemPhim.Server.Services;
 using WebXemPhim.Shared.Models;
@@ -12,7 +13,12 @@ namespace WebXemPhim.Server.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(IAuthService authService, IPasswordResetEmailSender emailSender, ISecurityAuditService audit, ILogger<AuthController> logger) : ControllerBase
+public class AuthController(
+    IAuthService authService,
+    IPasswordResetEmailSender emailSender,
+    ISecurityAuditService audit,
+    ILogger<AuthController> logger,
+    IStreamSessionService? streamSessionService = null) : ControllerBase
 {
     [EnableRateLimiting("Authentication")]
     [HttpPost("register")]
@@ -24,6 +30,7 @@ public class AuthController(IAuthService authService, IPasswordResetEmailSender 
         if (result.Failure == AuthFailure.WeakPassword)
             return BadRequest(ApiResponse<AuthDto>.Fail("Mật khẩu này quá phổ biến hoặc dễ đoán. Vui lòng chọn mật khẩu mạnh hơn để bảo vệ tài khoản."));
 
+        await Audit(result.Data!.User.Id, "register.success", true, $"Email: {request.Email.Trim()}");
         return Ok(ApiResponse<AuthDto>.Ok(result.Data!, "Tạo tài khoản thành công."));
     }
 
@@ -33,8 +40,12 @@ public class AuthController(IAuthService authService, IPasswordResetEmailSender 
     {
         var result = await authService.LoginAsync(request);
         if (result.Data is null)
+        {
+            await Audit(null, "login.failed", false, $"Email: {request.Email.Trim()}");
             return Unauthorized(ApiResponse<AuthDto>.Fail("Email hoặc mật khẩu không chính xác."));
+        }
 
+        await Audit(result.Data.User.Id, "login.success", true, $"Email: {result.Data.User.Email}");
         return Ok(ApiResponse<AuthDto>.Ok(result.Data, result.Data.RequiresMfa ? "Vui lòng nhập mã xác thực hai lớp." : "Đăng nhập thành công."));
     }
 
@@ -86,6 +97,10 @@ public class AuthController(IAuthService authService, IPasswordResetEmailSender 
     {
         var success = await authService.ChangePasswordAsync(CurrentUserId, request, BearerToken);
         await Audit(CurrentUserId, "password.change", success);
+        if (success)
+        {
+            await Audit(CurrentUserId, "session.revoke_all", true, "Password changed");
+        }
         return success
             ? Ok(ApiResponse<bool>.Ok(true, "Mật khẩu đã được thay đổi thành công. Các phiên đăng nhập trên thiết bị khác đã được đăng xuất để bảo vệ bạn."))
             : BadRequest(ApiResponse<bool>.Fail("Mật khẩu hiện tại không chính xác hoặc mật khẩu mới không hợp lệ."));
@@ -100,8 +115,46 @@ public class AuthController(IAuthService authService, IPasswordResetEmailSender 
         {
             await authService.RevokeAccessTokenAsync(BearerToken);
         }
+
+        var streamService = streamSessionService ?? HttpContext?.RequestServices?.GetService<IStreamSessionService>();
+        if (streamService is not null)
+        {
+            try
+            {
+                await streamService.RevokeUserStreamsAsync(userId, "Tài khoản đã đăng xuất.");
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to revoke active stream leases for user {UserId} on logout.", userId);
+            }
+        }
+
         await Audit(userId, "session.logout", true);
         return Ok(ApiResponse<bool>.Ok(true, "Đã kết thúc phiên đăng nhập."));
+    }
+
+    [Authorize]
+    [HttpPost("revoke-all-sessions")]
+    [HttpPost("sessions/revoke-all")]
+    public async Task<ActionResult<ApiResponse<bool>>> RevokeAllSessions()
+    {
+        var userId = CurrentUserId;
+        var streamService = streamSessionService ?? HttpContext?.RequestServices?.GetService<IStreamSessionService>();
+        if (streamService is not null)
+        {
+            try
+            {
+                await streamService.RevokeUserStreamsAsync(userId, "Tất cả phiên đăng nhập đã bị thu hồi.");
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to revoke active stream leases for user {UserId} on revoke all sessions.", userId);
+            }
+        }
+
+        await authService.RevokeAllAccessTokensAsync(userId);
+        await Audit(userId, "session.revoke_all", true);
+        return Ok(ApiResponse<bool>.Ok(true, "Tất cả các phiên đăng nhập đã được thu hồi."));
     }
 
     [Authorize]

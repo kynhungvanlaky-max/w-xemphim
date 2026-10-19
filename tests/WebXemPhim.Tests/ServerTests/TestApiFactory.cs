@@ -23,6 +23,9 @@ public class TestApiFactory : WebApplicationFactory<ApiEntryPoint>
         {
             ["Security:RateLimits:ApiPerMinute"] = "10000",
             ["Security:RateLimits:AuthPerMinute"] = "10000",
+            ["Security:RateLimits:SubmissionsPerMinute"] = "10000",
+            ["Security:RateLimits:CouponsPerMinute"] = "10000",
+            ["Security:RateLimits:CheckoutPerMinute"] = "10000",
             ["Security:AllowedOrigins:0"] = "https://client.example.test"
         }));
         builder.ConfigureServices(services =>
@@ -42,7 +45,7 @@ public class TestApiFactory : WebApplicationFactory<ApiEntryPoint>
         using var scope = host.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext();
         context.Database.EnsureCreated();
-        DevelopmentDataSeeder.SeedCatalogAsync(context).GetAwaiter().GetResult();
+        DatabaseSeeder.SeedCatalogAsync(context).GetAwaiter().GetResult();
         return host;
     }
 }

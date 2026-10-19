@@ -1,9 +1,12 @@
+using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Shared.Enums;
 using WebXemPhim.Shared.Models;
 using WebXemPhim.Shared.Requests;
 using WebXemPhim.Shared.Responses;
+using WebXemPhim.Shared.Utils;
 
 namespace WebXemPhim.Server.Services;
 
@@ -83,14 +86,99 @@ public sealed class DatabaseMovieService(IDbContextFactory<AppDbContext> context
         await using var context = await contextFactory.CreateDbContextAsync();
         var query = context.Movies.AsNoTracking().AsQueryable();
 
+        List<int>? ftsMatchingIds = null;
         if (!string.IsNullOrWhiteSpace(request.Keyword))
         {
-            var keyword = request.Keyword.Trim().ToLower();
-            query = query.Where(movie =>
-                movie.Title.ToLower().Contains(keyword) ||
-                movie.OriginalTitle.ToLower().Contains(keyword) ||
-                movie.Director.ToLower().Contains(keyword) ||
-                movie.CastMembers.Any(member => member.Name.ToLower().Contains(keyword)));
+            var ftsHandled = false;
+            if (context.Database.IsSqlite())
+            {
+                try
+                {
+                    var ftsQuery = BuildFts5Query(request.Keyword);
+                    if (!string.IsNullOrWhiteSpace(ftsQuery))
+                    {
+                        var matchingIds = new List<int>();
+                        var conn = context.Database.GetDbConnection();
+                        var wasOpen = conn.State == System.Data.ConnectionState.Open;
+                        if (!wasOpen) await conn.OpenAsync();
+                        try
+                        {
+                            await using var cmd = conn.CreateCommand();
+                            cmd.CommandText = "SELECT movie_id FROM movies_fts WHERE movies_fts MATCH @query ORDER BY rank;";
+                            var pQuery = cmd.CreateParameter();
+                            pQuery.ParameterName = "@query";
+                            pQuery.Value = ftsQuery;
+                            cmd.Parameters.Add(pQuery);
+
+                            await using var reader = await cmd.ExecuteReaderAsync();
+                            while (await reader.ReadAsync())
+                            {
+                                matchingIds.Add(reader.GetInt32(0));
+                            }
+                        }
+                        finally
+                        {
+                            if (!wasOpen) await conn.CloseAsync();
+                        }
+
+                        if (matchingIds.Count > 0)
+                        {
+                            ftsMatchingIds = matchingIds;
+                            query = query.Where(movie => matchingIds.Contains(movie.Id));
+                        }
+                        else
+                        {
+                            return new PagedResult<MovieDto>
+                            {
+                                Items = [],
+                                TotalItems = 0,
+                                Page = Math.Max(request.Page, 1),
+                                PageSize = request.PageSize <= 0 ? 18 : request.PageSize
+                            };
+                        }
+                        ftsHandled = true;
+                    }
+                }
+                catch
+                {
+                    ftsHandled = false;
+                }
+            }
+
+            if (!ftsHandled)
+            {
+                var normKeyword = VietnameseTextNormalizer.NormalizeForSearch(request.Keyword);
+                var rawKeyword = request.Keyword.Trim().ToLowerInvariant();
+
+                if (!context.Database.IsRelational())
+                {
+                    var candidateMovies = await query.Include(m => m.CastMembers).ToListAsync();
+                    var matchedIds = candidateMovies.Where(movie =>
+                    {
+                        var titleNorm = VietnameseTextNormalizer.NormalizeForSearch(movie.Title);
+                        var origNorm = VietnameseTextNormalizer.NormalizeForSearch(movie.OriginalTitle);
+                        var dirNorm = VietnameseTextNormalizer.NormalizeForSearch(movie.Director);
+                        var castNorm = string.Join(" ", movie.CastMembers.Select(c => VietnameseTextNormalizer.NormalizeForSearch(c.Name)));
+
+                        return titleNorm.Contains(normKeyword) ||
+                               origNorm.Contains(normKeyword) ||
+                               dirNorm.Contains(normKeyword) ||
+                               castNorm.Contains(normKeyword) ||
+                               (movie.Title != null && movie.Title.ToLowerInvariant().Contains(rawKeyword)) ||
+                               (movie.OriginalTitle != null && movie.OriginalTitle.ToLowerInvariant().Contains(rawKeyword));
+                    }).Select(m => m.Id).ToList();
+
+                    query = query.Where(m => matchedIds.Contains(m.Id));
+                }
+                else
+                {
+                    query = query.Where(movie =>
+                        movie.Title.ToLower().Contains(rawKeyword) ||
+                        movie.OriginalTitle.ToLower().Contains(rawKeyword) ||
+                        movie.Director.ToLower().Contains(rawKeyword) ||
+                        movie.CastMembers.Any(member => member.Name.ToLower().Contains(rawKeyword)));
+                }
+            }
         }
         var genres = request.ResolveGenres();
         var countries = request.ResolveCountries();
@@ -100,8 +188,9 @@ public sealed class DatabaseMovieService(IDbContextFactory<AppDbContext> context
         // then compare their exact stored values inside the database query.
         if (genres.Length > 0)
         {
-            var available = await context.Movies.SelectMany(movie => movie.MovieGenres.Select(item => item.Genre.Name)).Distinct().ToListAsync();
-            var matching = available.Where(name => genres.Contains(name.ToLowerInvariant())).ToArray();
+            var available = await context.Movies.SelectMany(movie => movie.MovieGenres.Select(item => new { item.Genre.Name, item.Genre.Slug })).Distinct().ToListAsync();
+            var matching = available.Where(g => genres.Contains(g.Name.ToLowerInvariant()) || genres.Contains(g.Slug.ToLowerInvariant()))
+                                    .Select(g => g.Name).ToArray();
             query = query.Where(movie => movie.MovieGenres.Any(item => matching.Contains(item.Genre.Name)));
         }
         if (countries.Length > 0)
@@ -113,6 +202,28 @@ public sealed class DatabaseMovieService(IDbContextFactory<AppDbContext> context
         if (years.Length > 0) query = query.Where(movie => years.Contains(movie.ReleaseYear));
         if (types.Length > 0) query = query.Where(movie => types.Contains(movie.Type));
 
+        var page = request.Page <= 0 ? 1 : request.Page;
+        var pageSize = request.PageSize <= 0 ? 18 : request.PageSize;
+        var totalItems = await query.CountAsync();
+
+        if (request.SortBy.Equals("relevance", StringComparison.OrdinalIgnoreCase) && ftsMatchingIds != null && ftsMatchingIds.Count > 0)
+        {
+            var allMatchedIds = await query.Select(m => m.Id).ToListAsync();
+            var orderedMatchedIds = ftsMatchingIds.Where(id => allMatchedIds.Contains(id)).ToList();
+            var pagedIds = orderedMatchedIds.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+            var pageMovies = await query.Include(movie => movie.MovieGenres).ThenInclude(item => item.Genre)
+                .Where(m => pagedIds.Contains(m.Id)).ToListAsync();
+            var sortedMovies = pageMovies.OrderBy(m => orderedMatchedIds.IndexOf(m.Id)).ToList();
+
+            return new PagedResult<MovieDto>
+            {
+                Items = sortedMovies.Select(MapSummary).ToList(),
+                TotalItems = totalItems,
+                Page = page,
+                PageSize = pageSize
+            };
+        }
+
         query = request.SortBy.ToLowerInvariant() switch
         {
             "rating" => query.OrderByDescending(movie => movie.Rating),
@@ -121,9 +232,6 @@ public sealed class DatabaseMovieService(IDbContextFactory<AppDbContext> context
             _ => query.OrderByDescending(movie => movie.IsTrending).ThenByDescending(movie => movie.Rating)
         };
 
-        var totalItems = await query.CountAsync();
-        var page = request.Page <= 0 ? 1 : request.Page;
-        var pageSize = request.PageSize <= 0 ? 18 : request.PageSize;
         var movies = await query.Include(movie => movie.MovieGenres).ThenInclude(item => item.Genre)
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
 
@@ -235,6 +343,68 @@ public sealed class DatabaseMovieService(IDbContextFactory<AppDbContext> context
                 }).ToList()
             }).ToList()
         };
+    }
+
+    public async Task<bool> IncrementViewCountAsync(int movieId)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync();
+        var movie = await context.Movies.FindAsync(movieId);
+        if (movie is null) return false;
+        movie.ViewCount++;
+        await context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<List<MovieDto>> SearchMoviesAsync(string keyword, int limit = 20)
+    {
+        if (string.IsNullOrWhiteSpace(keyword)) return [];
+        var result = await FilterMoviesAsync(new MovieFilterRequest
+        {
+            Keyword = keyword.Trim(),
+            SortBy = "relevance",
+            Page = 1,
+            PageSize = limit <= 0 ? 20 : limit
+        });
+        return result.Items;
+    }
+
+    public static string BuildFts5Query(string? keyword)
+    {
+        if (string.IsNullOrWhiteSpace(keyword)) return string.Empty;
+
+        var rawTokens = Regex.Matches(keyword, @"[\p{L}\p{N}]+")
+            .Select(m => m.Value.Trim())
+            .Where(t => t.Length > 0)
+            .ToList();
+
+        if (rawTokens.Count == 0) return string.Empty;
+
+        var normKeyword = VietnameseTextNormalizer.NormalizeForSearch(keyword);
+        var normTokens = Regex.Matches(normKeyword, @"[\p{L}\p{N}]+")
+            .Select(m => m.Value.Trim())
+            .Where(t => t.Length > 0)
+            .ToList();
+
+        var clauses = new List<string>();
+
+        var rawClause = string.Join(" ", rawTokens.Select(t => $"\"{t.Replace("\"", "\"\"")}\"*"));
+        if (!string.IsNullOrWhiteSpace(rawClause))
+        {
+            clauses.Add(rawClause);
+        }
+
+        if (normTokens.Count > 0)
+        {
+            var normClause = string.Join(" ", normTokens.Select(t => $"\"{t.Replace("\"", "\"\"")}\"*"));
+            if (!clauses.Contains(normClause, StringComparer.OrdinalIgnoreCase))
+            {
+                clauses.Add(normClause);
+            }
+        }
+
+        if (clauses.Count == 0) return string.Empty;
+        if (clauses.Count == 1) return clauses[0];
+        return $"({clauses[0]}) OR ({clauses[1]})";
     }
 }
 

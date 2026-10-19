@@ -1,5 +1,10 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using WebXemPhim.Server.Data;
+using WebXemPhim.Server.Security;
 using WebXemPhim.Server.Services;
+using WebXemPhim.Shared.Enums;
 using WebXemPhim.Shared.Models;
 using WebXemPhim.Shared.Requests;
 using WebXemPhim.Shared.Responses;
@@ -8,8 +13,12 @@ namespace WebXemPhim.Server.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class MoviesController(IMovieService movieService) : ControllerBase
+public class MoviesController(
+    IMovieService movieService,
+    IDbContextFactory<AppDbContext>? contextFactory = null,
+    IStreamUrlSigner? urlSigner = null) : ControllerBase
 {
+    private readonly IStreamUrlSigner _urlSigner = urlSigner ?? new StreamUrlSigner();
     [HttpGet("filter-options")]
     public async Task<ActionResult<ApiResponse<MovieFilterOptionsDto>>> FilterOptions() =>
         Ok(ApiResponse<MovieFilterOptionsDto>.Ok(await movieService.GetFilterOptionsAsync()));
@@ -58,6 +67,8 @@ public class MoviesController(IMovieService movieService) : ControllerBase
         if (movie == null)
             return NotFound(ApiResponse<MovieDetailDto>.Fail($"Không tìm thấy phim với ID: {id}"));
 
+        var isVip = await IsCallerVipAsync();
+        MaskVipStreams(movie, isVip);
         return Ok(ApiResponse<MovieDetailDto>.Ok(movie));
     }
 
@@ -68,7 +79,31 @@ public class MoviesController(IMovieService movieService) : ControllerBase
         if (movie == null)
             return NotFound(ApiResponse<MovieDetailDto>.Fail($"Không tìm thấy phim với slug: {slug}"));
 
+        var isVip = await IsCallerVipAsync();
+        MaskVipStreams(movie, isVip);
         return Ok(ApiResponse<MovieDetailDto>.Ok(movie));
+    }
+
+    [HttpPost("{id:int}/view")]
+    public async Task<ActionResult<ApiResponse<bool>>> IncrementView(int id)
+    {
+        if (contextFactory is not null)
+        {
+            await using var context = await contextFactory.CreateDbContextAsync();
+            var movie = await context.Movies.FindAsync(id);
+            if (movie is null) return NotFound(ApiResponse<bool>.Fail($"Không tìm thấy phim với ID: {id}"));
+            movie.ViewCount++;
+            await context.SaveChangesAsync();
+            return Ok(ApiResponse<bool>.Ok(true));
+        }
+        else if (movieService is DatabaseMovieService dbService)
+        {
+            var success = await dbService.IncrementViewCountAsync(id);
+            if (!success) return NotFound(ApiResponse<bool>.Fail($"Không tìm thấy phim với ID: {id}"));
+            return Ok(ApiResponse<bool>.Ok(true));
+        }
+
+        return Ok(ApiResponse<bool>.Ok(true));
     }
 
     [HttpGet("{id:int}/similar")]
@@ -76,5 +111,65 @@ public class MoviesController(IMovieService movieService) : ControllerBase
     {
         var similar = await movieService.GetSimilarMoviesAsync(id, count);
         return Ok(ApiResponse<List<MovieDto>>.Ok(similar));
+    }
+
+    [HttpGet("search")]
+    public async Task<ActionResult<ApiResponse<List<MovieDto>>>> Search([FromQuery] string q, [FromQuery] int limit = 20)
+    {
+        var movies = await movieService.SearchMoviesAsync(q, limit);
+        return Ok(ApiResponse<List<MovieDto>>.Ok(movies));
+    }
+
+    private async Task<bool> IsCallerVipAsync()
+    {
+        if (User?.Identity?.IsAuthenticated != true) return false;
+        if (User.IsInRole("Admin")) return true;
+
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (Guid.TryParse(userIdClaim, out var userId) && contextFactory is not null)
+        {
+            await using var db = await contextFactory.CreateDbContextAsync();
+            var user = await db.Users.FindAsync(userId);
+            if (user is not null && user.Membership != MembershipTier.Free && (!user.VipExpiresAtUtc.HasValue || user.VipExpiresAtUtc.Value > DateTime.UtcNow))
+            {
+                return true;
+            }
+        }
+        else if (User.FindFirst("membership")?.Value is { } m && !m.Equals("Free", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private void MaskVipStreams(MovieDetailDto? movie, bool isVip)
+    {
+        if (movie?.Episodes is null) return;
+        var baseUrl = Request?.Host.HasValue == true
+            ? $"{Request.Scheme}://{Request.Host}"
+            : "http://localhost";
+        var clientIp = HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+
+        foreach (var ep in movie.Episodes)
+        {
+            foreach (var s in ep.Streams)
+            {
+                var isVipStream = s.ServerType == StreamServerType.VipFastServer ||
+                    (!string.IsNullOrEmpty(s.Quality) && s.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase));
+
+                if (isVipStream)
+                {
+                    if (isVip)
+                    {
+                        s.StreamUrl = _urlSigner.GeneratePlaybackUrl(baseUrl, s.EpisodeId, s.Position, clientIp);
+                    }
+                    else
+                    {
+                        s.StreamUrl = string.Empty;
+                    }
+                }
+            }
+        }
     }
 }

@@ -41,6 +41,7 @@ public interface IAuthService
     Task<MfaRecoveryCodesDto?> EnableMfaAsync(Guid userId, string code, string currentAccessToken);
     Task<bool> DisableMfaAsync(Guid userId, string currentPassword, string code);
     Task<bool> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, string currentAccessToken = "");
+    Task RevokeAllAccessTokensAsync(Guid userId);
 }
 
 public sealed class AuthService(
@@ -60,8 +61,9 @@ public sealed class AuthService(
         }
 
         var email = NormalizeEmail(request.Email);
+        var emailLookupHash = FieldEncryptor.Current.ComputeLookupHash(request.Email);
         await using var context = await contextFactory.CreateDbContextAsync();
-        if (await context.Users.AnyAsync(user => user.NormalizedEmail == email))
+        if (await context.Users.AnyAsync(user => user.EmailLookupHash == emailLookupHash || user.NormalizedEmail == email))
         {
             return new AuthResult(null, AuthFailure.DuplicateEmail);
         }
@@ -73,6 +75,7 @@ public sealed class AuthService(
             FullName = request.FullName.Trim(),
             Email = request.Email.Trim(),
             NormalizedEmail = email,
+            EmailLookupHash = emailLookupHash,
             PasswordSalt = salt,
             PasswordHash = CredentialSecurity.PasswordHash(request.Password, salt),
             Membership = MembershipTier.Free,
@@ -87,7 +90,7 @@ public sealed class AuthService(
         }
         catch (DbUpdateException)
         {
-            if (!await context.Users.AsNoTracking().AnyAsync(item => item.NormalizedEmail == email)) throw;
+            if (!await context.Users.AsNoTracking().AnyAsync(item => item.EmailLookupHash == emailLookupHash || item.NormalizedEmail == email)) throw;
             return new AuthResult(null, AuthFailure.DuplicateEmail);
         }
 
@@ -108,8 +111,10 @@ public sealed class AuthService(
     private async Task<AuthResult> TryLoginAsync(LoginRequest request)
     {
         var email = NormalizeEmail(request.Email);
+        var emailLookupHash = FieldEncryptor.Current.ComputeLookupHash(request.Email);
         await using var context = await contextFactory.CreateDbContextAsync();
-        var user = await context.Users.SingleOrDefaultAsync(candidate => candidate.NormalizedEmail == email);
+        var user = await context.Users.SingleOrDefaultAsync(candidate =>
+            candidate.EmailLookupHash == emailLookupHash || candidate.NormalizedEmail == email);
         if (user is null)
         {
             CredentialSecurity.PasswordHash(request.Password, new byte[16]);
@@ -186,7 +191,9 @@ public sealed class AuthService(
     {
         await using var context = await contextFactory.CreateDbContextAsync();
         var normalizedEmail = NormalizeEmail(email);
-        var user = await context.Users.SingleOrDefaultAsync(candidate => candidate.NormalizedEmail == normalizedEmail);
+        var emailLookupHash = FieldEncryptor.Current.ComputeLookupHash(email);
+        var user = await context.Users.SingleOrDefaultAsync(candidate =>
+            candidate.EmailLookupHash == emailLookupHash || candidate.NormalizedEmail == normalizedEmail);
         if (user is null)
         {
             return new PasswordResetResult(null, AuthFailure.UserNotFound);
@@ -355,6 +362,19 @@ public sealed class AuthService(
         }
     }
 
+    public async Task RevokeAllAccessTokensAsync(Guid userId)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync();
+        var tokens = await context.AccessTokens.Where(item => item.UserId == userId).ToListAsync();
+        if (tokens.Count > 0)
+        {
+            context.AccessTokens.RemoveRange(tokens);
+            var mfaSessions = await context.MfaVerifiedSessions.Where(item => item.UserId == userId).ToListAsync();
+            context.MfaVerifiedSessions.RemoveRange(mfaSessions);
+            await context.SaveChangesAsync();
+        }
+    }
+
     public async Task<UserDto?> GetUserAsync(Guid userId)
     {
         await using var context = await contextFactory.CreateDbContextAsync();
@@ -444,6 +464,7 @@ public sealed class AuthService(
             DefaultQuality = settings?.DefaultQuality ?? "4K khi có thể",
             AutoplayNext = settings?.AutoplayNext ?? true,
             NotifyNewEpisodes = settings?.NotifyNewEpisodes ?? true,
+            Language = settings?.Language ?? "vi",
             FullName = user.FullName
         };
     }
@@ -459,6 +480,7 @@ public sealed class AuthService(
             user.FullName = settings.FullName.Trim();
         }
 
+        var lang = string.IsNullOrWhiteSpace(settings.Language) ? "vi" : settings.Language.Trim();
         var current = await context.UserSettings.FirstOrDefaultAsync(s => s.UserId == userId);
         if (current is null)
         {
@@ -468,6 +490,7 @@ public sealed class AuthService(
                 DefaultQuality = string.IsNullOrWhiteSpace(settings.DefaultQuality) ? "4K khi có thể" : settings.DefaultQuality,
                 AutoplayNext = settings.AutoplayNext,
                 NotifyNewEpisodes = settings.NotifyNewEpisodes,
+                Language = lang,
                 UpdatedAtUtc = UtcNow
             });
         }
@@ -476,6 +499,7 @@ public sealed class AuthService(
             current.DefaultQuality = string.IsNullOrWhiteSpace(settings.DefaultQuality) ? "4K khi có thể" : settings.DefaultQuality;
             current.AutoplayNext = settings.AutoplayNext;
             current.NotifyNewEpisodes = settings.NotifyNewEpisodes;
+            current.Language = lang;
             current.UpdatedAtUtc = UtcNow;
         }
 

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Server.Services;
 using WebXemPhim.Shared.Enums;
@@ -5,9 +6,27 @@ using WebXemPhim.Shared.Requests;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public class MovieServiceTests
+public class MovieServiceTests : IAsyncLifetime
 {
-    private readonly MovieService _service = new();
+    private readonly DbContextOptions<AppDbContext> _options;
+    private DatabaseMovieService _service = null!;
+
+    public MovieServiceTests()
+    {
+        _options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"movie-service-tests-{Guid.NewGuid():N}")
+            .Options;
+    }
+
+    public async Task InitializeAsync()
+    {
+        await using var context = new AppDbContext(_options);
+        await DatabaseSeeder.SeedCatalogAsync(context);
+        var factory = new TestDbContextFactory(_options);
+        _service = new DatabaseMovieService(factory);
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task GetFeaturedMovieAsync_ReturnsTheConfiguredFeaturedMovie()
@@ -126,7 +145,7 @@ public class MovieServiceTests
     {
         var result = await _service.GetLatestMoviesAsync(100);
 
-        Assert.Equal(MockMovieDatabase.Movies.Count, result.Count);
+        Assert.Equal(DatabaseSeeder.CatalogMovies.Count, result.Count);
         AssertOrdered(result, (left, right) =>
             left.ReleaseYear > right.ReleaseYear ||
             left.ReleaseYear == right.ReleaseYear && left.Id >= right.Id);
@@ -159,7 +178,7 @@ public class MovieServiceTests
             PageSize = 100
         });
 
-        Assert.Equal(MockMovieDatabase.Movies.Count, result.TotalItems);
+        Assert.Equal(DatabaseSeeder.CatalogMovies.Count, result.TotalItems);
     }
 
     [Fact]
@@ -202,7 +221,7 @@ public class MovieServiceTests
             PageSize = 100
         });
 
-        Assert.Equal(MockMovieDatabase.Movies.Count, result.TotalItems);
+        Assert.Equal(DatabaseSeeder.CatalogMovies.Count, result.TotalItems);
     }
 
     [Theory]
@@ -236,7 +255,7 @@ public class MovieServiceTests
             PageSize = 100
         });
 
-        Assert.Equal(MockMovieDatabase.Movies.Count, result.TotalItems);
+        Assert.Equal(DatabaseSeeder.CatalogMovies.Count, result.TotalItems);
     }
 
     [Theory]
@@ -266,7 +285,7 @@ public class MovieServiceTests
             PageSize = 100
         });
 
-        Assert.Equal(MockMovieDatabase.Movies.Count, result.TotalItems);
+        Assert.Equal(DatabaseSeeder.CatalogMovies.Count, result.TotalItems);
     }
 
     [Theory]
@@ -353,7 +372,7 @@ public class MovieServiceTests
         var second = await _service.FilterMoviesAsync(new MovieFilterRequest { Page = 2, PageSize = 5 });
 
         Assert.Equal(5, second.Items.Count);
-        Assert.Equal(MockMovieDatabase.Movies.Count, second.TotalItems);
+        Assert.Equal(DatabaseSeeder.CatalogMovies.Count, second.TotalItems);
         Assert.Equal(2, second.Page);
         Assert.Equal(5, second.PageSize);
         Assert.Equal(8, second.TotalPages);
@@ -378,7 +397,7 @@ public class MovieServiceTests
         var result = await _service.FilterMoviesAsync(new MovieFilterRequest { Page = 99, PageSize = 5 });
 
         Assert.Empty(result.Items);
-        Assert.Equal(MockMovieDatabase.Movies.Count, result.TotalItems);
+        Assert.Equal(DatabaseSeeder.CatalogMovies.Count, result.TotalItems);
         Assert.Equal(99, result.Page);
         Assert.Equal(5, result.PageSize);
         Assert.False(result.HasNextPage);
@@ -426,7 +445,7 @@ public class MovieServiceTests
     public async Task GetSimilarMoviesAsync_ExcludesCurrentMovieAndUsesTypeOrGenre()
     {
         const int movieId = 1;
-        var current = Assert.Single(MockMovieDatabase.Movies, movie => movie.Id == movieId);
+        var current = Assert.Single(DatabaseSeeder.CatalogMovies, movie => movie.Id == movieId);
 
         var result = await _service.GetSimilarMoviesAsync(movieId, 100);
 

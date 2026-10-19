@@ -16,3 +16,5 @@
 **/*.log
 scratch/
 .autohand/
+.agents/
+**/TestResults/

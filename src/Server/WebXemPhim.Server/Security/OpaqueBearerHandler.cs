@@ -15,12 +15,20 @@ public sealed class OpaqueBearerHandler(
 {
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        string? token = null;
         var authorization = Request.Headers.Authorization.ToString();
-        if (string.IsNullOrWhiteSpace(authorization)) return AuthenticateResult.NoResult();
-        if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            return AuthenticateResult.Fail("Authorization header must use the Bearer scheme.");
+        if (!string.IsNullOrWhiteSpace(authorization))
+        {
+            if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                return AuthenticateResult.Fail("Authorization header must use the Bearer scheme.");
+            token = authorization["Bearer ".Length..].Trim();
+        }
+        else if (Request.Path.StartsWithSegments("/hubs") && Request.Query.TryGetValue("access_token", out var queryToken) && !string.IsNullOrWhiteSpace(queryToken))
+        {
+            token = queryToken.ToString().Trim();
+        }
 
-        var token = authorization["Bearer ".Length..].Trim();
+        if (string.IsNullOrWhiteSpace(token)) return AuthenticateResult.NoResult();
         if (!CredentialSecurity.IsToken(token)) return AuthenticateResult.Fail("Bearer token is malformed.");
 
         var user = await authService.ValidateAccessTokenAsync(token);

@@ -1,0 +1,100 @@
+services:
+  # ==========================================
+  # CinemaFlow REST API Server (.NET 10)
+  # ==========================================
+  server:
+    container_name: webxemphim-server
+    build:
+      context: .
+      dockerfile: src/Server/WebXemPhim.Server/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${SERVER_PORT:-5085}:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development}
+      - ASPNETCORE_URLS=http://+:8080
+      - DOTNET_RUNNING_IN_CONTAINER=true
+      - Database__Provider=${DB_PROVIDER:-Sqlite}
+      - ConnectionStrings__Default=${DB_CONNECTION_STRING:-Data Source=/app/data/webxemphim.db}
+      - Database__SeedDemoData=${SEED_DEMO_DATA:-true}
+      - Security__AllowedOrigins__0=http://localhost:5229
+      - Security__AllowedOrigins__1=http://127.0.0.1:5229
+      - Security__AllowedOrigins__2=http://localhost:${CLIENT_PORT:-5229}
+      - Security__AllowedOrigins__3=http://client:8080
+      - Security__AllowedOrigins__4=http://webxemphim-client:8080
+      - Security__DataProtectionKeyPath=/app/keys
+      - Security__StreamSigningKey=${STREAM_SIGNING_KEY:-CinemaFlow_Secure_Stream_HMAC_Secret_Key_2026_AtLeast32Bytes!}
+      - Security__StreamTtlMinutes=${STREAM_TTL_MINUTES:-120}
+      - Payment__WebhookSecret=${PAYMENT_WEBHOOK_SECRET:-CinemaFlow_Secure_Payment_Webhook_HMAC_SHA512_Secret_Key_2026_AtLeast32Bytes!}
+      - AllowedHosts=*
+    volumes:
+      - server_data:/app/data
+      - server_keys:/app/keys
+    networks:
+      - cinemaflow-net
+
+  # ==========================================
+  # CinemaFlow Blazor Web Client (.NET 10)
+  # ==========================================
+  client:
+    container_name: webxemphim-client
+    build:
+      context: .
+      dockerfile: src/Client/WebXemPhim.Client/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${CLIENT_PORT:-5229}:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development}
+      - ASPNETCORE_URLS=http://+:8080
+      - DOTNET_RUNNING_IN_CONTAINER=true
+      - ApiBaseUrl=http://server:8080
+      - Security__DataProtectionKeyPath=/app/keys
+      - AllowedHosts=*
+    volumes:
+      - client_keys:/app/keys
+    depends_on:
+      - server
+    networks:
+      - cinemaflow-net
+
+  # ==========================================
+  # Optional MySQL 8.4 Service (Use: --profile mysql)
+  # ==========================================
+  mysql:
+    container_name: webxemphim-mysql
+    image: mysql:8.4
+    restart: unless-stopped
+    profiles:
+      - mysql
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-cinemaflow_root_secret_2026}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-webxemphim}
+      - MYSQL_USER=${MYSQL_USER:-cinemaflow}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-cinemaflow_password_2026}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - cinemaflow-net
+
+# ==========================================
+# Named Volumes for Persistent Data
+# ==========================================
+volumes:
+  server_data:
+    driver: local
+  server_keys:
+    driver: local
+  client_keys:
+    driver: local
+  mysql_data:
+    driver: local
+
+# ==========================================
+# Custom Bridge Network
+# ==========================================
+networks:
+  cinemaflow-net:
+    driver: bridge

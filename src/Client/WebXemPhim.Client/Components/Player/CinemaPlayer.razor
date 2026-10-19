@@ -10,8 +10,9 @@
         <video @ref="videoRef"
                class="player-video"
                autoplay="@AutoPlay"
-               src="@ActiveStreamUrl"
+               src="@(IsHls(ActiveStreamUrl) ? null : ActiveStreamUrl)"
                @onended="OnEnded"
+               @onpause="HandleVideoPause"
                @onerror="() => mediaFailed = true"
                @onloadedmetadata="MetadataLoaded"
                aria-label="@CurrentEpisodeTitle"
@@ -20,6 +21,13 @@
                preload="metadata">
             Trình duyệt của bạn không hỗ trợ phát video HTML5.
         </video>
+
+        @if (!string.IsNullOrWhiteSpace(UserEmail))
+        {
+            <div class="cp-watermark @currentPositionClass" aria-hidden="true">
+                <span class="cp-watermark-text">@UserEmail • @currentTimestamp</span>
+            </div>
+        }
 
         <!-- Simple Cinema Buffering Spinner -->
         <div class="cp-buffering-spinner" aria-label="Đang tải..." role="status" aria-hidden="true">
@@ -117,20 +125,20 @@
                     <div class="cp-quality-selector @(isQualityMenuOpen ? "open" : "")">
                         <button type="button" 
                                 class="cp-quality-btn" 
-                                title="Đổi chất lượng video (Hiện tại: @QualityLabel)"
+                                title="Đổi chất lượng video (Hiện tại: @DisplayQualityLabel)"
                                 aria-label="Đổi chất lượng video"
                                 aria-haspopup="true"
                                 aria-expanded="@isQualityMenuOpen"
                                 @onclick="ToggleQualityMenu"
                                 @onclick:stopPropagation="true">
-                            <span class="cp-q-chip">@GetShortBadge(QualityLabel)</span>
-                            <span class="cp-q-text">@QualityLabel</span>
+                            <span class="cp-q-chip">@DisplayQualityBadge</span>
+                            <span class="cp-q-text">@DisplayQualityLabel</span>
                             <svg class="cp-q-arrow @(isQualityMenuOpen ? "rotated" : "")" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                                 <path d="m6 9 6 6 6-6" />
                             </svg>
                         </button>
 
-                        @if (isQualityMenuOpen && AvailableQualities != null && AvailableQualities.Count > 0)
+                        @if (isQualityMenuOpen)
                         {
                             <div class="cp-quality-dropdown" @onclick:stopPropagation="true" role="menu" aria-label="Danh sách chất lượng">
                                 <div class="cp-qd-header">
@@ -138,21 +146,57 @@
                                     <span>Chọn chất lượng</span>
                                 </div>
                                 <div class="cp-qd-options">
-                                    @foreach (var q in AvailableQualities)
+                                    @if (isHlsActive && hlsLevels.Count > 0)
                                     {
-                                        var isSelected = string.Equals(q, QualityLabel, StringComparison.OrdinalIgnoreCase);
-                                        var badge = GetShortBadge(q);
+                                        var isAutoSelected = currentHlsLevel == -1;
                                         <button type="button" 
-                                                class="cp-qd-option @(isSelected ? "selected" : "")"
+                                                class="cp-qd-option @(isAutoSelected ? "selected" : "")"
                                                 role="menuitem"
-                                                @onclick="() => ChooseQuality(q)">
-                                            <span class="cp-qd-badge res-@badge.ToLowerInvariant()">@badge</span>
-                                            <span class="cp-qd-name">@q</span>
-                                            @if (isSelected)
+                                                @onclick="() => ChooseHlsQuality(-1)">
+                                            <span class="cp-qd-badge res-auto">AUTO</span>
+                                            <span class="cp-qd-name">Tự động (Auto ABR)</span>
+                                            @if (isAutoSelected)
                                             {
                                                 <CinemaIcon Name="CinemaIconName.Check" Size="13" Class="cp-qd-check" />
                                             }
                                         </button>
+
+                                        @foreach (var lvl in hlsLevels)
+                                        {
+                                            var isSelected = currentHlsLevel == lvl.Index;
+                                            var name = !string.IsNullOrWhiteSpace(lvl.Name) ? lvl.Name : $"{lvl.Height}p";
+                                            var badge = GetShortBadge(name);
+                                            <button type="button" 
+                                                    class="cp-qd-option @(isSelected ? "selected" : "")"
+                                                    role="menuitem"
+                                                    @onclick="() => ChooseHlsQuality(lvl.Index)">
+                                                <span class="cp-qd-badge res-@badge.ToLowerInvariant()">@badge</span>
+                                                <span class="cp-qd-name">@name</span>
+                                                @if (isSelected)
+                                                {
+                                                    <CinemaIcon Name="CinemaIconName.Check" Size="13" Class="cp-qd-check" />
+                                                }
+                                            </button>
+                                        }
+                                    }
+                                    else if (AvailableQualities != null && AvailableQualities.Count > 0)
+                                    {
+                                        @foreach (var q in AvailableQualities)
+                                        {
+                                            var isSelected = string.Equals(q, QualityLabel, StringComparison.OrdinalIgnoreCase);
+                                            var badge = GetShortBadge(q);
+                                            <button type="button" 
+                                                    class="cp-qd-option @(isSelected ? "selected" : "")"
+                                                    role="menuitem"
+                                                    @onclick="() => ChooseQuality(q)">
+                                                <span class="cp-qd-badge res-@badge.ToLowerInvariant()">@badge</span>
+                                                <span class="cp-qd-name">@q</span>
+                                                @if (isSelected)
+                                                {
+                                                    <CinemaIcon Name="CinemaIconName.Check" Size="13" Class="cp-qd-check" />
+                                                }
+                                            </button>
+                                        }
                                     }
                                 </div>
                             </div>
@@ -186,6 +230,9 @@
 
 @code {
     [Parameter]
+    public string? UserEmail { get; set; }
+
+    [Parameter]
     public string ActiveStreamUrl { get; set; } = string.Empty;
 
     [Parameter]
@@ -213,14 +260,99 @@
     [Parameter]
     public IReadOnlyList<string>? AvailableQualities { get; set; }
 
-    [Parameter]
-    public EventCallback<string> OnQualityChanged { get; set; }
+    [Parameter] public EventCallback<string> OnQualityChanged { get; set; }
+    [Parameter] public EventCallback<double> OnPause { get; set; }
+    [Parameter] public EventCallback<double> OnProgress { get; set; }
 
     private ElementReference containerRef;
     private ElementReference videoRef;
+    private DotNetObjectReference<CinemaPlayer>? dotNetRef;
     private bool isDrawerOpen = false;
     private bool mediaFailed;
     private bool isQualityMenuOpen;
+    private bool isHlsActive;
+    private List<HlsQualityLevelDto> hlsLevels = [];
+    private int currentHlsLevel = -1;
+    private string? previousStreamUrl;
+    private bool isJsInitialized;
+
+    private string currentPositionClass = "wm-pos-0";
+    private string currentTimestamp = string.Empty;
+    private PeriodicTimer? watermarkTimer;
+    private CancellationTokenSource? watermarkCts;
+    private int currentPositionIndex;
+
+    protected override void OnInitialized()
+    {
+        UpdateWatermarkTimestamp();
+        watermarkCts = new CancellationTokenSource();
+        watermarkTimer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        _ = RunWatermarkLoopAsync(watermarkCts.Token);
+    }
+
+    private void UpdateWatermarkTimestamp()
+    {
+        currentTimestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
+    }
+
+    public void AdvanceWatermarkPositionForTesting()
+    {
+        currentPositionIndex = (currentPositionIndex + 1) % 6;
+        currentPositionClass = $"wm-pos-{currentPositionIndex}";
+        UpdateWatermarkTimestamp();
+        SafeStateHasChanged();
+    }
+
+    private async Task RunWatermarkLoopAsync(CancellationToken cancellationToken)
+    {
+        if (watermarkTimer is null) return;
+        try
+        {
+            while (await watermarkTimer.WaitForNextTickAsync(cancellationToken))
+            {
+                AdvanceWatermarkPositionForTesting();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during component disposal
+        }
+    }
+
+    public static bool IsHls(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+        var clean = url.Split('?')[0].Split('#')[0];
+        return clean.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase) || clean.Contains(".m3u8", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string DisplayQualityLabel
+    {
+        get
+        {
+            if (isHlsActive && hlsLevels.Count > 0)
+            {
+                if (currentHlsLevel < 0 || currentHlsLevel >= hlsLevels.Count) return "Tự động (Auto ABR)";
+                var lvl = hlsLevels[currentHlsLevel];
+                return !string.IsNullOrWhiteSpace(lvl.Name) ? lvl.Name : $"{lvl.Height}p";
+            }
+            return !string.IsNullOrWhiteSpace(QualityLabel) ? QualityLabel : "Tự động";
+        }
+    }
+
+    private string DisplayQualityBadge
+    {
+        get
+        {
+            if (isHlsActive && hlsLevels.Count > 0)
+            {
+                if (currentHlsLevel < 0 || currentHlsLevel >= hlsLevels.Count) return "AUTO";
+                var lvl = hlsLevels[currentHlsLevel];
+                return GetShortBadge(!string.IsNullOrWhiteSpace(lvl.Name) ? lvl.Name : $"{lvl.Height}p");
+            }
+            return GetShortBadge(QualityLabel);
+        }
+    }
 
     private void ToggleQualityMenu()
     {
@@ -236,9 +368,24 @@
         }
     }
 
+    private async Task ChooseHlsQuality(int levelIndex)
+    {
+        isQualityMenuOpen = false;
+        currentHlsLevel = levelIndex;
+        try
+        {
+            await JS.InvokeVoidAsync("CinemaPlayer.setQualityLevel", containerRef, levelIndex);
+        }
+        catch (Exception)
+        {
+            // Ignored on SSR/disconnected
+        }
+    }
+
     private static string GetShortBadge(string q)
     {
         if (string.IsNullOrEmpty(q)) return "HD";
+        if (q.Contains("AUTO", StringComparison.OrdinalIgnoreCase)) return "AUTO";
         if (q.Contains("4K", StringComparison.OrdinalIgnoreCase)) return "4K";
         if (q.Contains("60fps", StringComparison.OrdinalIgnoreCase)) return "60FPS";
         if (q.Contains("1080p", StringComparison.OrdinalIgnoreCase) || q.Contains("FHD", StringComparison.OrdinalIgnoreCase)) return "FHD";
@@ -253,6 +400,12 @@
         {
             ActiveStreamUrl = Streams[0].StreamUrl;
         }
+
+        if (isJsInitialized && !string.IsNullOrEmpty(ActiveStreamUrl) && !string.Equals(ActiveStreamUrl, previousStreamUrl, StringComparison.Ordinal))
+        {
+            previousStreamUrl = ActiveStreamUrl;
+            _ = JS.InvokeVoidAsync("CinemaPlayer.loadSource", containerRef, videoRef, ActiveStreamUrl, AutoPlay, ResumeSeconds);
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -261,7 +414,14 @@
         {
             try
             {
-                await JS.InvokeVoidAsync("CinemaPlayer.init", containerRef, videoRef);
+                dotNetRef = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("CinemaPlayer.init", containerRef, videoRef, dotNetRef);
+                isJsInitialized = true;
+                if (!string.IsNullOrEmpty(ActiveStreamUrl))
+                {
+                    previousStreamUrl = ActiveStreamUrl;
+                    await JS.InvokeVoidAsync("CinemaPlayer.loadSource", containerRef, videoRef, ActiveStreamUrl, AutoPlay, ResumeSeconds);
+                }
             }
             catch
             {
@@ -270,19 +430,118 @@
         }
     }
 
-    public async ValueTask DisposeAsync()
+    [JSInvokable]
+    public void OnHlsManifestParsed(List<HlsQualityLevelDto> levels)
     {
-        try { await JS.InvokeVoidAsync("CinemaPlayer.dispose", containerRef); }
+        hlsLevels = levels ?? [];
+        isHlsActive = hlsLevels.Count > 0;
+        currentHlsLevel = -1;
+        SafeStateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnHlsLevelSwitched(int levelIndex)
+    {
+        currentHlsLevel = levelIndex;
+        SafeStateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnHlsFatalError(string details)
+    {
+        mediaFailed = true;
+        SafeStateHasChanged();
+    }
+
+    private void SafeStateHasChanged()
+    {
+        try
+        {
+            StateHasChanged();
+        }
+        catch (InvalidOperationException)
+        {
+            // Ignore during headless unit testing when component render handle is not attached
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnPlayerPause(double seconds)
+    {
+        if (OnPause.HasDelegate)
+        {
+            await OnPause.InvokeAsync(seconds);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnPlayerProgress(double seconds)
+    {
+        if (OnProgress.HasDelegate)
+        {
+            await OnProgress.InvokeAsync(seconds);
+        }
+    }
+
+    private async Task HandleVideoPause()
+    {
+        if (OnPause.HasDelegate)
+        {
+            var cursor = await GetCursorAsync();
+            await OnPause.InvokeAsync(cursor.Seconds);
+        }
+    }
+
+    public async Task PauseAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("CinemaPlayer.pause", videoRef);
+        }
         catch (JSDisconnectedException) { }
         catch (InvalidOperationException) { }
         catch (JSException) { }
     }
-    private async Task Retry() { mediaFailed = false; await JS.InvokeVoidAsync("CinemaPlayer.reload", videoRef); }
+
+    public async ValueTask DisposeAsync()
+    {
+        watermarkCts?.Cancel();
+        watermarkTimer?.Dispose();
+        watermarkCts?.Dispose();
+        watermarkTimer = null;
+        watermarkCts = null;
+
+        if (JS is not null)
+        {
+            try { await JS.InvokeVoidAsync("CinemaPlayer.dispose", containerRef); }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { }
+            catch (JSException) { }
+        }
+
+        dotNetRef?.Dispose();
+        dotNetRef = null;
+    }
+
+    private async Task Retry()
+    {
+        mediaFailed = false;
+        if (IsHls(ActiveStreamUrl))
+        {
+            await JS.InvokeVoidAsync("CinemaPlayer.loadSource", containerRef, videoRef, ActiveStreamUrl, AutoPlay, ResumeSeconds);
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("CinemaPlayer.reload", videoRef);
+        }
+    }
+
     private async Task MetadataLoaded()
     {
         mediaFailed = false;
         if (ResumeSeconds > 0) await JS.InvokeVoidAsync("CinemaPlayer.seekTo", videoRef, ResumeSeconds);
     }
+
     public async Task<MediaCursor> GetCursorAsync()
     {
         try { return await JS.InvokeAsync<MediaCursor>("CinemaPlayer.cursor", videoRef); }

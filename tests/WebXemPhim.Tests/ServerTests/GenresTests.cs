@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Moq;
 using WebXemPhim.Server.Controllers;
 using WebXemPhim.Server.Data;
@@ -8,17 +9,35 @@ using WebXemPhim.Shared.Responses;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public class GenreServiceTests
+public class GenreServiceTests : IAsyncLifetime
 {
-    private readonly GenreService _service = new();
+    private readonly DbContextOptions<AppDbContext> _options;
+    private DatabaseGenreService _service = null!;
+
+    public GenreServiceTests()
+    {
+        _options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"genres-tests-{Guid.NewGuid():N}")
+            .Options;
+    }
+
+    public async Task InitializeAsync()
+    {
+        await using var context = new AppDbContext(_options);
+        await DatabaseSeeder.SeedCatalogAsync(context);
+        var factory = new TestDbContextFactory(_options);
+        _service = new DatabaseGenreService(factory);
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task GetAllGenresAsync_ReturnsEveryConfiguredGenreInDatabaseOrder()
     {
         var result = await _service.GetAllGenresAsync();
 
-        Assert.Same(MockMovieDatabase.Genres, result);
         Assert.NotEmpty(result);
+        Assert.Equal(DatabaseSeeder.CatalogGenres.Count, result.Count);
         Assert.Equal(result.Count, result.Select(genre => genre.Id).Distinct().Count());
         Assert.Equal(result.Count, result.Select(genre => genre.Slug).Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.All(result, genre =>
@@ -28,6 +47,13 @@ public class GenreServiceTests
             Assert.NotEmpty(genre.Slug);
             Assert.True(genre.MovieCount >= 0);
         });
+    }
+
+    private sealed class TestDbContextFactory(DbContextOptions<AppDbContext> options) : IDbContextFactory<AppDbContext>
+    {
+        public AppDbContext CreateDbContext() => new(options);
+        public Task<AppDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AppDbContext(options));
     }
 }
 

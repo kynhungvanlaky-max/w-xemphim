@@ -4,6 +4,7 @@
 @inject ThemeState Theme
 @inject IAccountApiClient Api
 @inject IMovieApiClient MovieApi
+@inject CinemaHubClient HubClient
 @using WebXemPhim.Client.Components.Common
 @using WebXemPhim.Client.Services
 @using WebXemPhim.Shared.Requests
@@ -412,6 +413,10 @@
         await Auth.InitializeAsync();
         await Watchlist.InitializeAsync();
         await CheckUnreadNotifications();
+        if (Auth.IsAuthenticated)
+        {
+            _ = HubClient.StartAsync();
+        }
         await InvokeAsync(StateHasChanged);
     }
 
@@ -421,6 +426,15 @@
         Watchlist.OnChange += StateHasChanged;
         Auth.OnChange += OnAuthChanged;
         Theme.OnChange += StateHasChanged;
+        HubClient.OnNotificationReceived += HandleLiveNotification;
+    }
+
+    private void HandleLiveNotification(NotificationDto notification)
+    {
+        if (notification == null) return;
+        unreadNotificationsCount++;
+        notificationItems = [notification, .. notificationItems];
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private void OnAuthChanged()
@@ -693,6 +707,7 @@
         Watchlist.OnChange -= StateHasChanged;
         Auth.OnChange -= OnAuthChanged;
         Theme.OnChange -= StateHasChanged;
+        HubClient.OnNotificationReceived -= HandleLiveNotification;
         searchCts?.Cancel();
         searchCts?.Dispose();
     }

@@ -156,6 +156,16 @@
     private MovieDto? CurrentMovie => SlideList.Count > 0 ? SlideList[currentIndex % SlideList.Count] : Movie;
     private bool isInWatchlist => CurrentMovie is not null && Watchlist.IsInWatchlist(CurrentMovie.Id);
 
+    protected override void OnInitialized()
+    {
+        Watchlist.OnChange += OnWatchlistChanged;
+    }
+
+    private void OnWatchlistChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     protected override void OnParametersSet()
     {
         if (currentIndex >= SlideList.Count && SlideList.Count > 0)
@@ -243,6 +253,7 @@
 
     public void Dispose()
     {
+        Watchlist.OnChange -= OnWatchlistChanged;
         if (carouselTimer is not null)
         {
             carouselTimer.Elapsed -= OnTimerElapsed;

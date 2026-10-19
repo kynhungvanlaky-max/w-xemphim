@@ -80,3 +80,13 @@ public class WatchlistItemDto
     public int ProgressPercent { get; set; }
     public string? LastWatchedEpisode { get; set; }
 }
+
+public sealed class HlsQualityLevelDto
+{
+    public int Index { get; set; }
+    public int Bitrate { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
+

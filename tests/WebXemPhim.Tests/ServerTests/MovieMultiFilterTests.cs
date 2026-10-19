@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Server.Services;
@@ -24,7 +25,7 @@ public sealed class MovieMultiFilterTests(TestApiFactory factory) : IClassFixtur
         await using (var seed = new AppDbContext(options))
         {
             await seed.Database.EnsureCreatedAsync();
-            await DevelopmentDataSeeder.SeedCatalogAsync(seed);
+            await DatabaseSeeder.SeedCatalogAsync(seed);
         }
         var contexts = new Mock<IDbContextFactory<AppDbContext>>();
         contexts.Setup(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()))
@@ -97,7 +98,9 @@ public sealed class MovieMultiFilterTests(TestApiFactory factory) : IClassFixtur
     {
         var query = "genre=" + Uri.EscapeDataString("Hành động") + "&genres=" + Uri.EscapeDataString("Tâm lý");
         var api = await Read(query);
-        var memory = await new MovieService().FilterMoviesAsync(new MovieFilterRequest
+        var factoryContext = factory.Services.GetRequiredService<IDbContextFactory<AppDbContext>>();
+        var service = new DatabaseMovieService(factoryContext);
+        var memory = await service.FilterMoviesAsync(new MovieFilterRequest
         {
             Genre = "Hành động", Genres = ["Tâm lý", "Hành động"], PageSize = 100
         });

@@ -22,8 +22,22 @@ public sealed class WatchPlaybackState
     public EpisodeDto? Current { get; private set; }
     public StreamSourceDto? Source { get; private set; }
     public bool AutoNext { get; set; } = true;
+    public string PreferredQuality { get; set; } = "4K";
+    public bool IsVipUser { get; set; } = true;
+
+    public static bool IsVipStream(StreamSourceDto source) =>
+        source.ServerType == StreamServerType.VipFastServer ||
+        (!string.IsNullOrEmpty(source.Quality) && source.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase));
+
+    public bool CanPlay(StreamSourceDto? source)
+    {
+        if (source is null) return false;
+        if (IsVipStream(source) && !IsVipUser) return false;
+        return IsPlayable(source.StreamUrl);
+    }
+
     public IReadOnlyList<StreamSourceDto> Sources => Current?.Streams
-        .Where(source => IsPlayable(source.StreamUrl)).ToList() ?? [];
+        .Where(source => IsPlayable(source.StreamUrl) || (IsVipStream(source) && string.IsNullOrEmpty(source.StreamUrl))).ToList() ?? [];
     public IEnumerable<string> Servers => Sources.Select(source => source.ServerName).Distinct();
     public IEnumerable<string> Qualities => Sources.Where(source => source.ServerName == Source?.ServerName)
         .Select(source => source.Quality).Distinct();
@@ -107,20 +121,44 @@ public sealed class WatchPlaybackState
         Select(number);
     }
 
+    private StreamSourceDto? FindPreferredSource(IReadOnlyList<StreamSourceDto> list)
+    {
+        if (list.Count == 0) return null;
+        if (!string.IsNullOrWhiteSpace(PreferredQuality))
+        {
+            var target = PreferredQuality.Contains("4K", StringComparison.OrdinalIgnoreCase) ? "4K"
+                : PreferredQuality.Contains("1080p", StringComparison.OrdinalIgnoreCase) || PreferredQuality.Contains("FHD", StringComparison.OrdinalIgnoreCase) ? "1080p"
+                : PreferredQuality.Contains("720p", StringComparison.OrdinalIgnoreCase) || PreferredQuality.Contains("HD", StringComparison.OrdinalIgnoreCase) ? "720p"
+                : PreferredQuality.Contains("480p", StringComparison.OrdinalIgnoreCase) || PreferredQuality.Contains("SD", StringComparison.OrdinalIgnoreCase) ? "480p"
+                : PreferredQuality.Trim();
+
+            var match = list.FirstOrDefault(s => s.Quality.Contains(target, StringComparison.OrdinalIgnoreCase));
+            if (match is not null) return match;
+        }
+        return list.FirstOrDefault();
+    }
+
     public void Select(int? number)
     {
         var server = Source?.ServerName;
         var quality = Source?.Quality;
         Current = Episodes.FirstOrDefault(episode => episode.EpisodeNumber == number) ?? Episodes.FirstOrDefault();
-        Source = Sources.FirstOrDefault(source => source.ServerName == server && source.Quality == quality)
-            ?? Sources.FirstOrDefault(source => source.ServerName == server) ?? Sources.FirstOrDefault();
+        var playable = Sources.Where(CanPlay).ToList();
+        Source = Sources.FirstOrDefault(source => source.ServerName == server && source.Quality == quality && CanPlay(source))
+            ?? Sources.FirstOrDefault(source => source.ServerName == server && CanPlay(source))
+            ?? FindPreferredSource(playable)
+            ?? playable.FirstOrDefault()
+            ?? Sources.FirstOrDefault();
     }
 
     public bool SetServer(string server)
     {
-        var selected = Sources.FirstOrDefault(source => source.ServerName == server && source.Quality == Source?.Quality)
-            ?? Sources.FirstOrDefault(source => source.ServerName == server);
+        var matching = Sources.Where(source => source.ServerName == server).ToList();
+        var selected = matching.FirstOrDefault(source => source.Quality == Source?.Quality && CanPlay(source))
+            ?? matching.FirstOrDefault(CanPlay)
+            ?? matching.FirstOrDefault();
         if (selected is null) return false;
+        if (!CanPlay(selected)) return false;
         Source = selected;
         return true;
     }
@@ -129,6 +167,7 @@ public sealed class WatchPlaybackState
     {
         var selected = Sources.FirstOrDefault(source => source.ServerName == Source?.ServerName && source.Quality == quality);
         if (selected is null) return false;
+        if (!CanPlay(selected)) return false;
         Source = selected;
         return true;
     }

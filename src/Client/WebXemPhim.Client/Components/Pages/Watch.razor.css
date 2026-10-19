@@ -351,3 +351,147 @@
     .wv-information dl > div:nth-child(2) { grid-column:1/-1; grid-row:2; }
     .wv-overview,.wv-film-link { grid-column:1/-1; margin-bottom:0; }
 }
+
+/* VIP Gated Player State & Dialog */
+.wv-vip-gated {
+    border: 1px solid rgba(229, 9, 20, 0.28);
+    background: radial-gradient(circle at center, rgba(183, 45, 64, 0.16) 0%, #101114 72%);
+}
+.wv-vip-gate-box {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    padding: 24px;
+    max-width: 460px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+.wv-vip-gate-box h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #f0f1f4;
+    margin: 0;
+}
+.wv-vip-gate-box p {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--wv-muted);
+    margin: 0;
+}
+.wv-vip-gate-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.wv-vip-dialog-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    justify-content: flex-end;
+}
+[data-theme="light"] .wv-vip-gated {
+    border: 1px solid rgba(183, 45, 64, 0.35);
+    background: radial-gradient(circle at center, rgba(183, 45, 64, 0.08) 0%, #f8fafc 72%);
+}
+[data-theme="light"] .wv-vip-gate-box h2 {
+    color: #0f172a;
+}
+[data-theme="light"] .wv-vip-gate-box p {
+    color: #475569;
+}
+
+/* ============================================================
+   EVICTION MODAL (CONCURRENCY KICK UX) - DUAL-THEME COMPLIANT
+   ============================================================ */
+.wv-eviction-dialog {
+    width: min(480px, 100%);
+    background: #12141a;
+    border: 1px solid rgba(229, 9, 20, 0.35);
+    border-radius: 14px;
+    padding: 30px 26px;
+    color: #f0f1f4;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.75);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    animation: wvFadeSlideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.wv-eviction-icon {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: rgba(229, 9, 20, 0.12);
+    border: 1px solid rgba(229, 9, 20, 0.28);
+    display: grid;
+    place-items: center;
+    color: #ef4444;
+}
+
+.wv-eviction-dialog h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0;
+    color: #ffffff;
+    letter-spacing: -0.01em;
+}
+
+.wv-eviction-copy {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: #94a3b8;
+    margin: 0;
+    max-width: 420px;
+}
+
+.wv-eviction-timestamp {
+    font-size: 11.5px;
+    font-family: var(--font-mono, monospace);
+    color: #64748b;
+    background: rgba(255, 255, 255, 0.04);
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.wv-eviction-actions {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    margin-top: 12px;
+}
+
+.wv-eviction-actions .wv-button {
+    flex: 1;
+    justify-content: center;
+    height: 40px;
+    font-size: 13.5px;
+}
+
+/* Light Mode Overrides */
+[data-theme="light"] .wv-eviction-dialog {
+    background: #ffffff;
+    border: 1px solid rgba(229, 9, 20, 0.45);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.14);
+    color: #0f172a;
+}
+
+[data-theme="light"] .wv-eviction-dialog h2 {
+    color: #0f172a;
+}
+
+[data-theme="light"] .wv-eviction-copy {
+    color: #475569;
+}
+
+[data-theme="light"] .wv-eviction-timestamp {
+    background: #f1f5f9;
+    color: #64748b;
+    border-color: #e2e8f0;
+}

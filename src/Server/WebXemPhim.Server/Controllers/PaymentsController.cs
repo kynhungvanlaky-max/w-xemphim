@@ -44,5 +44,51 @@ public class PaymentsController(IPaymentService paymentService) : ControllerBase
     public async Task<ActionResult<ApiResponse<List<PaymentDto>>>> History() =>
         Ok(ApiResponse<List<PaymentDto>>.Ok(await paymentService.GetHistoryAsync(CurrentUserId())));
 
+    [HttpPost("webhook")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ProcessWebhook([FromBody] PaymentWebhookRequest request)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.OrderCode) || string.IsNullOrWhiteSpace(request.Signature))
+        {
+            return BadRequest(ApiResponse<PaymentDto>.Fail("Dữ liệu webhook không hợp lệ hoặc thiếu thông tin bắt buộc."));
+        }
+
+        if (request.Amount <= 0)
+        {
+            return BadRequest(ApiResponse<PaymentDto>.Fail("Số tiền thanh toán phải lớn hơn 0."));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Status))
+        {
+            return BadRequest(ApiResponse<PaymentDto>.Fail("Trạng thái giao dịch không được để trống."));
+        }
+
+        var result = await paymentService.ProcessWebhookAsync(request);
+
+        return result.Status switch
+        {
+            PaymentWebhookProcessStatus.Success =>
+                Ok(ApiResponse<PaymentDto>.Ok(result.Payment!, result.Message)),
+
+            PaymentWebhookProcessStatus.AlreadyProcessed =>
+                Ok(ApiResponse<PaymentDto>.Ok(result.Payment!, result.Message)),
+
+            PaymentWebhookProcessStatus.InvalidSignature =>
+                StatusCode(StatusCodes.Status403Forbidden, ApiResponse<PaymentDto>.Fail(result.Message)),
+
+            PaymentWebhookProcessStatus.OrderNotFound =>
+                NotFound(ApiResponse<PaymentDto>.Fail(result.Message)),
+
+            PaymentWebhookProcessStatus.AmountMismatch or
+            PaymentWebhookProcessStatus.DuplicateTransactionReference =>
+                BadRequest(ApiResponse<PaymentDto>.Fail(result.Message)),
+
+            PaymentWebhookProcessStatus.PaymentFailedByGateway =>
+                Ok(ApiResponse<PaymentDto>.Ok(result.Payment!, result.Message)),
+
+            _ => BadRequest(ApiResponse<PaymentDto>.Fail("Yêu cầu xử lý webhook không hợp lệ."))
+        };
+    }
+
     private Guid CurrentUserId() => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }

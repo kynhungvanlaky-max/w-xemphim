@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using WebXemPhim.Server.Controllers;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Shared.Models;
@@ -6,24 +7,42 @@ using WebXemPhim.Shared.Responses;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public class EpisodesControllerTests
+public class EpisodesControllerTests : IAsyncLifetime
 {
-    private readonly EpisodesController _controller = new();
+    private readonly DbContextOptions<AppDbContext> _options;
+    private EpisodesController _controller = null!;
+
+    public EpisodesControllerTests()
+    {
+        _options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"episodes-tests-{Guid.NewGuid():N}")
+            .Options;
+    }
+
+    public async Task InitializeAsync()
+    {
+        await using var context = new AppDbContext(_options);
+        await DatabaseSeeder.SeedCatalogAsync(context);
+        var factory = new TestDbContextFactory(_options);
+        _controller = new EpisodesController(factory);
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Theory]
     [InlineData(1)]
     [InlineData(3)]
     [InlineData(12)]
-    public void GetEpisodesByMovieId_WhenFoundReturnsAllMovieEpisodes(int movieId)
+    public async Task GetEpisodesByMovieId_WhenFoundReturnsAllMovieEpisodes(int movieId)
     {
-        var expected = Assert.Single(MockMovieDatabase.Movies, movie => movie.Id == movieId).Episodes;
+        var expected = Assert.Single(DatabaseSeeder.CatalogMovies, movie => movie.Id == movieId).Episodes;
 
-        var actionResult = _controller.GetEpisodesByMovieId(movieId);
+        var actionResult = await _controller.GetEpisodesByMovieId(movieId);
 
         var response = AssertOk(actionResult);
         Assert.True(response.Success);
-        Assert.Same(expected, response.Data);
-        Assert.All(response.Data!, episode => Assert.Equal(movieId, episode.MovieId));
+        Assert.Equal(expected.Count, response.Data!.Count);
+        Assert.All(response.Data, episode => Assert.Equal(movieId, episode.MovieId));
     }
 
     [Theory]
@@ -31,9 +50,9 @@ public class EpisodesControllerTests
     [InlineData(0)]
     [InlineData(8888)]
     [InlineData(9999)]
-    public void GetEpisodesByMovieId_WhenMovieMissingReturnsNotFound(int movieId)
+    public async Task GetEpisodesByMovieId_WhenMovieMissingReturnsNotFound(int movieId)
     {
-        var actionResult = _controller.GetEpisodesByMovieId(movieId);
+        var actionResult = await _controller.GetEpisodesByMovieId(movieId);
 
         var response = AssertNotFound(actionResult);
         Assert.False(response.Success);
@@ -45,9 +64,9 @@ public class EpisodesControllerTests
     [InlineData(101, 1)]
     [InlineData(301, 3)]
     [InlineData(1201, 12)]
-    public void GetEpisodeById_WhenFoundReturnsEpisodeWithStreams(int episodeId, int movieId)
+    public async Task GetEpisodeById_WhenFoundReturnsEpisodeWithStreams(int episodeId, int movieId)
     {
-        var actionResult = _controller.GetEpisodeById(episodeId);
+        var actionResult = await _controller.GetEpisodeById(episodeId);
 
         var response = AssertOk(actionResult);
         Assert.True(response.Success);
@@ -62,9 +81,9 @@ public class EpisodesControllerTests
     [InlineData(0)]
     [InlineData(102)]
     [InlineData(999999)]
-    public void GetEpisodeById_WhenMissingReturnsNotFound(int episodeId)
+    public async Task GetEpisodeById_WhenMissingReturnsNotFound(int episodeId)
     {
-        var actionResult = _controller.GetEpisodeById(episodeId);
+        var actionResult = await _controller.GetEpisodeById(episodeId);
 
         var response = AssertNotFound(actionResult);
         Assert.False(response.Success);
@@ -84,5 +103,12 @@ public class EpisodesControllerTests
         var objectResult = Assert.IsType<NotFoundObjectResult>(actionResult.Result);
         Assert.Equal(404, objectResult.StatusCode);
         return Assert.IsType<ApiResponse<T>>(objectResult.Value);
+    }
+
+    private sealed class TestDbContextFactory(DbContextOptions<AppDbContext> options) : IDbContextFactory<AppDbContext>
+    {
+        public AppDbContext CreateDbContext() => new(options);
+        public Task<AppDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AppDbContext(options));
     }
 }

@@ -3,11 +3,13 @@
 @using WebXemPhim.Shared.Requests
 @using WebXemPhim.Client.Components.Player
 @inject WatchApiClient Api
+@inject CinemaHubClient HubClient
 @inject WatchlistState Watchlist
 @inject AuthState Auth
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @implements IDisposable
+@implements IAsyncDisposable
 
 <PageTitle>@(movie is null ? "Xem phim" : $"{movie.Title} - Tập {playback.Current?.EpisodeNumber}") - CinemaFlow</PageTitle>
 
@@ -45,14 +47,32 @@
         <div class="wv-workspace">
             <div class="wv-main">
                 <section class="wv-stage @(lightsOff ? "focused" : "")" aria-label="Khung phát phim">
-                    @if (playback.Source is not null)
+                    @if (playback.Source is not null && !string.IsNullOrEmpty(playback.Source.StreamUrl))
                     {
                         <CinemaPlayer @key="PlayerKey" @ref="player" ActiveStreamUrl="@playback.Source.StreamUrl" PosterUrl="@PlayerPoster"
+                                      UserEmail="@Auth.User?.Email"
                                       AutoPlay="@(autoPlayEpisodeId == playback.Current?.Id)" ResumeSeconds="resumeSeconds"
                                       CurrentEpisodeTitle="@playback.Current!.Title" QualityLabel="@playback.Source.Quality"
                                       AvailableQualities="@playback.Qualities.ToList()"
                                       OnQualityChanged="SelectQuality"
-                                      OnEnded="OnVideoEnded" />
+                                      OnEnded="OnVideoEnded"
+                                      OnPause="HandlePlayerPause"
+                                      OnProgress="HandlePlayerProgress" />
+                    }
+                    else if (playback.Source is not null && (WatchPlaybackState.IsVipStream(playback.Source) || string.IsNullOrEmpty(playback.Source.StreamUrl)))
+                    {
+                        <div class="wv-no-stream wv-vip-gated">
+                            <img src="@PlayerPoster" alt="" />
+                            <div class="wv-vip-gate-box">
+                                <CinemaIcon Name="CinemaIconName.Crown" Size="36" />
+                                <h2>Nội dung dành riêng cho VIP</h2>
+                                <p>Nguồn phát siêu tốc VIP Fast Server và chất lượng 4K Ultra HD yêu cầu gói thành viên VIP CinemaFlow.</p>
+                                <div class="wv-vip-gate-actions">
+                                    <a class="wv-button primary" href="/vip">Nâng cấp VIP ngay</a>
+                                    <button type="button" class="wv-button" @onclick="SelectFreeStream">Chuyển sang nguồn tiêu chuẩn</button>
+                                </div>
+                            </div>
+                        </div>
                     }
                     else
                     {
@@ -230,6 +250,48 @@
         </section>
     </div>
 }
+@if (vipPromptOpen)
+{
+    <div class="wv-modal-backdrop" @onclick="() => vipPromptOpen = false">
+        <section class="wv-report-dialog wv-vip-dialog" role="dialog" aria-modal="true" aria-labelledby="vip-modal-title" tabindex="-1" @onclick:stopPropagation="true">
+            <header>
+                <h2 id="vip-modal-title">Đặc quyền thành viên VIP</h2>
+                <button type="button" class="wv-text-button" aria-label="Đóng" @onclick="() => vipPromptOpen = false"><CinemaIcon Name="CinemaIconName.Close" Size="20" /></button>
+            </header>
+            <p>@(vipPromptMessage ?? "Tính năng xem phim qua Máy chủ VIP Fast Server và độ phân giải 4K yêu cầu gói thành viên VIP CinemaFlow.")</p>
+            <div class="wv-vip-dialog-actions">
+                <a class="wv-button primary" href="/vip">Nâng cấp VIP ngay</a>
+                <button type="button" class="wv-button" @onclick="() => vipPromptOpen = false">Để sau</button>
+            </div>
+        </section>
+    </div>
+}
+@if (isEvicted)
+{
+    <div class="wv-modal-backdrop" @onclick:stopPropagation="true">
+        <section class="wv-eviction-dialog" role="dialog" aria-modal="true" aria-labelledby="eviction-title" tabindex="-1">
+            <div class="wv-eviction-icon" aria-hidden="true">
+                <CinemaIcon Name="CinemaIconName.AlertCircle" Size="28" />
+            </div>
+            <h2 id="eviction-title">Tài khoản đang phát trên thiết bị khác</h2>
+            <p class="wv-eviction-copy">
+                @(evictionNotice?.Reason ?? "Tài khoản của bạn đã đạt giới hạn phát video đồng thời. Một phiên xem phim mới vừa được kích hoạt từ thiết bị khác.")
+            </p>
+            @if (evictionNotice is not null)
+            {
+                <span class="wv-eviction-timestamp">
+                    Thời điểm ngắt kết nối: @evictionNotice.DisconnectedAtUtc.ToLocalTime().ToString("HH:mm:ss dd/MM/yyyy")
+                </span>
+            }
+            <div class="wv-eviction-actions">
+                <button type="button" class="wv-button primary" @onclick="ResumePlaybackHere">
+                    Tiếp tục phát tại đây
+                </button>
+                <a class="wv-button" href="/">Về trang chủ</a>
+            </div>
+        </section>
+    </div>
+}
 @code {
     [Parameter] public int MovieId { get; set; }
     [SupplyParameterFromQuery(Name = "ep")] public int? EpQuery { get; set; }
@@ -238,41 +300,121 @@
     private int loadedMovieId, loadVersion;
     private int? autoPlayEpisodeId;
     private double resumeSeconds;
+    private double currentCursorSeconds;
+    private DateTime lastSaveTime = DateTime.MinValue;
     private CinemaPlayer? player;
     private bool loading = true, lightsOff, savingFilm, showShare, reportOpen, reportSending, focusReport;
     private bool isGridView;
+    private bool vipPromptOpen;
+    private string? vipPromptMessage;
     private string search = string.Empty;
     private string? loadError, status, reportStatus;
     private PlaybackIssueRequest report = new();
     private ElementReference reportDialog, reportTrigger;
     private bool focusReportTrigger;
+    private PeriodicTimer? heartbeatTimer;
+    private CancellationTokenSource? heartbeatCts;
+    private Task? heartbeatTask;
+    private string? currentStreamSessionId;
+    private bool isEvicted;
+    private ForceDisconnectNotice? evictionNotice;
     private string ReturnUrl => $"/watch/{MovieId}" + (playback.Current is null ? "" : $"?ep={playback.Current.EpisodeNumber}");
     private string PlayerKey => $"{playback.Current?.Id}:{playback.Source?.StreamUrl}";
     private string PlayerPoster => !string.IsNullOrWhiteSpace(playback.Current?.ThumbnailUrl) ? playback.Current.ThumbnailUrl
         : !string.IsNullOrWhiteSpace(movie?.BackdropUrl) ? movie.BackdropUrl : movie?.PosterUrl ?? "";
-    protected override void OnInitialized() { Auth.Changed += AuthChanged; Watchlist.OnChange += StateChanged; }
+
+    protected override void OnInitialized()
+    {
+        Auth.Changed += AuthChanged;
+        Watchlist.OnChange += StateChanged;
+        HubClient.OnForceDisconnectReceived += HandleForceDisconnect;
+    }
+
     protected override async Task OnParametersSetAsync()
     {
         if (loadedMovieId != MovieId || movie is null) await LoadMovie();
         else { playback.Select(EpQuery); reportOpen = false; status = null; }
     }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender) { await Auth.InitializeAsync(); if (Auth.IsAuthenticated) await Watchlist.InitializeAsync(); }
+        if (firstRender)
+        {
+            await Auth.InitializeAsync();
+            playback.IsVipUser = Auth.User?.IsVip == true || Auth.User?.IsAdmin == true;
+            if (Auth.IsAuthenticated)
+            {
+                await Watchlist.InitializeAsync();
+                await ApplyUserSettingsAsync();
+            }
+        }
         if (focusReport) { focusReport = false; await JS.InvokeVoidAsync("CinemaPlayer.focusDialog", reportDialog); }
         if (focusReportTrigger) { focusReportTrigger = false; await reportTrigger.FocusAsync(); }
     }
+
+    private async Task ApplyUserSettingsAsync()
+    {
+        try
+        {
+            var settings = await Api.GetSettingsAsync();
+            if (settings is not null)
+            {
+                playback.AutoNext = settings.AutoplayNext;
+                if (!string.IsNullOrWhiteSpace(settings.DefaultQuality))
+                {
+                    playback.PreferredQuality = settings.DefaultQuality;
+                }
+            }
+        }
+        catch { }
+    }
+
     private async Task LoadMovie()
     {
         var version = ++loadVersion; var id = MovieId;
-        loading = true; loadError = null; lightsOff = false; reportOpen = false; search = ""; status = null;
-        autoPlayEpisodeId = null; resumeSeconds = 0;
+        loading = true; loadError = null; lightsOff = false; reportOpen = false; vipPromptOpen = false; search = ""; status = null;
+        autoPlayEpisodeId = null; resumeSeconds = 0; currentCursorSeconds = 0;
         try
         {
+            playback.IsVipUser = Auth.User?.IsVip == true || Auth.User?.IsAdmin == true;
+            if (Auth.IsAuthenticated)
+            {
+                await ApplyUserSettingsAsync();
+            }
+
             var result = await Api.GetMovieAsync(id);
             if (version != loadVersion) return;
             movie = result; loadedMovieId = id;
-            if (movie is not null) playback.Load(movie, EpQuery);
+            if (movie is not null)
+            {
+                // Increment view count reliably when movie playback begins
+                _ = Api.IncrementViewCountAsync(id);
+
+                int? targetEpisode = EpQuery;
+                if (Auth.IsAuthenticated)
+                {
+                    try
+                    {
+                        var progress = await Api.GetProgressAsync(id);
+                        if (progress is not null && progress.ProgressSeconds > 0)
+                        {
+                            resumeSeconds = progress.ProgressSeconds;
+                            currentCursorSeconds = progress.ProgressSeconds;
+                            if (targetEpisode is null && progress.EpisodeNumber > 1)
+                            {
+                                targetEpisode = progress.EpisodeNumber;
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Non-critical fallback
+                    }
+                }
+
+                playback.Load(movie, targetEpisode);
+                await AcquireLeaseAndStartHeartbeatAsync();
+            }
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
@@ -281,35 +423,139 @@
         }
         finally { if (version == loadVersion) loading = false; }
     }
-    private void GoTo(EpisodeDto? episode)
+
+    private async Task HandlePlayerProgress(double seconds)
+    {
+        currentCursorSeconds = seconds;
+        resumeSeconds = seconds;
+        await SaveCurrentProgressAsync(immediate: false);
+    }
+
+    private async Task HandlePlayerPause(double seconds)
+    {
+        currentCursorSeconds = seconds;
+        resumeSeconds = seconds;
+        await SaveCurrentProgressAsync(immediate: true);
+    }
+
+    private async Task SaveCurrentProgressAsync(bool immediate = false)
+    {
+        if (!Auth.IsAuthenticated || movie is null || playback.Current is null) return;
+        var seconds = (int)Math.Round(currentCursorSeconds);
+        if (seconds <= 0) return;
+
+        var now = DateTime.UtcNow;
+        if (!immediate && (now - lastSaveTime).TotalSeconds < 9)
+        {
+            return;
+        }
+
+        lastSaveTime = now;
+        var totalSec = playback.Current.DurationMinutes > 0
+            ? playback.Current.DurationMinutes * 60
+            : (movie.DurationMinutes > 0 ? movie.DurationMinutes * 60 : 120 * 60);
+
+        var req = new UpdateWatchProgressRequest
+        {
+            MovieId = MovieId,
+            EpisodeId = playback.Current.Id,
+            EpisodeNumber = playback.Current.EpisodeNumber,
+            ProgressSeconds = seconds,
+            DurationSeconds = totalSec
+        };
+
+        await Api.SaveProgressAsync(req);
+    }
+
+    private async Task GoTo(EpisodeDto? episode)
     {
         if (episode is null) return;
-        autoPlayEpisodeId = episode.Id; resumeSeconds = 0;
+        if (currentCursorSeconds > 0)
+        {
+            _ = SaveCurrentProgressAsync(immediate: true);
+        }
+        autoPlayEpisodeId = episode.Id; resumeSeconds = 0; currentCursorSeconds = 0;
         Nav.NavigateTo($"/watch/{MovieId}?ep={episode.EpisodeNumber}");
+        await AcquireLeaseAndStartHeartbeatAsync();
     }
+
     private async Task PreserveCursor()
     {
         if (player is null) return;
         var cursor = await player.GetCursorAsync();
         resumeSeconds = cursor.Seconds;
+        currentCursorSeconds = cursor.Seconds;
         autoPlayEpisodeId = cursor.Playing ? playback.Current?.Id : null;
     }
+
     private async Task SelectServer(string server)
     {
         if (playback.Source?.ServerName == server) return;
+        var sInfo = playback.GetServerInfo(server);
+        if (sInfo.IsVip && !playback.IsVipUser)
+        {
+            vipPromptMessage = "Nguồn phát VIP Fast Server yêu cầu tài khoản VIP CinemaFlow để trải nghiệm tốc độ cao.";
+            vipPromptOpen = true;
+            return;
+        }
         await PreserveCursor();
         playback.SetServer(server);
+        await AcquireLeaseAndStartHeartbeatAsync();
     }
+
     private async Task SelectQuality(string quality)
     {
         if (playback.Source?.Quality == quality) return;
+        if (quality.Contains("4K", StringComparison.OrdinalIgnoreCase) && !playback.IsVipUser)
+        {
+            vipPromptMessage = "Độ phân giải 4K Ultra HD yêu cầu gói thành viên VIP để thưởng thức hình ảnh sắc nét nhất.";
+            vipPromptOpen = true;
+            return;
+        }
         await PreserveCursor();
         playback.SetQuality(quality);
     }
-    private async Task ChangeServer(ChangeEventArgs e) { await PreserveCursor(); playback.SetServer(e.Value?.ToString() ?? ""); }
-    private async Task ChangeQuality(ChangeEventArgs e) { await PreserveCursor(); playback.SetQuality(e.Value?.ToString() ?? ""); }
-    private void OnVideoEnded() { GoTo(playback.OnEnded()); }
+
+    private void SelectFreeStream()
+    {
+        var nonVip = playback.Sources.FirstOrDefault(s => !WatchPlaybackState.IsVipStream(s) && !string.IsNullOrEmpty(s.StreamUrl));
+        if (nonVip is not null)
+        {
+            playback.SetServer(nonVip.ServerName);
+            playback.SetQuality(nonVip.Quality);
+        }
+    }
+
+    private async Task ChangeServer(ChangeEventArgs e)
+    {
+        var server = e.Value?.ToString() ?? "";
+        var sInfo = playback.GetServerInfo(server);
+        if (sInfo.IsVip && !playback.IsVipUser)
+        {
+            vipPromptMessage = "Nguồn phát VIP Fast Server yêu cầu tài khoản VIP CinemaFlow để trải nghiệm tốc độ cao.";
+            vipPromptOpen = true;
+            return;
+        }
+        await PreserveCursor();
+        playback.SetServer(server);
+    }
+
+    private async Task ChangeQuality(ChangeEventArgs e)
+    {
+        var quality = e.Value?.ToString() ?? "";
+        if (quality.Contains("4K", StringComparison.OrdinalIgnoreCase) && !playback.IsVipUser)
+        {
+            vipPromptMessage = "Độ phân giải 4K Ultra HD yêu cầu gói thành viên VIP.";
+            vipPromptOpen = true;
+            return;
+        }
+        await PreserveCursor();
+        playback.SetQuality(quality);
+    }
+
+    private void OnVideoEnded() { _ = GoTo(playback.OnEnded()); }
     private void SignIn() => Nav.NavigateTo("/login?ReturnUrl=" + Uri.EscapeDataString(ReturnUrl));
+
     private async Task ToggleSaved()
     {
         if (!Auth.IsAuthenticated) { SignIn(); return; }
@@ -323,12 +569,15 @@
         }
         finally { savingFilm = false; }
     }
+
     private async Task Share()
     {
         try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", Nav.Uri); status = "Đã sao chép liên kết đến tập phim."; }
         catch (JSException) { showShare = true; status = "Bạn có thể sao chép liên kết bên dưới."; }
     }
+
     private async Task SelectShare() => await JS.InvokeVoidAsync("CinemaPlayer.selectShareLink");
+
     private void OpenReport()
     {
         if (!Auth.IsAuthenticated) { SignIn(); return; }
@@ -336,8 +585,10 @@
         lightsOff = false; report = new() { MovieId = MovieId, EpisodeId = playback.Current.Id };
         reportStatus = null; reportOpen = true; focusReport = true;
     }
+
     private void CloseReport() { if (!reportSending) { reportOpen = false; focusReportTrigger = true; } }
     private void ReportKeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") CloseReport(); }
+
     private async Task SendReport()
     {
         if (reportSending) return;
@@ -351,7 +602,171 @@
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { reportStatus = "Chưa gửi được báo lỗi. Vui lòng thử lại."; }
         finally { reportSending = false; }
     }
-    private void AuthChanged() => _ = InvokeAsync(async () => { if (Auth.IsAuthenticated) await Watchlist.InitializeAsync(); StateHasChanged(); });
+
+    private void AuthChanged() => _ = InvokeAsync(async () =>
+    {
+        if (Auth.IsAuthenticated)
+        {
+            playback.IsVipUser = Auth.User?.IsVip == true || Auth.User?.IsAdmin == true;
+            await Watchlist.InitializeAsync();
+            await ApplyUserSettingsAsync();
+            await AcquireLeaseAndStartHeartbeatAsync();
+        }
+        else
+        {
+            playback.IsVipUser = false;
+            StopHeartbeatTimer();
+        }
+        StateHasChanged();
+    });
+
     private void StateChanged() => _ = InvokeAsync(StateHasChanged);
-    public void Dispose() { ++loadVersion; Auth.Changed -= AuthChanged; Watchlist.OnChange -= StateChanged; }
+
+    private async Task AcquireLeaseAndStartHeartbeatAsync()
+    {
+        if (!Auth.IsAuthenticated) return;
+        StopHeartbeatTimer();
+        if (!string.IsNullOrEmpty(currentStreamSessionId))
+        {
+            _ = HubClient.ReleaseStreamLeaseAsync(currentStreamSessionId);
+        }
+
+        var sessionId = Guid.NewGuid().ToString("N");
+        currentStreamSessionId = sessionId;
+        isEvicted = false;
+        evictionNotice = null;
+
+        var result = await HubClient.AcquireStreamLeaseAsync(
+            MovieId,
+            playback.Current?.Id,
+            sessionId,
+            "Trình duyệt Web");
+
+        if (result is not null && result.Success)
+        {
+            StartHeartbeatTimer(sessionId);
+        }
+        else if (result is not null && !result.Success)
+        {
+            await HandleSessionEvictionAsync(new ForceDisconnectNotice
+            {
+                SessionId = sessionId,
+                Reason = result.ErrorMessage ?? "Không thể khởi tạo phiên xem phim do vượt quá giới hạn thiết bị.",
+                DisconnectedAtUtc = DateTime.UtcNow
+            });
+        }
+    }
+
+    private void StartHeartbeatTimer(string sessionId)
+    {
+        StopHeartbeatTimer();
+        heartbeatCts = new CancellationTokenSource();
+        heartbeatTimer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        heartbeatTask = RunHeartbeatLoopAsync(sessionId, heartbeatTimer, heartbeatCts.Token);
+    }
+
+    private async Task RunHeartbeatLoopAsync(string sessionId, PeriodicTimer timer, CancellationToken ct)
+    {
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                if (!Auth.IsAuthenticated || currentStreamSessionId != sessionId || isEvicted)
+                    break;
+
+                var renewed = await HubClient.SendStreamHeartbeatAsync(sessionId);
+                if (!renewed)
+                {
+                    await HandleSessionEvictionAsync(new ForceDisconnectNotice
+                    {
+                        SessionId = sessionId,
+                        Reason = "Phiên phát phim đã hết hạn hoặc bị ngắt kết nối bởi máy chủ.",
+                        DisconnectedAtUtc = DateTime.UtcNow
+                    });
+                    break;
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch { }
+    }
+
+    private void StopHeartbeatTimer()
+    {
+        heartbeatCts?.Cancel();
+        heartbeatTimer?.Dispose();
+        heartbeatCts?.Dispose();
+        heartbeatTimer = null;
+        heartbeatCts = null;
+        heartbeatTask = null;
+    }
+
+    private void HandleForceDisconnect(ForceDisconnectNotice notice)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            if (currentStreamSessionId == notice.SessionId || string.IsNullOrEmpty(notice.SessionId))
+            {
+                await HandleSessionEvictionAsync(notice);
+            }
+        });
+    }
+
+    private async Task HandleSessionEvictionAsync(ForceDisconnectNotice notice)
+    {
+        StopHeartbeatTimer();
+        isEvicted = true;
+        evictionNotice = notice;
+        autoPlayEpisodeId = null;
+
+        if (player is not null)
+        {
+            await player.PauseAsync();
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task ResumePlaybackHere()
+    {
+        isEvicted = false;
+        evictionNotice = null;
+        autoPlayEpisodeId = playback.Current?.Id;
+        await AcquireLeaseAndStartHeartbeatAsync();
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        ++loadVersion;
+        Auth.Changed -= AuthChanged;
+        Watchlist.OnChange -= StateChanged;
+        HubClient.OnForceDisconnectReceived -= HandleForceDisconnect;
+        StopHeartbeatTimer();
+        if (!string.IsNullOrEmpty(currentStreamSessionId))
+        {
+            _ = HubClient.ReleaseStreamLeaseAsync(currentStreamSessionId);
+        }
+        if (Auth.IsAuthenticated && movie is not null && playback.Current is not null && currentCursorSeconds > 0)
+        {
+            _ = SaveCurrentProgressAsync(immediate: true);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        ++loadVersion;
+        Auth.Changed -= AuthChanged;
+        Watchlist.OnChange -= StateChanged;
+        HubClient.OnForceDisconnectReceived -= HandleForceDisconnect;
+        StopHeartbeatTimer();
+        if (!string.IsNullOrEmpty(currentStreamSessionId))
+        {
+            await HubClient.ReleaseStreamLeaseAsync(currentStreamSessionId);
+        }
+        if (Auth.IsAuthenticated && movie is not null && playback.Current is not null && currentCursorSeconds > 0)
+        {
+            await SaveCurrentProgressAsync(immediate: true);
+        }
+    }
 }

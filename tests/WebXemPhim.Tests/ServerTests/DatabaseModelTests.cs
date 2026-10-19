@@ -65,7 +65,7 @@ public sealed class DatabaseModelTests
             .ToList();
 
         Assert.True(reviewIdentity.IsUnique);
-        Assert.Equal(10, foreignKeys.Count);
+        Assert.Equal(14, foreignKeys.Count);
         Assert.All(foreignKeys, key => Assert.Equal(DeleteBehavior.Cascade, key.DeleteBehavior));
 
         var movieForeignKey = Assert.Single(reviewType.GetForeignKeys(), key =>
@@ -81,13 +81,13 @@ public sealed class DatabaseModelTests
             .Options;
         await using var context = new AppDbContext(options);
 
-        await DevelopmentDataSeeder.SeedCatalogAsync(context);
-        await DevelopmentDataSeeder.SeedCatalogAsync(context);
+        await DatabaseSeeder.SeedCatalogAsync(context);
+        await DatabaseSeeder.SeedCatalogAsync(context);
 
-        Assert.Equal(MockMovieDatabase.Movies.Count, await context.Movies.CountAsync());
-        Assert.Equal(MockMovieDatabase.Movies.Sum(movie => movie.Episodes.Count), await context.Episodes.CountAsync());
+        Assert.Equal(DatabaseSeeder.CatalogMovies.Count, await context.Movies.CountAsync());
+        Assert.Equal(DatabaseSeeder.CatalogMovies.Sum(movie => movie.Episodes.Count), await context.Episodes.CountAsync());
         Assert.Equal(
-            MockMovieDatabase.Movies.Sum(movie => movie.Episodes.Sum(episode => episode.Streams.Count)),
+            DatabaseSeeder.CatalogMovies.Sum(movie => movie.Episodes.Sum(episode => episode.Streams.Count)),
             await context.StreamSources.CountAsync());
         Assert.Equal(await context.Movies.CountAsync(), await context.Movies.Select(movie => movie.Slug).Distinct().CountAsync());
     }
@@ -100,7 +100,7 @@ public sealed class DatabaseModelTests
             .Options;
         await using var context = new AppDbContext(options);
 
-        await DevelopmentDataSeeder.SeedCatalogAsync(context);
+        await DatabaseSeeder.SeedCatalogAsync(context);
         var newReleaseIds = new[] { 37, 38, 39, 40 };
         var newReleases = await context.Movies
             .Where(movie => newReleaseIds.Contains(movie.Id))
@@ -108,9 +108,9 @@ public sealed class DatabaseModelTests
         context.Movies.RemoveRange(newReleases);
         await context.SaveChangesAsync();
 
-        await DevelopmentDataSeeder.SeedCatalogAsync(context);
+        await DatabaseSeeder.SeedCatalogAsync(context);
 
-        Assert.Equal(MockMovieDatabase.Movies.Count, await context.Movies.CountAsync());
+        Assert.Equal(DatabaseSeeder.CatalogMovies.Count, await context.Movies.CountAsync());
         Assert.Equal(4, await context.Movies.CountAsync(movie => newReleaseIds.Contains(movie.Id)));
 
         var showcase = await context.Movies

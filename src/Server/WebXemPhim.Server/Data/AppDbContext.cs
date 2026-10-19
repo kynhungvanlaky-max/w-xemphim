@@ -1,4 +1,6 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
+using WebXemPhim.Server.Security;
 using WebXemPhim.Shared.Enums;
 
 namespace WebXemPhim.Server.Data;
@@ -27,6 +29,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<NotificationEntity> Notifications => Set<NotificationEntity>();
     public DbSet<WatchProgressEntity> WatchProgress => Set<WatchProgressEntity>();
     public DbSet<AuditLogEntity> AuditLogs => Set<AuditLogEntity>();
+    public DbSet<VipPlanEntity> VipPlans => Set<VipPlanEntity>();
+    public DbSet<CouponEntity> Coupons => Set<CouponEntity>();
+    public DbSet<ActiveStreamEntity> ActiveStreams => Set<ActiveStreamEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -58,12 +63,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasKey(item => item.TokenHash);
             entity.Property(item => item.TokenHash).HasMaxLength(64);
             entity.HasIndex(item => item.UserId);
+            entity.HasOne<UserEntity>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<SecurityAuditEventEntity>(entity =>
         {
             entity.ToTable("security_audit_events");
             entity.HasKey(item => item.Id);
             entity.HasIndex(item => item.CreatedAtUtc);
+            entity.HasIndex(item => item.UserId);
             entity.Property(item => item.EventType).HasMaxLength(80).IsRequired();
             entity.Property(item => item.Detail).HasMaxLength(240).IsRequired();
         });
@@ -72,19 +79,30 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.ToTable("playback_issues");
             entity.HasKey(item => item.Id);
             entity.Property(item => item.Description).HasMaxLength(800).IsRequired();
+            entity.HasOne<UserEntity>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<MovieEntity>().WithMany().HasForeignKey(item => item.MovieId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<EpisodeEntity>().WithMany().HasForeignKey(item => item.EpisodeId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(item => new { item.UserId, item.MovieId });
         });
         modelBuilder.Entity<UserLibraryEntity>(entity =>
         {
             entity.ToTable("user_library");
             entity.HasKey(item => new { item.UserId, item.MovieId });
+            entity.HasIndex(item => item.MovieId);
+            entity.HasOne<UserEntity>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<MovieEntity>().WithMany().HasForeignKey(item => item.MovieId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<UserEntity>(entity =>
         {
             entity.ToTable("users");
             entity.HasKey(item => item.Id);
             entity.HasIndex(item => item.NormalizedEmail).IsUnique();
-            entity.Property(item => item.FullName).HasMaxLength(80).IsRequired();
-            entity.Property(item => item.Email).HasMaxLength(160).IsRequired();
+            entity.HasIndex(item => item.EmailLookupHash);
+            entity.Property(item => item.EmailLookupHash).HasMaxLength(64);
+            entity.Property(item => item.FullName).HasMaxLength(500).IsRequired()
+                .HasConversion(FieldEncryptionConverter.Instance);
+            entity.Property(item => item.Email).HasMaxLength(500).IsRequired()
+                .HasConversion(FieldEncryptionConverter.Instance);
             entity.Property(item => item.NormalizedEmail).HasMaxLength(160).IsRequired();
             entity.Property(item => item.PasswordHash).HasMaxLength(64).IsRequired();
             entity.Property(item => item.PasswordSalt).HasMaxLength(32).IsRequired();
@@ -115,7 +133,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(item => item.PlanName).HasMaxLength(80).IsRequired();
             entity.Property(item => item.Amount).HasPrecision(12, 2);
             entity.Property(item => item.Method).HasConversion<int>();
-            entity.Property(item => item.Status).HasConversion<int>();
+            entity.Property(item => item.Status).HasConversion<int>().IsConcurrencyToken();
+            entity.Property(item => item.TransactionReference).HasMaxLength(120);
+            entity.HasIndex(item => item.TransactionReference);
             entity.HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<ReviewEntity>(entity =>
@@ -194,6 +214,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.ToTable("user_settings");
             entity.HasKey(item => item.UserId);
             entity.Property(item => item.DefaultQuality).HasMaxLength(32).IsRequired();
+            entity.Property(item => item.Language).HasMaxLength(10).HasDefaultValue("vi").IsRequired();
             entity.HasOne(item => item.User).WithOne().HasForeignKey<UserSettingsEntity>(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<NotificationEntity>(entity =>
@@ -204,12 +225,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(item => item.Copy).HasMaxLength(1000).IsRequired();
             entity.Property(item => item.Icon).HasMaxLength(32).IsRequired();
             entity.Property(item => item.ActionUrl).HasMaxLength(500);
+            entity.HasIndex(item => new { item.UserId, item.Read });
             entity.HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<WatchProgressEntity>(entity =>
         {
             entity.ToTable("watch_progress");
             entity.HasKey(item => new { item.UserId, item.MovieId });
+            entity.HasIndex(item => item.MovieId);
             entity.HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(item => item.Movie).WithMany().HasForeignKey(item => item.MovieId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -219,11 +242,60 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasKey(item => item.Id);
             entity.HasIndex(item => item.TimestampUtc);
             entity.HasIndex(item => item.AdminEmail);
+            entity.HasIndex(item => new { item.EntityType, item.EntityId });
             entity.Property(item => item.AdminEmail).HasMaxLength(200).IsRequired();
             entity.Property(item => item.Action).HasMaxLength(80).IsRequired();
             entity.Property(item => item.EntityType).HasMaxLength(80).IsRequired();
             entity.Property(item => item.EntityId).HasMaxLength(120).IsRequired();
             entity.Property(item => item.Summary).HasMaxLength(500).IsRequired();
+        });
+        modelBuilder.Entity<VipPlanEntity>(entity =>
+        {
+            entity.ToTable("vip_plans");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Id).HasMaxLength(32);
+            entity.Property(item => item.Name).HasMaxLength(80).IsRequired();
+            entity.Property(item => item.Description).HasMaxLength(500).IsRequired();
+            entity.Property(item => item.PriceVnd).HasPrecision(12, 2);
+        });
+        modelBuilder.Entity<CouponEntity>(entity =>
+        {
+            entity.ToTable("coupons");
+            entity.HasKey(item => item.Code);
+            entity.Property(item => item.Code).HasMaxLength(32);
+            entity.Property(item => item.DiscountType).HasMaxLength(32).IsRequired();
+            entity.Property(item => item.DiscountValue).HasPrecision(12, 2);
+        });
+        modelBuilder.Entity<ActiveStreamEntity>(entity =>
+        {
+            entity.ToTable("active_streams");
+            entity.HasKey(item => item.Id);
+
+            entity.Property(item => item.SessionId).HasMaxLength(64).IsRequired();
+            entity.HasIndex(item => item.SessionId).IsUnique();
+
+            entity.Property(item => item.ConnectionId).HasMaxLength(64);
+            entity.Property(item => item.IpAddress).HasMaxLength(45);
+            entity.Property(item => item.DeviceInfo).HasMaxLength(256);
+
+            entity.HasIndex(item => item.UserId);
+            entity.HasIndex(item => item.ExpiresAtUtc);
+            entity.HasIndex(item => new { item.UserId, item.IsActive, item.ExpiresAtUtc });
+
+            entity.HasOne(item => item.User)
+                  .WithMany()
+                  .HasForeignKey(item => item.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(item => item.Movie)
+                  .WithMany()
+                  .HasForeignKey(item => item.MovieId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(item => item.Episode)
+                  .WithMany()
+                  .HasForeignKey(item => item.EpisodeId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }
@@ -234,6 +306,7 @@ public sealed class UserEntity
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string NormalizedEmail { get; set; } = string.Empty;
+    public string? EmailLookupHash { get; set; }
     public byte[] PasswordSalt { get; set; } = [];
     public byte[] PasswordHash { get; set; } = [];
     public MembershipTier Membership { get; set; } = MembershipTier.Free;
@@ -335,7 +408,29 @@ public sealed class UserSettingsEntity
     public string DefaultQuality { get; set; } = "4K khi có thể";
     public bool AutoplayNext { get; set; } = true;
     public bool NotifyNewEpisodes { get; set; } = true;
+    [StringLength(10)]
+    public string Language { get; set; } = "vi";
     public DateTime UpdatedAtUtc { get; set; }
+}
+
+public sealed class VipPlanEntity
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public decimal PriceVnd { get; set; }
+    public int DurationDays { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int DisplayOrder { get; set; }
+}
+
+public sealed class CouponEntity
+{
+    public string Code { get; set; } = string.Empty;
+    public string DiscountType { get; set; } = "percent";
+    public decimal DiscountValue { get; set; }
+    public DateTime ValidUntilUtc { get; set; }
+    public bool IsActive { get; set; } = true;
 }
 
 public sealed class NotificationEntity

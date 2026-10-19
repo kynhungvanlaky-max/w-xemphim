@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using WebXemPhim.Server.Data;
+using WebXemPhim.Server.Hubs;
 using WebXemPhim.Server.Security;
 using WebXemPhim.Server.Services;
 using WebXemPhim.Shared.Security;
@@ -15,6 +17,7 @@ builder.Services.AddSiteDataProtection(builder.Configuration, "WebXemPhim.Server
 
 // Add services to the container.
 builder.Services.AddControllers(options => options.Filters.Add(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(64 * 1024)));
+builder.Services.AddSignalR();
 builder.Services.AddProblemDetails();
 builder.Services.AddApiRateLimits(builder.Configuration);
 builder.Services.AddOpenApi();
@@ -27,14 +30,17 @@ builder.Services.AddHttpClient();
 
 // Register application services
 builder.Services.AddScoped<IMovieService, DatabaseMovieService>();
-builder.Services.AddSingleton<IWatchlistService, WatchlistService>();
 builder.Services.AddScoped<IGenreService, DatabaseGenreService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IPasswordResetEmailSender, PasswordResetEmailSender>();
 builder.Services.AddScoped<ISecurityAuditService, SecurityAuditService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IReviewService, ReviewService>();
-builder.Services.AddScoped<DevelopmentDataSeeder>();
+builder.Services.AddSingleton<IStreamUrlSigner, StreamUrlSigner>();
+builder.Services.AddSingleton<IPaymentWebhookVerifier, PaymentWebhookVerifier>();
+builder.Services.AddSingleton<IFieldEncryptor, FieldEncryptor>();
+builder.Services.AddScoped<IStreamSessionService, StreamSessionService>();
+builder.Services.AddHostedService<StreamSessionCleanupWorker>();
 builder.Services.AddAuthentication("Bearer")
     .AddScheme<AuthenticationSchemeOptions, OpaqueBearerHandler>("Bearer", null);
 builder.Services.AddAuthorization(options => options.AddPolicy("Admin", policy => policy.RequireAuthenticatedUser().RequireRole("Admin")));
@@ -45,7 +51,13 @@ builder.Services.AddCors(options =>
     options.AddPolicy("ClientOrigins", policy =>
     {
         var origins = builder.Configuration.GetSection("Security:AllowedOrigins").Get<string[]>() ?? [];
-        if (origins.Length > 0) policy.WithOrigins(origins).WithMethods("GET", "POST", "PUT", "DELETE").WithHeaders("Content-Type", "Authorization");
+        if (origins.Length > 0)
+        {
+            policy.WithOrigins(origins)
+                  .WithMethods("GET", "POST", "PUT", "DELETE")
+                  .WithHeaders("Content-Type", "Authorization", "x-requested-with", "x-signalr-user-agent")
+                  .AllowCredentials();
+        }
     });
 });
 
@@ -65,28 +77,49 @@ if (!app.Environment.IsEnvironment("Testing"))
     await db.SaveChangesAsync();
 }
 
-if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Database:SeedDemoData"))
-{
-    await using var scope = app.Services.CreateAsyncScope();
-    await scope.ServiceProvider.GetRequiredService<DevelopmentDataSeeder>().SeedAsync();
-}
-
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+};
+forwardedHeadersOptions.KnownIPNetworks.Clear();
+forwardedHeadersOptions.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("10.0.0.0"), 8));
+forwardedHeadersOptions.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("172.16.0.0"), 12));
+forwardedHeadersOptions.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("192.168.0.0"), 16));
+forwardedHeadersOptions.KnownProxies.Clear();
+forwardedHeadersOptions.KnownProxies.Add(System.Net.IPAddress.Loopback);
+forwardedHeadersOptions.KnownProxies.Add(System.Net.IPAddress.IPv6Loopback);
+
+var configuredProxies = app.Configuration.GetSection("Security:KnownProxies").Get<string[]>();
+if (configuredProxies is { Length: > 0 })
+{
+    foreach (var proxy in configuredProxies)
+    {
+        if (System.Net.IPAddress.TryParse(proxy, out var ip))
+        {
+            forwardedHeadersOptions.KnownProxies.Add(ip);
+            ApiRateLimits.AddTrustedProxy(proxy);
+        }
+    }
+}
+app.UseForwardedHeaders(forwardedHeadersOptions);
+
 app.UseSiteSecurity(client: false, app.Environment.IsDevelopment(), app.Configuration);
 app.UseExceptionHandler();
 if (app.Environment.IsProduction()) { app.UseHsts(); app.UseHttpsRedirection(); app.RequireHttpsTransport(); }
 app.UseRouting();
 app.UseCors("ClientOrigins");
-app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapControllers();
+app.MapHub<CinemaHub>("/hubs/cinema");
 
 if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Database:SeedDemoData"))
 {

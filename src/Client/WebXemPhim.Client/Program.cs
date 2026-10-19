@@ -43,6 +43,7 @@ builder.Services.AddScoped<WatchlistState>();
 builder.Services.AddScoped<AuthState>();
 builder.Services.AddScoped<ThemeState>();
 builder.Services.AddScoped<WatchApiClient>();
+builder.Services.AddScoped<CinemaHubClient>();
 
 var app = builder.Build();
 app.UseSiteSecurity(client: true, app.Environment.IsDevelopment(), app.Configuration);

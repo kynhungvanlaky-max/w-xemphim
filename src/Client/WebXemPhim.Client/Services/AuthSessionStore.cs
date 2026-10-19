@@ -16,8 +16,17 @@ public sealed class AuthSessionStore(ProtectedSessionStorage storage) : IAuthSes
     public async Task<string?> ReadAsync()
     {
         try { var value = await storage.GetAsync<string>(Key); return value.Success ? value.Value : null; }
+        catch (InvalidOperationException) { return null; }
         catch (System.Security.Cryptography.CryptographicException) { await ClearAsync(); return null; }
     }
-    public async Task WriteAsync(string token) => await storage.SetAsync(Key, token);
-    public async Task ClearAsync() => await storage.DeleteAsync(Key);
+    public async Task WriteAsync(string token)
+    {
+        try { await storage.SetAsync(Key, token); }
+        catch (InvalidOperationException) { }
+    }
+    public async Task ClearAsync()
+    {
+        try { await storage.DeleteAsync(Key); }
+        catch (InvalidOperationException) { }
+    }
 }

@@ -5,17 +5,44 @@ namespace WebXemPhim.Client.Services;
 public class WatchlistState(IMovieApiClient apiClient)
 {
     private List<WatchlistItemDto> _items = [];
+    private Task? _initTask;
     public IReadOnlyList<WatchlistItemDto> Items => _items.AsReadOnly();
     public int Count => _items.Count;
+    public bool IsInitialized { get; private set; }
 
     public event Action? OnChange;
 
-    public async Task InitializeAsync()
+    public Task InitializeAsync(bool force = false)
     {
-        try { _items = await apiClient.GetWatchlistAsync(); }
+        if (force || _initTask is null)
+        {
+            _initTask = LoadWatchlistInternalAsync();
+        }
+        return _initTask;
+    }
+
+    private async Task LoadWatchlistInternalAsync()
+    {
+        try
+        {
+            var fetched = await apiClient.GetWatchlistAsync();
+            _items = fetched != null ? [.. fetched] : [];
+            IsInitialized = true;
+        }
         catch (HttpRequestException) { _items = []; }
         catch (TaskCanceledException) { _items = []; }
         catch (System.Text.Json.JsonException) { _items = []; }
+        finally
+        {
+            NotifyStateChanged();
+        }
+    }
+
+    public void Reset()
+    {
+        _items = [];
+        _initTask = null;
+        IsInitialized = false;
         NotifyStateChanged();
     }
 
