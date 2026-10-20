@@ -32,6 +32,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<VipPlanEntity> VipPlans => Set<VipPlanEntity>();
     public DbSet<CouponEntity> Coupons => Set<CouponEntity>();
     public DbSet<ActiveStreamEntity> ActiveStreams => Set<ActiveStreamEntity>();
+    public DbSet<AppMaintenanceFlagEntity> AppMaintenanceFlags => Set<AppMaintenanceFlagEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -147,10 +148,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(item => item.Movie).WithMany(movie => movie.Reviews).HasForeignKey(item => item.MovieId).OnDelete(DeleteBehavior.Cascade);
         });
+        modelBuilder.Entity<AppMaintenanceFlagEntity>(entity =>
+        {
+            entity.ToTable("app_maintenance_flags");
+            entity.HasKey(item => item.Flag);
+            entity.Property(item => item.Flag).HasMaxLength(120).IsRequired();
+        });
         modelBuilder.Entity<MovieEntity>(entity =>
         {
-            entity.ToTable("movies");
-            entity.HasKey(item => item.Id);
+            entity.ToTable("movies");            entity.HasKey(item => item.Id);
             entity.HasIndex(item => item.Slug).IsUnique();
             entity.HasIndex(item => new { item.Type, item.ReleaseYear });
             entity.HasIndex(item => new { item.IsTrending, item.Rating });
@@ -166,6 +172,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(item => item.Country).HasMaxLength(80).IsRequired();
             entity.Property(item => item.Director).HasMaxLength(120).IsRequired();
             entity.Property(item => item.Type).HasConversion<int>();
+            entity.Property(item => item.SearchText).IsRequired(false);
         });
         modelBuilder.Entity<GenreEntity>(entity =>
         {

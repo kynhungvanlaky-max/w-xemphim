@@ -1,6 +1,7 @@
 @page "/random"
 @inject IMovieApiClient ApiClient
 @inject NavigationManager Nav
+@inject ILogger<Random> Logger
 @using WebXemPhim.Shared.Models
 @using WebXemPhim.Shared.Enums
 @using WebXemPhim.Client.Components.Icons
@@ -9,7 +10,7 @@
 
 <section class="roulette-page" aria-labelledby="roulette-title">
     <!-- Ambient Backdrop Glow -->
-    <div class="roulette-ambient-glow" style="background-image: url('@(selectedMovie?.BackdropUrl ?? "/images/movies/movie-1-backdrop.jpg")');" aria-hidden="true"></div>
+    <div class="roulette-ambient-glow" style="background-image: url('@(selectedMovie?.BackdropUrl ?? "/images/movies/movie-1-backdrop.webp")');" aria-hidden="true"></div>
 
     <div class="roulette-container">
         <!-- Header -->
@@ -315,15 +316,18 @@
             var latestTask = ApiClient.GetLatestAsync(30);
             await Task.WhenAll(trendingTask, latestTask);
 
-            var merged = trendingTask.Result.Concat(latestTask.Result)
+            var trending = await trendingTask;
+            var latest = await latestTask;
+            var merged = trending.Concat(latest)
                 .GroupBy(m => m.Id)
                 .Select(g => g.First())
                 .ToList();
 
             allMovies = merged;
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.LogWarning(ex, "Lỗi khi tải danh sách phim gợi ý ngẫu nhiên.");
             allMovies = [];
         }
     }
@@ -409,8 +413,9 @@
         {
             isInWatchlist = await ApiClient.CheckInWatchlistAsync(chosen.Id);
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.LogDebug(ex, "Không thể kiểm tra trạng thái danh sách xem.");
             isInWatchlist = false;
         }
 
@@ -439,8 +444,9 @@
         {
             isInWatchlist = await ApiClient.CheckInWatchlistAsync(movie.Id);
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.LogDebug(ex, "Không thể kiểm tra trạng thái danh sách xem.");
             isInWatchlist = false;
         }
         StateHasChanged();
@@ -463,9 +469,9 @@
                 if (success) isInWatchlist = true;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Silently handle
+            Logger.LogWarning(ex, "Không thể cập nhật danh sách xem trong roulette.");
         }
         StateHasChanged();
     }

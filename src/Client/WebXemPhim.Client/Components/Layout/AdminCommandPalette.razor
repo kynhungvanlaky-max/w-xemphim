@@ -4,6 +4,7 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject ThemeState Theme
+@inject ILogger<AdminCommandPalette> Logger
 @implements IDisposable
 
 @if (IsOpen)
@@ -119,7 +120,10 @@
             {
                 await JS.InvokeVoidAsync("adminTools.registerCommandPalette", dotNetRef);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Lỗi đăng ký phím tắt Command Palette.");
+            }
         }
 
         if (IsOpen)
@@ -128,7 +132,10 @@
             {
                 await inputElement.FocusAsync();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Lỗi focus vào ô tìm kiếm Command Palette.");
+            }
         }
     }
 

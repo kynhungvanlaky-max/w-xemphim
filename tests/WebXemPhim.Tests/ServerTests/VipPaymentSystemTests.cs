@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Moq;
 using WebXemPhim.Server.Controllers;
+using WebXemPhim.Server.Controllers.Admin;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Server.Services;
 using WebXemPhim.Shared.Enums;
@@ -22,7 +23,7 @@ public sealed class VipPaymentSystemTests
             Task.FromResult(new AppDbContext(options));
     }
 
-    private static (AdminController adminController, PaymentsController paymentsController, PaymentService paymentService, DbContextOptions<AppDbContext> options) CreateControllers()
+    private static (AdminPaymentsController adminPaymentsController, AdminUsersController adminUsersController, PaymentsController paymentsController, PaymentService paymentService, DbContextOptions<AppDbContext> options) CreateControllers()
     {
         var dbName = $"webxemphim-viptests-{Guid.NewGuid():N}";
         var options = new DbContextOptionsBuilder<AppDbContext>()
@@ -33,10 +34,11 @@ public sealed class VipPaymentSystemTests
         var configMock = new Mock<IConfiguration>();
 
         var paymentService = new PaymentService(factory, TimeProvider.System, envMock.Object, configMock.Object);
-        var adminController = new AdminController(factory, TimeProvider.System);
+        var adminPaymentsController = new AdminPaymentsController(factory, TimeProvider.System);
+        var adminUsersController = new AdminUsersController(factory, TimeProvider.System);
         var paymentsController = new PaymentsController(paymentService);
 
-        return (adminController, paymentsController, paymentService, options);
+        return (adminPaymentsController, adminUsersController, paymentsController, paymentService, options);
     }
 
     [Theory]
@@ -46,7 +48,7 @@ public sealed class VipPaymentSystemTests
     [InlineData("TESTVIP", "vip-30", 50, 39500, 39500)]
     public async Task ValidateCoupon_ValidCodes_ReturnsCorrectDiscounts(string couponCode, string planId, decimal expectedPercent, decimal expectedDiscount, decimal expectedFinal)
     {
-        var (_, _, paymentService, _) = CreateControllers();
+        var (_, _, _, paymentService, _) = CreateControllers();
         var request = new ApplyCouponRequest { CouponCode = couponCode, PlanId = planId };
         var result = await paymentService.ValidateCouponAsync(request);
 
@@ -61,7 +63,7 @@ public sealed class VipPaymentSystemTests
     public async Task ValidateCoupon_InvalidCode_ReturnsInvalid()
     {
         PaymentService.ResetDefaultPlans();
-        var (_, _, paymentService, _) = CreateControllers();
+        var (_, _, _, paymentService, _) = CreateControllers();
         var request = new ApplyCouponRequest { CouponCode = "SUPER_FAKE_COUPON", PlanId = "vip-30" };
         var result = await paymentService.ValidateCouponAsync(request);
 
@@ -74,7 +76,7 @@ public sealed class VipPaymentSystemTests
     public async Task GetAdminPlans_ReturnsAllFourPlansWithOriginalPrice()
     {
         PaymentService.ResetDefaultPlans();
-        var (_, _, paymentService, _) = CreateControllers();
+        var (_, _, _, paymentService, _) = CreateControllers();
         var plans = await paymentService.GetAdminPlansAsync();
 
         Assert.Equal(4, plans.Count);
@@ -90,7 +92,7 @@ public sealed class VipPaymentSystemTests
     {
         try
         {
-            var (_, _, paymentService, _) = CreateControllers();
+            var (_, _, _, paymentService, _) = CreateControllers();
             var request = new UpsertVipPlanRequest
             {
                 Id = "vip-30",
@@ -122,7 +124,7 @@ public sealed class VipPaymentSystemTests
     [Fact]
     public async Task AdminController_RejectPayment_SetsFailedStatusAndAuditsReason()
     {
-        var (adminController, _, _, options) = CreateControllers();
+        var (adminPaymentsController, _, _, _, options) = CreateControllers();
         var paymentId = Guid.NewGuid();
         var userId = Guid.NewGuid();
 
@@ -157,7 +159,7 @@ public sealed class VipPaymentSystemTests
             Reason = "Mã giao dịch ngân hàng không khớp với số dư sao kê."
         };
 
-        var actionResult = await adminController.RejectPayment(paymentId, rejectRequest);
+        var actionResult = await adminPaymentsController.RejectPayment(paymentId, rejectRequest);
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
         var response = Assert.IsType<ApiResponse<PaymentDto>>(okResult.Value);
 
@@ -177,7 +179,7 @@ public sealed class VipPaymentSystemTests
     [Fact]
     public async Task AdminController_GrantVipToUser_ExtendsMembershipAndSendsNotification()
     {
-        var (adminController, _, _, options) = CreateControllers();
+        var (_, adminUsersController, _, _, options) = CreateControllers();
         var userId = Guid.NewGuid();
 
         await using (var context = new AppDbContext(options))
@@ -202,7 +204,7 @@ public sealed class VipPaymentSystemTests
             Reason = "Tri ân đối tác và thành viên VIP tích cực"
         };
 
-        var actionResult = await adminController.GrantVipToUser(grantRequest);
+        var actionResult = await adminUsersController.GrantVipToUser(grantRequest);
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
         var response = Assert.IsType<ApiResponse<UserDto>>(okResult.Value);
 
@@ -228,7 +230,7 @@ public sealed class VipPaymentSystemTests
     [Fact]
     public async Task PaymentsController_ApplyCoupon_ReturnsValidationResult()
     {
-        var (_, paymentsController, _, _) = CreateControllers();
+        var (_, _, paymentsController, _, _) = CreateControllers();
         var request = new ApplyCouponRequest
         {
             CouponCode = "CINEMA2026",

@@ -394,6 +394,22 @@ public sealed class ApiIntegrationTests : IClassFixture<TestApiFactory>, IDispos
         Assert.Contains("GET", response.Headers.GetValues("Access-Control-Allow-Methods").SelectMany(value => value.Split(',')));
     }
 
+    [Fact]
+    public async Task HealthCheck_ReturnsHealthy()
+    {
+        var response = await _client.GetAsync("/health");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var content = await response.Content.ReadAsStringAsync();
+        Assert.Equal("Healthy", content);
+    }
+
+    [Fact]
+    public async Task GetEpisodesByMovieId_SupportsPagination()
+    {
+        var response = await GetSuccess<List<EpisodeDto>>("/api/episodes/movie/1?page=1&pageSize=1");
+        Assert.Single(response.Data!);
+    }
+
     public void Dispose()
     {
         CleanupMutableMovie();

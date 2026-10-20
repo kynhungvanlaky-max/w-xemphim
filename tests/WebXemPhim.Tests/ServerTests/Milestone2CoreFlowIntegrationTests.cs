@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using WebXemPhim.Server.Controllers;
+using WebXemPhim.Server.Controllers.Admin;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Server.Services;
 using WebXemPhim.Shared.Enums;
@@ -222,7 +223,7 @@ public sealed class Milestone2CoreFlowIntegrationTests(TestApiFactory factory) :
             context.Payments.Add(payment);
             await context.SaveChangesAsync();
 
-            var adminController = new AdminController(dbFactory, TimeProvider.System);
+            var adminController = new AdminPaymentsController(dbFactory, TimeProvider.System);
 
             var approvalResult = await adminController.MarkPaymentPaid(paymentId, new ManualPaymentApprovalRequest
             {

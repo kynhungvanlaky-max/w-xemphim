@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Shared.Models;
@@ -16,6 +17,8 @@ public sealed class ReviewService(
     IDbContextFactory<AppDbContext> contextFactory,
     TimeProvider timeProvider) : IReviewService
 {
+    private static readonly ConcurrentDictionary<int, SemaphoreSlim> MovieLocks = new();
+
     public async Task<MovieReviewsDto?> GetMovieReviewsAsync(int movieId)
     {
         await using var context = await contextFactory.CreateDbContextAsync();
@@ -38,48 +41,66 @@ public sealed class ReviewService(
     {
         if (request.Rating is < 1 or > 10) return null;
 
-        await using var context = await contextFactory.CreateDbContextAsync();
-        if (!await context.Movies.AnyAsync(movie => movie.Id == movieId)) return null;
-        var user = await context.Users.SingleOrDefaultAsync(item => item.Id == userId);
-        if (user is null) return null;
-        var review = await context.Reviews
-            .Include(item => item.User)
-            .SingleOrDefaultAsync(item => item.MovieId == movieId && item.UserId == userId);
-        var now = timeProvider.GetUtcNow().UtcDateTime;
-        if (review is null)
+        var movieLock = MovieLocks.GetOrAdd(movieId, _ => new SemaphoreSlim(1, 1));
+        await movieLock.WaitAsync();
+        try
         {
-            review = new ReviewEntity
+            await using var context = await contextFactory.CreateDbContextAsync();
+            if (!await context.Movies.AnyAsync(movie => movie.Id == movieId)) return null;
+            var user = await context.Users.SingleOrDefaultAsync(item => item.Id == userId);
+            if (user is null) return null;
+            var review = await context.Reviews
+                .Include(item => item.User)
+                .SingleOrDefaultAsync(item => item.MovieId == movieId && item.UserId == userId);
+            var now = timeProvider.GetUtcNow().UtcDateTime;
+            if (review is null)
             {
-                Id = Guid.NewGuid(),
-                MovieId = movieId,
-                UserId = userId,
-                User = user,
-                CreatedAtUtc = now
-            };
-            context.Reviews.Add(review);
+                review = new ReviewEntity
+                {
+                    Id = Guid.NewGuid(),
+                    MovieId = movieId,
+                    UserId = userId,
+                    User = user,
+                    CreatedAtUtc = now
+                };
+                context.Reviews.Add(review);
+            }
+
+            review.Rating = request.Rating;
+            review.Comment = request.Comment.Trim();
+            review.UpdatedAtUtc = now;
+            await context.SaveChangesAsync();
+
+            await RecalculateMovieRatingAsync(context, movieId);
+
+            return MapReview(review);
         }
-
-        review.Rating = request.Rating;
-        review.Comment = request.Comment.Trim();
-        review.UpdatedAtUtc = now;
-        await context.SaveChangesAsync();
-
-        await RecalculateMovieRatingAsync(context, movieId);
-
-        return MapReview(review);
+        finally
+        {
+            movieLock.Release();
+        }
     }
 
     public async Task<bool> DeleteAsync(int movieId, Guid userId)
     {
-        await using var context = await contextFactory.CreateDbContextAsync();
-        var review = await context.Reviews.SingleOrDefaultAsync(item => item.MovieId == movieId && item.UserId == userId);
-        if (review is null) return false;
-        context.Reviews.Remove(review);
-        await context.SaveChangesAsync();
+        var movieLock = MovieLocks.GetOrAdd(movieId, _ => new SemaphoreSlim(1, 1));
+        await movieLock.WaitAsync();
+        try
+        {
+            await using var context = await contextFactory.CreateDbContextAsync();
+            var review = await context.Reviews.SingleOrDefaultAsync(item => item.MovieId == movieId && item.UserId == userId);
+            if (review is null) return false;
+            context.Reviews.Remove(review);
+            await context.SaveChangesAsync();
 
-        await RecalculateMovieRatingAsync(context, movieId);
+            await RecalculateMovieRatingAsync(context, movieId);
 
-        return true;
+            return true;
+        }
+        finally
+        {
+            movieLock.Release();
+        }
     }
 
     private static async Task RecalculateMovieRatingAsync(AppDbContext context, int movieId)

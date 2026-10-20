@@ -1,12 +1,57 @@
 using System.Net;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using WebXemPhim.Client.Components;
+using WebXemPhim.Client.Services;
+using WebXemPhim.Shared.Models;
 
 namespace WebXemPhim.Tests.ClientTests;
 
 public sealed class ClientVisualConsistencyTests
 {
+    private static readonly MovieDetailDto SampleMovie = new()
+    {
+        Id = 1,
+        Title = "Xứ Cát: Phần Hai",
+        OriginalTitle = "Dune: Part Two",
+        Slug = "xu-cat-phan-hai",
+        Overview = "Paul Atreides hợp lực với Chani và người Fremen trong khi tìm cách trả thù những kẻ đã hủy hoại gia đình mình.",
+        PosterUrl = "/images/movies/movie-1-poster.webp",
+        BackdropUrl = "/images/movies/movie-1-backdrop.webp",
+        TrailerUrl = "https://www.youtube.com/watch?v=Way9Dexny3w",
+        Rating = 8.8,
+        VoteCount = 120000,
+        ReleaseYear = 2024,
+        DurationMinutes = 166,
+        AgeRating = "16+",
+        Quality = "4K UHD",
+        Type = Shared.Enums.MovieType.Movie,
+        Genres = ["Khoa Học Viễn Tưởng", "Hành Động", "Phiêu Lưu"],
+        Country = "Mỹ",
+        Director = "Denis Villeneuve",
+        Cast = ["Timothée Chalamet", "Zendaya", "Rebecca Ferguson"],
+        TotalEpisodes = 1,
+        CurrentEpisode = 1
+    };
+
+    private static WebApplicationFactory<App> CreateFactoryWithSampleMovie()
+    {
+        return new WebApplicationFactory<App>()
+            .WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.ConfigureServices(services =>
+                {
+                    var mockApi = new Mock<IMovieApiClient>();
+                    mockApi.Setup(m => m.GetMovieByIdAsync(1)).ReturnsAsync(SampleMovie);
+                    mockApi.Setup(m => m.GetMovieBySlugAsync(It.IsAny<string>())).ReturnsAsync(SampleMovie);
+                    services.AddScoped<IMovieApiClient>(_ => mockApi.Object);
+                });
+            });
+    }
+
     [Fact]
     public async Task AppUsesOneVietnameseFontFamilyWithoutUnusedDisplayFont()
     {
@@ -16,15 +61,19 @@ public sealed class ClientVisualConsistencyTests
 
         var html = WebUtility.HtmlDecode(await client.GetStringAsync("/"));
 
-        Assert.Contains("family=Be+Vietnam+Pro", html);
+        // The Vietnamese family is self hosted: no third party font request blocks rendering.
+        Assert.Contains("be-vietnam-pro-400-latin", html);
+        Assert.Contains("be-vietnam-pro-600-latin", html);
+        Assert.Contains("css/fonts", html);
+        Assert.DoesNotContain("fonts.googleapis.com", html);
+        Assert.DoesNotContain("fonts.gstatic.com", html);
         Assert.DoesNotContain("Roboto+Condensed", html);
     }
 
     [Fact]
     public async Task MovieDetailDoesNotReplaceApiMovieWithStaleMockCopy()
     {
-        await using var factory = new WebApplicationFactory<App>()
-            .WithWebHostBuilder(builder => builder.UseEnvironment("Development"));
+        await using var factory = CreateFactoryWithSampleMovie();
         using var client = factory.CreateClient();
 
         var html = WebUtility.HtmlDecode(await client.GetStringAsync("/movie/1"));
@@ -36,8 +85,7 @@ public sealed class ClientVisualConsistencyTests
     [Fact]
     public async Task MovieDetailPageConformsToUserRequestedStructure()
     {
-        await using var factory = new WebApplicationFactory<App>()
-            .WithWebHostBuilder(builder => builder.UseEnvironment("Development"));
+        await using var factory = CreateFactoryWithSampleMovie();
         using var client = factory.CreateClient();
 
         var html = WebUtility.HtmlDecode(await client.GetStringAsync("/movie/1"));

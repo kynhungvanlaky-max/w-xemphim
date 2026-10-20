@@ -66,7 +66,7 @@ public sealed class CinemaHubClient : IAsyncDisposable
         if (_hubConnection is not null)
         {
             try { await _hubConnection.StopAsync(); }
-            catch { /* ignore */ }
+            catch (Exception ex) { _logger.LogDebug(ex, "Lỗi phát sinh khi ngắt kết nối CinemaHub."); }
             finally
             {
                 await _hubConnection.DisposeAsync();

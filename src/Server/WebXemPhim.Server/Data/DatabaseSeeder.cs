@@ -23,8 +23,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Dune: Part Three - The Prophet",
             Slug = "dune-part-three",
             Overview = "Paul Atreides đối mặt với cuộc thánh chiến vũ trụ tàn khốc, gánh vác sứ mệnh tiên tri và số phận của toàn bộ vũ trụ khi các gia tộc hoàng gia trỗi dậy phản kháng.",
-            PosterUrl = "/images/movies/movie-1-poster.jpg",
-            BackdropUrl = "/images/movies/movie-1-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-1-poster.webp",
+            BackdropUrl = "/images/movies/movie-1-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=Way9Dexny3w",
             Rating = 8.9,
             VoteCount = 184500,
@@ -51,7 +51,7 @@ public static class DatabaseSeeder
                     EpisodeNumber = 1,
                     Title = "Bản Chiếu Rạp Đầy Đủ (Director's Cut)",
                     DurationMinutes = 168,
-                    ThumbnailUrl = "/images/movies/movie-1-backdrop.jpg",
+                    ThumbnailUrl = "/images/movies/movie-1-backdrop.webp",
                     Overview = "Toàn bộ diễn biến hoành tráng của phần phim kết thúc bộ ba thiên anh hùng ca Xứ Cát.",
                     Streams =
                     [
@@ -73,8 +73,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Oppenheimer",
             Slug = "oppenheimer",
             Overview = "Câu chuyện về nhà vật lý lý thuyết J. Robert Oppenheimer, người lãnh đạo Dự án Manhattan phát triển vũ khí hạt nhân đầu tiên trong lịch sử nhân loại.",
-            PosterUrl = "/images/movies/movie-2-poster.jpg",
-            BackdropUrl = "/images/movies/movie-2-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-2-poster.webp",
+            BackdropUrl = "/images/movies/movie-2-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=uYPbbksJxIg",
             Rating = 8.9,
             VoteCount = 312000,
@@ -101,7 +101,7 @@ public static class DatabaseSeeder
                     EpisodeNumber = 1,
                     Title = "Bản Chiếu IMAX",
                     DurationMinutes = 180,
-                    ThumbnailUrl = "/images/movies/movie-2-backdrop.jpg",
+                    ThumbnailUrl = "/images/movies/movie-2-backdrop.webp",
                     Overview = "Kiệt tác điện ảnh đạt 7 giải Oscar của đạo diễn Christopher Nolan.",
                     Streams =
                     [
@@ -121,8 +121,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Arcane: League of Legends Season 2",
             Slug = "arcane-season-2",
             Overview = "Căng thẳng leo thang đỉnh điểm giữa thành phố tiến bộ Piltover và khu ổ chuột Zaun, đẩy hai chị em Vi và Jinx vào cuộc chiến sinh tử không lối thoát.",
-            PosterUrl = "/images/movies/movie-3-poster.jpg",
-            BackdropUrl = "/images/movies/movie-3-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-3-poster.webp",
+            BackdropUrl = "/images/movies/movie-3-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=ysqiEC6bLUI",
             Rating = 9.0,
             VoteCount = 289000,
@@ -142,9 +142,9 @@ public static class DatabaseSeeder
             CurrentEpisode = 9,
             Episodes =
             [
-                new() { Id = 301, MovieId = 3, EpisodeNumber = 1, Title = "Tập 1: Mảnh Vỡ Quá Khứ", DurationMinutes = 44, ThumbnailUrl = "/images/movies/movie-3-backdrop.jpg", Overview = "Khởi đầu bi kịch mới tại Piltover sau vụ tấn công vào hội đồng.", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://www.w3schools.com/html/mov_bbb.mp4" }] },
-                new() { Id = 302, MovieId = 3, EpisodeNumber = 2, Title = "Tập 2: Báo Động Đỏ", DurationMinutes = 46, ThumbnailUrl = "/images/movies/movie-3-backdrop.jpg", Overview = "Vi gia nhập cảnh vệ Piltover để truy lùng Jinx.", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] },
-                new() { Id = 303, MovieId = 3, EpisodeNumber = 3, Title = "Tập 3: Mắt Bão Zaun", DurationMinutes = 48, ThumbnailUrl = "/images/movies/movie-3-backdrop.jpg", Overview = "Cuộc đụng độ nghẹt thở giữa các phe phái bóng tối.", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
+                new() { Id = 301, MovieId = 3, EpisodeNumber = 1, Title = "Tập 1: Mảnh Vỡ Quá Khứ", DurationMinutes = 44, ThumbnailUrl = "/images/movies/movie-3-backdrop.webp", Overview = "Khởi đầu bi kịch mới tại Piltover sau vụ tấn công vào hội đồng.", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://www.w3schools.com/html/mov_bbb.mp4" }] },
+                new() { Id = 302, MovieId = 3, EpisodeNumber = 2, Title = "Tập 2: Báo Động Đỏ", DurationMinutes = 46, ThumbnailUrl = "/images/movies/movie-3-backdrop.webp", Overview = "Vi gia nhập cảnh vệ Piltover để truy lùng Jinx.", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] },
+                new() { Id = 303, MovieId = 3, EpisodeNumber = 3, Title = "Tập 3: Mắt Bão Zaun", DurationMinutes = 48, ThumbnailUrl = "/images/movies/movie-3-backdrop.webp", Overview = "Cuộc đụng độ nghẹt thở giữa các phe phái bóng tối.", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
             ]
         },
 
@@ -158,8 +158,8 @@ public static class DatabaseSeeder
             OriginalTitle = "The Dark Knight",
             Slug = "the-dark-knight",
             Overview = "Khi hiểm họa mang tên Joker xuất hiện tàn phá Gotham, Batman phải trải qua bài kiểm tra lớn nhất về tâm lý và thể xác để bảo vệ công lý.",
-            PosterUrl = "/images/movies/movie-4-poster.jpg",
-            BackdropUrl = "/images/movies/movie-4-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-4-poster.webp",
+            BackdropUrl = "/images/movies/movie-4-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=EXeTwQWrcwY",
             Rating = 9.0,
             VoteCount = 420000,
@@ -179,7 +179,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 401, MovieId = 4, EpisodeNumber = 1, Title = "Bản Remaster 4K UHD", DurationMinutes = 152, ThumbnailUrl = "/images/movies/movie-4-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
+                new() { Id = 401, MovieId = 4, EpisodeNumber = 1, Title = "Bản Remaster 4K UHD", DurationMinutes = 152, ThumbnailUrl = "/images/movies/movie-4-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
             ]
         },
 
@@ -193,8 +193,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Solo Leveling: Arise from the Shadow",
             Slug = "solo-leveling-season-2",
             Overview = "Thợ săn yếu nhất thế giới Sung Jinwoo tiếp tục đánh thức sức mạnh Chúa Tể Bóng Tối, dẫn dắt đội quân bóng đêm càn quét các Hầm Ngục cấp S.",
-            PosterUrl = "/images/movies/movie-5-poster.jpg",
-            BackdropUrl = "/images/movies/movie-5-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-5-poster.webp",
+            BackdropUrl = "/images/movies/movie-5-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=byJ7pxxhaDY",
             Rating = 8.8,
             VoteCount = 195000,
@@ -214,8 +214,8 @@ public static class DatabaseSeeder
             CurrentEpisode = 10,
             Episodes =
             [
-                new() { Id = 501, MovieId = 5, EpisodeNumber = 1, Title = "Tập 1: Đội Quân Trỗi Dậy", DurationMinutes = 24, ThumbnailUrl = "/images/movies/movie-5-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] },
-                new() { Id = 502, MovieId = 5, EpisodeNumber = 2, Title = "Tập 2: Lãnh Địa Quỷ Đỏ", DurationMinutes = 24, ThumbnailUrl = "/images/movies/movie-5-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
+                new() { Id = 501, MovieId = 5, EpisodeNumber = 1, Title = "Tập 1: Đội Quân Trỗi Dậy", DurationMinutes = 24, ThumbnailUrl = "/images/movies/movie-5-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] },
+                new() { Id = 502, MovieId = 5, EpisodeNumber = 2, Title = "Tập 2: Lãnh Địa Quỷ Đỏ", DurationMinutes = 24, ThumbnailUrl = "/images/movies/movie-5-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
             ]
         },
 
@@ -229,8 +229,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Shōgun",
             Slug = "shogun",
             Overview = "Tại Nhật Bản thời phong kiến năm 1600, Lãnh chúa Yoshii Toranaga chiến đấu bảo vệ tính mạng khi các kẻ thù trong Hội đồng Nhiếp chính hợp lực chống lại ông.",
-            PosterUrl = "/images/movies/movie-6-poster.jpg",
-            BackdropUrl = "/images/movies/movie-6-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-6-poster.webp",
+            BackdropUrl = "/images/movies/movie-6-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=yAN5uspO_hk",
             Rating = 8.8,
             VoteCount = 175000,
@@ -250,8 +250,8 @@ public static class DatabaseSeeder
             CurrentEpisode = 10,
             Episodes =
             [
-                new() { Id = 601, MovieId = 6, EpisodeNumber = 1, Title = "Tập 1: Kẻ Ngoại Quốc", DurationMinutes = 60, ThumbnailUrl = "/images/movies/movie-6-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4" }] },
-                new() { Id = 602, MovieId = 6, EpisodeNumber = 2, Title = "Tập 2: Đầy Tớ Của Hai Chủ", DurationMinutes = 58, ThumbnailUrl = "/images/movies/movie-6-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4" }] }
+                new() { Id = 601, MovieId = 6, EpisodeNumber = 1, Title = "Tập 1: Kẻ Ngoại Quốc", DurationMinutes = 60, ThumbnailUrl = "/images/movies/movie-6-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4" }] },
+                new() { Id = 602, MovieId = 6, EpisodeNumber = 2, Title = "Tập 2: Đầy Tớ Của Hai Chủ", DurationMinutes = 58, ThumbnailUrl = "/images/movies/movie-6-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4" }] }
             ]
         },
 
@@ -265,8 +265,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Interstellar",
             Slug = "interstellar",
             Overview = "Khi Trái Đất bên bờ vực diệt vong, một nhóm nhà thám hiểm du hành qua lỗ sâu không gian để tìm kiếm ngôi nhà mới cho nhân loại.",
-            PosterUrl = "/images/movies/movie-7-poster.jpg",
-            BackdropUrl = "/images/movies/movie-7-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-7-poster.webp",
+            BackdropUrl = "/images/movies/movie-7-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=zSWdZVtXT7E",
             Rating = 8.7,
             VoteCount = 380000,
@@ -286,7 +286,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 701, MovieId = 7, EpisodeNumber = 1, Title = "Bản Chiếu Đầy Đủ", DurationMinutes = 169, ThumbnailUrl = "/images/movies/movie-7-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
+                new() { Id = 701, MovieId = 7, EpisodeNumber = 1, Title = "Bản Chiếu Đầy Đủ", DurationMinutes = 169, ThumbnailUrl = "/images/movies/movie-7-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
             ]
         },
 
@@ -300,8 +300,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Stranger Things Season 5",
             Slug = "stranger-things-season-5",
             Overview = "Mùa cuối cùng khép lại cuộc chiến chống lại Vecna và Thế Giới Ngược (Upside Down) đe dọa nuốt chửng thị trấn Hawkins và cả thế giới.",
-            PosterUrl = "/images/movies/movie-8-poster.jpg",
-            BackdropUrl = "/images/movies/movie-8-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-8-poster.webp",
+            BackdropUrl = "/images/movies/movie-8-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=b9EkMc79ZSU",
             Rating = 8.8,
             VoteCount = 310000,
@@ -321,7 +321,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 8,
             Episodes =
             [
-                new() { Id = 801, MovieId = 8, EpisodeNumber = 1, Title = "Tập 1: Cuộc Thu Thập", DurationMinutes = 65, ThumbnailUrl = "/images/movies/movie-8-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
+                new() { Id = 801, MovieId = 8, EpisodeNumber = 1, Title = "Tập 1: Cuộc Thu Thập", DurationMinutes = 65, ThumbnailUrl = "/images/movies/movie-8-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
             ]
         },
 
@@ -335,8 +335,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Inception",
             Slug = "inception",
             Overview = "Dom Cobb là một đạo chích bậc thầy chuyên xâm nhập vào tiềm thức của mục tiêu trong khi họ đang mơ để đánh cắp những bí mật giá trị nhất.",
-            PosterUrl = "/images/movies/movie-9-poster.jpg",
-            BackdropUrl = "/images/movies/movie-9-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-9-poster.webp",
+            BackdropUrl = "/images/movies/movie-9-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=YoHD9XEInc0",
             Rating = 8.8,
             VoteCount = 390000,
@@ -356,7 +356,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 901, MovieId = 9, EpisodeNumber = 1, Title = "Bản Chuẩn Điện Ảnh", DurationMinutes = 148, ThumbnailUrl = "/images/movies/movie-9-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
+                new() { Id = 901, MovieId = 9, EpisodeNumber = 1, Title = "Bản Chuẩn Điện Ảnh", DurationMinutes = 148, ThumbnailUrl = "/images/movies/movie-9-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
             ]
         },
 
@@ -370,8 +370,8 @@ public static class DatabaseSeeder
             OriginalTitle = "House of the Dragon Season 2",
             Slug = "house-of-the-dragon-season-2",
             Overview = "Cuộc nội chiến 'Vũ Điệu Của Bầy Rồng' đẫm máu bùng nổ giữa hai phe Hắc Long (Rhaenyra) và Lục Long (Aegon II) để tranh giành Ngai Sắt.",
-            PosterUrl = "/images/movies/movie-10-poster.jpg",
-            BackdropUrl = "/images/movies/movie-10-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-10-poster.webp",
+            BackdropUrl = "/images/movies/movie-10-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=DotnJ7tTA34",
             Rating = 8.5,
             VoteCount = 210000,
@@ -391,7 +391,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 8,
             Episodes =
             [
-                new() { Id = 1001, MovieId = 10, EpisodeNumber = 1, Title = "Tập 1: Nợ Máu Phải Trả Bằng Máu", DurationMinutes = 62, ThumbnailUrl = "/images/movies/movie-10-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
+                new() { Id = 1001, MovieId = 10, EpisodeNumber = 1, Title = "Tập 1: Nợ Máu Phải Trả Bằng Máu", DurationMinutes = 62, ThumbnailUrl = "/images/movies/movie-10-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
             ]
         },
 
@@ -405,8 +405,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Parasite",
             Slug = "parasite",
             Overview = "Một gia đình nghèo khó lập kế hoạch tinh vi để từng người một thâm nhập và làm việc cho một gia đình thượng lưu giàu có tại Seoul.",
-            PosterUrl = "/images/movies/movie-11-poster.jpg",
-            BackdropUrl = "/images/movies/movie-11-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-11-poster.webp",
+            BackdropUrl = "/images/movies/movie-11-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=isOGD_7hNIY",
             Rating = 8.5,
             VoteCount = 280000,
@@ -426,7 +426,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 1101, MovieId = 11, EpisodeNumber = 1, Title = "Bản Chiếu Rạp Đoạt Giải Oscar", DurationMinutes = 132, ThumbnailUrl = "/images/movies/movie-11-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p FHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
+                new() { Id = 1101, MovieId = 11, EpisodeNumber = 1, Title = "Bản Chiếu Rạp Đoạt Giải Oscar", DurationMinutes = 132, ThumbnailUrl = "/images/movies/movie-11-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p FHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
             ]
         },
 
@@ -440,8 +440,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Jujutsu Kaisen: Shibuya Incident",
             Slug = "jujutsu-kaisen-shibuya",
             Overview = "Vào đêm Halloween tại Shibuya, nhóm Chú Nguyền Sư do Kenjaku và Mahito cầm đầu thực hiện âm mưu phong ấn Chú Thuật Sư mạnh nhất: Gojo Satoru.",
-            PosterUrl = "/images/movies/movie-12-poster.jpg",
-            BackdropUrl = "/images/movies/movie-12-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-12-poster.webp",
+            BackdropUrl = "/images/movies/movie-12-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=9OhV3IWUsxE",
             Rating = 8.9,
             VoteCount = 220000,
@@ -461,7 +461,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 23,
             Episodes =
             [
-                new() { Id = 1201, MovieId = 12, EpisodeNumber = 1, Title = "Tập 1: Cánh Cổng Shibuya", DurationMinutes = 24, ThumbnailUrl = "/images/movies/movie-12-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
+                new() { Id = 1201, MovieId = 12, EpisodeNumber = 1, Title = "Tập 1: Cánh Cổng Shibuya", DurationMinutes = 24, ThumbnailUrl = "/images/movies/movie-12-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
             ]
         },
 
@@ -475,8 +475,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Mai",
             Slug = "mai",
             Overview = "Mai là một người phụ nữ ngoài ba mươi tuổi có quá khứ nhiều tổn thương, tìm kiếm tình yêu và sự chữa lành bên chàng trai trẻ Dương giữa định kiến xã hội.",
-            PosterUrl = "/images/movies/movie-13-poster.jpg",
-            BackdropUrl = "/images/movies/movie-13-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-13-poster.webp",
+            BackdropUrl = "/images/movies/movie-13-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=EX6clvId19s",
             Rating = 8.2,
             VoteCount = 145000,
@@ -496,7 +496,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 1301, MovieId = 13, EpisodeNumber = 1, Title = "Bản Chiếu Rạp Chính Thức", DurationMinutes = 131, ThumbnailUrl = "/images/movies/movie-13-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
+                new() { Id = 1301, MovieId = 13, EpisodeNumber = 1, Title = "Bản Chiếu Rạp Chính Thức", DurationMinutes = 131, ThumbnailUrl = "/images/movies/movie-13-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
             ]
         },
 
@@ -510,8 +510,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Face Off 7: One Wish",
             Slug = "lat-mat-7-mot-dieu-uoc",
             Overview = "Câu chuyện xúc động về bà Hai 73 tuổi cùng năm người con đã trưởng thành, khi mẹ già gặp nạn ai sẽ là người phụng dưỡng chăm sóc.",
-            PosterUrl = "/images/movies/movie-14-poster.jpg",
-            BackdropUrl = "/images/movies/movie-14-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-14-poster.webp",
+            BackdropUrl = "/images/movies/movie-14-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=QdtPQ0wV53M",
             Rating = 8.4,
             VoteCount = 162000,
@@ -531,7 +531,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 1401, MovieId = 14, EpisodeNumber = 1, Title = "Bản Đầy Đủ", DurationMinutes = 138, ThumbnailUrl = "/images/movies/movie-14-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4" }] }
+                new() { Id = 1401, MovieId = 14, EpisodeNumber = 1, Title = "Bản Đầy Đủ", DurationMinutes = 138, ThumbnailUrl = "/images/movies/movie-14-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4" }] }
             ]
         },
 
@@ -545,8 +545,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Demon Dog",
             Slug = "quy-cau",
             Overview = "Lấy cảm hứng từ truyền thuyết linh dị dân gian Chó đội nón mê, kể về những tai ương rùng rợn giáng xuống một gia đình làm nghề mổ chó.",
-            PosterUrl = "/images/movies/movie-15-poster.jpg",
-            BackdropUrl = "/images/movies/movie-15-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-15-poster.webp",
+            BackdropUrl = "/images/movies/movie-15-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=Cswx649vXVw",
             Rating = 7.5,
             VoteCount = 82000,
@@ -566,7 +566,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 1501, MovieId = 15, EpisodeNumber = 1, Title = "Bản Chiếu Rạp", DurationMinutes = 105, ThumbnailUrl = "/images/movies/movie-15-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p FHD", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
+                new() { Id = 1501, MovieId = 15, EpisodeNumber = 1, Title = "Bản Chiếu Rạp", DurationMinutes = 105, ThumbnailUrl = "/images/movies/movie-15-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p FHD", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
             ]
         },
 
@@ -580,8 +580,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Song of the South",
             Slug = "dat-rung-phuong-nam",
             Overview = "Hành trình phiêu lưu tìm cha đầy gian nan nhưng thấm đượm tình người của cậu bé An giữa miền Tây Nam Bộ hào hùng thời kỳ kháng chiến.",
-            PosterUrl = "/images/movies/movie-16-poster.jpg",
-            BackdropUrl = "/images/movies/movie-16-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-16-poster.webp",
+            BackdropUrl = "/images/movies/movie-16-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=hktzirCnJmQ",
             Rating = 7.8,
             VoteCount = 98000,
@@ -601,7 +601,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 1601, MovieId = 16, EpisodeNumber = 1, Title = "Bản Điện Ảnh", DurationMinutes = 134, ThumbnailUrl = "/images/movies/movie-16-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
+                new() { Id = 1601, MovieId = 16, EpisodeNumber = 1, Title = "Bản Điện Ảnh", DurationMinutes = 134, ThumbnailUrl = "/images/movies/movie-16-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
             ]
         },
 
@@ -615,8 +615,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Exhuma",
             Slug = "exhuma-quat-mo-trung-ma",
             Overview = "Hai pháp sư trừ tà trẻ tuổi cùng thầy phong thủy và chuyên gia mai táng nhận lời khai quật ngôi mộ tổ tiên của một gia tộc giàu có, vô tình giải phóng ác quỷ cổ xưa.",
-            PosterUrl = "/images/movies/movie-17-poster.jpg",
-            BackdropUrl = "/images/movies/movie-17-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-17-poster.webp",
+            BackdropUrl = "/images/movies/movie-17-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=66K9-l0EkE0",
             Rating = 8.4,
             VoteCount = 189000,
@@ -636,7 +636,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 1701, MovieId = 17, EpisodeNumber = 1, Title = "Bản Rạp Full HD", DurationMinutes = 134, ThumbnailUrl = "/images/movies/movie-17-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
+                new() { Id = 1701, MovieId = 17, EpisodeNumber = 1, Title = "Bản Rạp Full HD", DurationMinutes = 134, ThumbnailUrl = "/images/movies/movie-17-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
             ]
         },
 
@@ -650,8 +650,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Squid Game Season 2",
             Slug = "squid-game-season-2",
             Overview = "Seong Gi-hun từ bỏ việc sang Mỹ, quyết tâm thâm nhập lại vào đấu trường trò chơi sinh tử bí ẩn để vạch trần tổ chức tàn bạo đứng sau.",
-            PosterUrl = "/images/movies/movie-18-poster.jpg",
-            BackdropUrl = "/images/movies/movie-18-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-18-poster.webp",
+            BackdropUrl = "/images/movies/movie-18-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=Ed1sGgHUo88",
             Rating = 8.7,
             VoteCount = 340000,
@@ -671,7 +671,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 6,
             Episodes =
             [
-                new() { Id = 1801, MovieId = 18, EpisodeNumber = 1, Title = "Tập 1: Bánh Mì Và Xổ Số", DurationMinutes = 55, ThumbnailUrl = "/images/movies/movie-18-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://www.w3schools.com/html/mov_bbb.mp4" }] }
+                new() { Id = 1801, MovieId = 18, EpisodeNumber = 1, Title = "Tập 1: Bánh Mì Và Xổ Số", DurationMinutes = 55, ThumbnailUrl = "/images/movies/movie-18-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://www.w3schools.com/html/mov_bbb.mp4" }] }
             ]
         },
 
@@ -685,8 +685,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Queen of Tears",
             Slug = "queen-of-tears",
             Overview = "Cuộc hôn nhân khủng hoảng và sự hồi sinh diệu kỳ trong tình yêu giữa nữ tài phiệt kiêu kỳ và chàng luật sư tỉnh lẻ tài năng.",
-            PosterUrl = "/images/movies/movie-19-poster.jpg",
-            BackdropUrl = "/images/movies/movie-19-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-19-poster.webp",
+            BackdropUrl = "/images/movies/movie-19-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=Gg2D8zrzlOA",
             Rating = 8.6,
             VoteCount = 210000,
@@ -706,7 +706,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 16,
             Episodes =
             [
-                new() { Id = 1901, MovieId = 19, EpisodeNumber = 1, Title = "Tập 1: Khủng Hoảng Hôn Nhân", DurationMinutes = 75, ThumbnailUrl = "/images/movies/movie-19-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p FHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4" }] }
+                new() { Id = 1901, MovieId = 19, EpisodeNumber = 1, Title = "Tập 1: Khủng Hoảng Hôn Nhân", DurationMinutes = 75, ThumbnailUrl = "/images/movies/movie-19-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p FHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4" }] }
             ]
         },
 
@@ -720,8 +720,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Train to Busan",
             Slug = "train-to-busan",
             Overview = "Khi dịch bệnh xác sống bùng phát dữ dội tại Hàn Quốc, các hành khách trên chuyến tàu cao tốc từ Seoul tới Busan phải chiến đấu sinh tử để sống sót.",
-            PosterUrl = "/images/movies/movie-20-poster.jpg",
-            BackdropUrl = "/images/movies/movie-20-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-20-poster.webp",
+            BackdropUrl = "/images/movies/movie-20-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=pyWuHv2-Abk",
             Rating = 8.6,
             VoteCount = 310000,
@@ -741,7 +741,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 2001, MovieId = 20, EpisodeNumber = 1, Title = "Bản Chuẩn Chiếu Rạp", DurationMinutes = 118, ThumbnailUrl = "/images/movies/movie-20-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p FHD", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
+                new() { Id = 2001, MovieId = 20, EpisodeNumber = 1, Title = "Bản Chuẩn Chiếu Rạp", DurationMinutes = 118, ThumbnailUrl = "/images/movies/movie-20-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p FHD", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
             ]
         },
 
@@ -755,8 +755,8 @@ public static class DatabaseSeeder
             OriginalTitle = "John Wick: Chapter 4",
             Slug = "john-wick-chapter-4",
             Overview = "John Wick tìm ra con đường đánh bại Hội Đồng Tối Cao nhưng phải đối đầu với một kẻ thù mới có liên minh hùng mạnh trên toàn cầu.",
-            PosterUrl = "/images/movies/movie-21-poster.jpg",
-            BackdropUrl = "/images/movies/movie-21-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-21-poster.webp",
+            BackdropUrl = "/images/movies/movie-21-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=qEVUtrk8_B4",
             Rating = 8.6,
             VoteCount = 370000,
@@ -776,7 +776,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 2101, MovieId = 21, EpisodeNumber = 1, Title = "Bản Chiếu Rạp 4K", DurationMinutes = 169, ThumbnailUrl = "/images/movies/movie-21-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
+                new() { Id = 2101, MovieId = 21, EpisodeNumber = 1, Title = "Bản Chiếu Rạp 4K", DurationMinutes = 169, ThumbnailUrl = "/images/movies/movie-21-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
             ]
         },
 
@@ -790,8 +790,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Spider-Man: Across the Spider-Verse",
             Slug = "spider-man-across-the-spider-verse",
             Overview = "Miles Morales du hành qua đa vũ trụ nơi cậu gặp gỡ một đội ngũ Người Nhện ưu tú nhưng phải định nghĩa lại ý nghĩa của việc trở thành anh hùng.",
-            PosterUrl = "/images/movies/movie-22-poster.jpg",
-            BackdropUrl = "/images/movies/movie-22-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-22-poster.webp",
+            BackdropUrl = "/images/movies/movie-22-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=cqGjhVJWtEg",
             Rating = 8.9,
             VoteCount = 390000,
@@ -811,7 +811,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 2201, MovieId = 22, EpisodeNumber = 1, Title = "Bản Chuẩn Hoạt Hình 4K", DurationMinutes = 140, ThumbnailUrl = "/images/movies/movie-22-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
+                new() { Id = 2201, MovieId = 22, EpisodeNumber = 1, Title = "Bản Chuẩn Hoạt Hình 4K", DurationMinutes = 140, ThumbnailUrl = "/images/movies/movie-22-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
             ]
         },
 
@@ -825,8 +825,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Top Gun: Maverick",
             Slug = "top-gun-maverick",
             Overview = "Sau hơn 30 năm phục vụ, Pete Mitchell dẫn dắt một nhóm phi công trẻ tinh nhuệ thực hiện một phi vụ không kích nguy hiểm tột độ.",
-            PosterUrl = "/images/movies/movie-23-poster.jpg",
-            BackdropUrl = "/images/movies/movie-23-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-23-poster.webp",
+            BackdropUrl = "/images/movies/movie-23-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=giXco2jaZ_4",
             Rating = 8.7,
             VoteCount = 350000,
@@ -846,7 +846,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 2301, MovieId = 23, EpisodeNumber = 1, Title = "Bản Chiếu Rạp IMAX 4K", DurationMinutes = 130, ThumbnailUrl = "/images/movies/movie-23-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4" }] }
+                new() { Id = 2301, MovieId = 23, EpisodeNumber = 1, Title = "Bản Chiếu Rạp IMAX 4K", DurationMinutes = 130, ThumbnailUrl = "/images/movies/movie-23-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4" }] }
             ]
         },
 
@@ -860,8 +860,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Avatar: The Way of Water",
             Slug = "avatar-the-way-of-water",
             Overview = "Jake Sully và Neytiri cùng các con phải rời bỏ rừng già, tìm nơi ẩn náu tại các bộ tộc sống ven biển Pandora khi Người Trời quay lại xâm chiếm.",
-            PosterUrl = "/images/movies/movie-24-poster.jpg",
-            BackdropUrl = "/images/movies/movie-24-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-24-poster.webp",
+            BackdropUrl = "/images/movies/movie-24-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=d9MyW72ELq0",
             Rating = 8.5,
             VoteCount = 410000,
@@ -881,7 +881,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 2401, MovieId = 24, EpisodeNumber = 1, Title = "Bản Chiếu Rạp 4K UHD", DurationMinutes = 192, ThumbnailUrl = "/images/movies/movie-24-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
+                new() { Id = 2401, MovieId = 24, EpisodeNumber = 1, Title = "Bản Chiếu Rạp 4K UHD", DurationMinutes = 192, ThumbnailUrl = "/images/movies/movie-24-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
             ]
         },
 
@@ -895,8 +895,8 @@ public static class DatabaseSeeder
             OriginalTitle = "The Last of Us",
             Slug = "the-last-of-us",
             Overview = "20 năm sau khi đại dịch nấm Cordyceps tàn phá văn minh, người đàn ông chai sạn Joel được thuê đưa cô bé 14 tuổi Ellie vượt qua nước Mỹ hoang tàn.",
-            PosterUrl = "/images/movies/movie-25-poster.jpg",
-            BackdropUrl = "/images/movies/movie-25-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-25-poster.webp",
+            BackdropUrl = "/images/movies/movie-25-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=uLtkt8BonwM",
             Rating = 8.9,
             VoteCount = 320000,
@@ -916,7 +916,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 9,
             Episodes =
             [
-                new() { Id = 2501, MovieId = 25, EpisodeNumber = 1, Title = "Tập 1: Khi Bạn Lạc Trong Bóng Tối", DurationMinutes = 81, ThumbnailUrl = "/images/movies/movie-25-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://www.w3schools.com/html/mov_bbb.mp4" }] }
+                new() { Id = 2501, MovieId = 25, EpisodeNumber = 1, Title = "Tập 1: Khi Bạn Lạc Trong Bóng Tối", DurationMinutes = 81, ThumbnailUrl = "/images/movies/movie-25-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://www.w3schools.com/html/mov_bbb.mp4" }] }
             ]
         },
 
@@ -930,8 +930,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Breaking Bad",
             Slug = "breaking-bad",
             Overview = "Một giáo viên hóa học trung học được chẩn đoán mắc bệnh ung thư giai đoạn cuối đã hợp tác với cựu học sinh để chế tạo ma túy đá nhằm bảo đảm tương lai cho gia đình.",
-            PosterUrl = "/images/movies/movie-26-poster.jpg",
-            BackdropUrl = "/images/movies/movie-26-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-26-poster.webp",
+            BackdropUrl = "/images/movies/movie-26-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=HhesaQXLuRY",
             Rating = 9.5,
             VoteCount = 540000,
@@ -951,7 +951,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 62,
             Episodes =
             [
-                new() { Id = 2601, MovieId = 26, EpisodeNumber = 1, Title = "Tập 1: Khởi Đầu Của Heisenberg", DurationMinutes = 58, ThumbnailUrl = "/images/movies/movie-26-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
+                new() { Id = 2601, MovieId = 26, EpisodeNumber = 1, Title = "Tập 1: Khởi Đầu Của Heisenberg", DurationMinutes = 58, ThumbnailUrl = "/images/movies/movie-26-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
             ]
         },
 
@@ -965,8 +965,8 @@ public static class DatabaseSeeder
             OriginalTitle = "The Knockout",
             Slug = "cuong-phong",
             Overview = "Cuộc đấu trí kéo dài suốt 20 năm giữa cảnh sát hình sự chính trực An Hân và trùm thế lực ngầm Cao Khải Cường tại thành phố Lâm Hải.",
-            PosterUrl = "/images/movies/movie-27-poster.jpg",
-            BackdropUrl = "/images/movies/movie-27-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-27-poster.webp",
+            BackdropUrl = "/images/movies/movie-27-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=FicZ1DDQ1Zo",
             Rating = 8.8,
             VoteCount = 280000,
@@ -986,7 +986,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 39,
             Episodes =
             [
-                new() { Id = 2701, MovieId = 27, EpisodeNumber = 1, Title = "Tập 1: Đêm Trừ Tịch", DurationMinutes = 45, ThumbnailUrl = "/images/movies/movie-27-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p FHD", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
+                new() { Id = 2701, MovieId = 27, EpisodeNumber = 1, Title = "Tập 1: Đêm Trừ Tịch", DurationMinutes = 45, ThumbnailUrl = "/images/movies/movie-27-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p FHD", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
             ]
         },
 
@@ -1000,8 +1000,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Meet Yourself",
             Slug = "di-den-noi-co-gio",
             Overview = "Hứa Hồng Đậu sau cú sốc mất bạn thân đã đến thôn Vân Miêu chữa lành tâm hồn, tìm lại ý nghĩa cuộc sống và tình yêu bên Tạ Chi Dao.",
-            PosterUrl = "/images/movies/movie-28-poster.jpg",
-            BackdropUrl = "/images/movies/movie-28-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-28-poster.webp",
+            BackdropUrl = "/images/movies/movie-28-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=9vHlPCF1idk",
             Rating = 8.6,
             VoteCount = 195000,
@@ -1021,7 +1021,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 40,
             Episodes =
             [
-                new() { Id = 2801, MovieId = 28, EpisodeNumber = 1, Title = "Tập 1: Khởi Hành Đến Đại Lý", DurationMinutes = 45, ThumbnailUrl = "/images/movies/movie-28-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p FHD", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
+                new() { Id = 2801, MovieId = 28, EpisodeNumber = 1, Title = "Tập 1: Khởi Hành Đến Đại Lý", DurationMinutes = 45, ThumbnailUrl = "/images/movies/movie-28-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p FHD", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
             ]
         },
 
@@ -1035,8 +1035,8 @@ public static class DatabaseSeeder
             OriginalTitle = "The Batman",
             Slug = "the-batman",
             Overview = "Trong năm thứ hai bảo vệ Gotham, Batman lần theo những manh mối bí ẩn của tên sát nhân Riddler nhằm vạch trần tệ nạn tham nhũng ăn sâu vào gia tộc Wayne.",
-            PosterUrl = "/images/movies/movie-29-poster.jpg",
-            BackdropUrl = "/images/movies/movie-29-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-29-poster.webp",
+            BackdropUrl = "/images/movies/movie-29-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=mqqft2x_Aa4",
             Rating = 8.5,
             VoteCount = 340000,
@@ -1056,7 +1056,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 2901, MovieId = 29, EpisodeNumber = 1, Title = "Bản Chuẩn 4K", DurationMinutes = 176, ThumbnailUrl = "/images/movies/movie-29-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
+                new() { Id = 2901, MovieId = 29, EpisodeNumber = 1, Title = "Bản Chuẩn 4K", DurationMinutes = 176, ThumbnailUrl = "/images/movies/movie-29-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
             ]
         },
 
@@ -1070,8 +1070,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Creation of the Gods I: Kingdom of Storms",
             Slug = "phong-than-1",
             Overview = "Sử thi kỳ ảo hoành tráng tái hiện cuộc đối đầu huyền thoại giữa Trụ Vương, Đát Kỷ và các dũng sĩ Cơ Phát, Khương Tử Nha thời cổ đại.",
-            PosterUrl = "/images/movies/movie-30-poster.jpg",
-            BackdropUrl = "/images/movies/movie-30-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-30-poster.webp",
+            BackdropUrl = "/images/movies/movie-30-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=_a8j3NUJiQ0",
             Rating = 8.3,
             VoteCount = 185000,
@@ -1091,7 +1091,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 3001, MovieId = 30, EpisodeNumber = 1, Title = "Bản Chiếu Rạp IMAX", DurationMinutes = 148, ThumbnailUrl = "/images/movies/movie-30-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4" }] }
+                new() { Id = 3001, MovieId = 30, EpisodeNumber = 1, Title = "Bản Chiếu Rạp IMAX", DurationMinutes = 148, ThumbnailUrl = "/images/movies/movie-30-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4" }] }
             ]
         },
 
@@ -1105,8 +1105,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Demon Slayer: Kimetsu no Yaiba - Hashira Training Arc",
             Slug = "kimetsu-no-yaiba-hashira-training",
             Overview = "Tanjiro cùng Sát Quỷ Đoàn tham gia khóa huấn luyện khắt khe cùng các Đại Trụ để chuẩn bị cho trận đại chiến cuối cùng chống lại Chúa Quỷ Muzan.",
-            PosterUrl = "/images/movies/movie-31-poster.jpg",
-            BackdropUrl = "/images/movies/movie-31-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-31-poster.webp",
+            BackdropUrl = "/images/movies/movie-31-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=a9tq0aS5Zu8",
             Rating = 8.9,
             VoteCount = 265000,
@@ -1126,7 +1126,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 8,
             Episodes =
             [
-                new() { Id = 3101, MovieId = 31, EpisodeNumber = 1, Title = "Tập 1: Để Đánh Bại Kibutsuji Muzan", DurationMinutes = 48, ThumbnailUrl = "/images/movies/movie-31-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
+                new() { Id = 3101, MovieId = 31, EpisodeNumber = 1, Title = "Tập 1: Để Đánh Bại Kibutsuji Muzan", DurationMinutes = 48, ThumbnailUrl = "/images/movies/movie-31-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
             ]
         },
 
@@ -1140,8 +1140,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Attack on Titan: The Final Chapters",
             Slug = "attack-on-titan-final-chapters",
             Overview = "Eren Yeager kích hoạt cuộc Rung Chấn hủy diệt thế giới, buộc những đồng đội cũ phải liên minh để đối đầu với anh trong trận chiến định đoạt số phận nhân loại.",
-            PosterUrl = "/images/movies/movie-32-poster.jpg",
-            BackdropUrl = "/images/movies/movie-32-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-32-poster.webp",
+            BackdropUrl = "/images/movies/movie-32-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=3xNH23QkNpk",
             Rating = 9.2,
             VoteCount = 380000,
@@ -1161,7 +1161,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 2,
             Episodes =
             [
-                new() { Id = 3201, MovieId = 32, EpisodeNumber = 1, Title = "Tập 1: Tiếng Gầm Của Tự Do", DurationMinutes = 61, ThumbnailUrl = "/images/movies/movie-32-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
+                new() { Id = 3201, MovieId = 32, EpisodeNumber = 1, Title = "Tập 1: Tiếng Gầm Của Tự Do", DurationMinutes = 61, ThumbnailUrl = "/images/movies/movie-32-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
             ]
         },
 
@@ -1175,8 +1175,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Frieren: Beyond Journey's End",
             Slug = "frieren-beyond-journeys-end",
             Overview = "Sau khi đánh bại Quỷ Vương, pháp sư tộc elf Frieren bất tử bắt đầu hành trình mới để thấu hiểu con người và những ký ức vô giá về các chiến hữu đã khuất.",
-            PosterUrl = "/images/movies/movie-33-poster.jpg",
-            BackdropUrl = "/images/movies/movie-33-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-33-poster.webp",
+            BackdropUrl = "/images/movies/movie-33-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=Iwr1aLEDpe4",
             Rating = 9.3,
             VoteCount = 295000,
@@ -1196,7 +1196,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 28,
             Episodes =
             [
-                new() { Id = 3301, MovieId = 33, EpisodeNumber = 1, Title = "Tập 1: Kết Thúc Của Cuộc Phiêu Lưu", DurationMinutes = 24, ThumbnailUrl = "/images/movies/movie-33-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
+                new() { Id = 3301, MovieId = 33, EpisodeNumber = 1, Title = "Tập 1: Kết Thúc Của Cuộc Phiêu Lưu", DurationMinutes = 24, ThumbnailUrl = "/images/movies/movie-33-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
             ]
         },
 
@@ -1210,8 +1210,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Chainsaw Man",
             Slug = "chainsaw-man",
             Overview = "Denji là một thanh niên nghèo khó hồi sinh dưới dạng Người Cưa sau khi hợp nhất với quỷ Pochita, gia nhập tổ chức thợ săn quỷ an toàn công cộng của Makima.",
-            PosterUrl = "/images/movies/movie-34-poster.jpg",
-            BackdropUrl = "/images/movies/movie-34-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-34-poster.webp",
+            BackdropUrl = "/images/movies/movie-34-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=q15CRdE5Bv0",
             Rating = 8.6,
             VoteCount = 230000,
@@ -1231,7 +1231,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 12,
             Episodes =
             [
-                new() { Id = 3401, MovieId = 34, EpisodeNumber = 1, Title = "Tập 1: Chó Và Cưa", DurationMinutes = 24, ThumbnailUrl = "/images/movies/movie-34-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
+                new() { Id = 3401, MovieId = 34, EpisodeNumber = 1, Title = "Tập 1: Chó Và Cưa", DurationMinutes = 24, ThumbnailUrl = "/images/movies/movie-34-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://vjs.zencdn.net/v/oceans.mp4" }] }
             ]
         },
 
@@ -1245,8 +1245,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Kimi no Na wa.",
             Slug = "your-name",
             Overview = "Hai thiếu niên xa lạ sống ở Tokyo và vùng nông thôn hẻo lánh bỗng hoán đổi thân xác trong giấc mơ, cùng chạy đua với thời gian để ngăn thảm họa sao băng.",
-            PosterUrl = "/images/movies/movie-35-poster.jpg",
-            BackdropUrl = "/images/movies/movie-35-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-35-poster.webp",
+            BackdropUrl = "/images/movies/movie-35-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=xU47nhruN-Q",
             Rating = 8.9,
             VoteCount = 385000,
@@ -1266,7 +1266,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 3501, MovieId = 35, EpisodeNumber = 1, Title = "Bản Điện Ảnh Full HD", DurationMinutes = 106, ThumbnailUrl = "/images/movies/movie-35-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
+                new() { Id = 3501, MovieId = 35, EpisodeNumber = 1, Title = "Bản Điện Ảnh Full HD", DurationMinutes = 106, ThumbnailUrl = "/images/movies/movie-35-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "4K UHD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
             ]
         },
 
@@ -1280,8 +1280,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Sen to Chihiro no Kamikakushi",
             Slug = "spirited-away",
             Overview = "Cô bé 10 tuổi Chihiro lạc vào thế giới của các vị thần linh và phù thủy, phải dũng cảm làm việc tại nhà tắm hơi bí ẩn để giải cứu cha mẹ.",
-            PosterUrl = "/images/movies/movie-36-poster.jpg",
-            BackdropUrl = "/images/movies/movie-36-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-36-poster.webp",
+            BackdropUrl = "/images/movies/movie-36-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=ByXuk9QqQkk",
             Rating = 9.0,
             VoteCount = 450000,
@@ -1301,7 +1301,7 @@ public static class DatabaseSeeder
             CurrentEpisode = 1,
             Episodes =
             [
-                new() { Id = 3601, MovieId = 36, EpisodeNumber = 1, Title = "Bản Đoạt Giải Oscar", DurationMinutes = 125, ThumbnailUrl = "/images/movies/movie-36-backdrop.jpg", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p FHD", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
+                new() { Id = 3601, MovieId = 36, EpisodeNumber = 1, Title = "Bản Đoạt Giải Oscar", DurationMinutes = 125, ThumbnailUrl = "/images/movies/movie-36-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p FHD", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" }] }
             ]
         },
 
@@ -1315,8 +1315,8 @@ public static class DatabaseSeeder
             OriginalTitle = "The Red Orbit",
             Slug = "vanh-dai-do",
             Overview = "Một phi hành đoàn cứu hộ nhận được tín hiệu bí ẩn từ trạm nghiên cứu bỏ hoang ngoài quỹ đạo Sao Hỏa. Khi tiếp cận, họ phát hiện ký ức của chính mình đang bị tái tạo bên trong trạm.",
-            PosterUrl = "/images/movies/movie-37-poster.jpg",
-            BackdropUrl = "/images/movies/movie-37-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-37-poster.webp",
+            BackdropUrl = "/images/movies/movie-37-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=Yf3VreXwVpI",
             Rating = 8.8,
             VoteCount = 86420,
@@ -1347,9 +1347,9 @@ public static class DatabaseSeeder
                     "Cửa Thoát Cuối Cùng",
                     "Bình Minh Trên Sao Hỏa"
                 ],
-                "/images/movies/movie-37-backdrop.jpg",
-                "/images/movies/movie-37-backdrop.jpg",
-                "/images/movies/movie-37-backdrop.jpg")
+                "/images/movies/movie-37-backdrop.webp",
+                "/images/movies/movie-37-backdrop.webp",
+                "/images/movies/movie-37-backdrop.webp")
         },
 
         // ==========================================
@@ -1362,8 +1362,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Saigon After Midnight",
             Slug = "sai-gon-sau-nua-dem",
             Overview = "Một nữ phóng viên ảnh lần theo cuộn phim thất lạc và bị cuốn vào mạng lưới bí mật trải dài qua những con hẻm Sài Gòn. Mỗi bức ảnh hé lộ thêm một phần của vụ án đã bị lãng quên.",
-            PosterUrl = "/images/movies/movie-38-poster.jpg",
-            BackdropUrl = "/images/movies/movie-38-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-38-poster.webp",
+            BackdropUrl = "/images/movies/movie-38-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=SXiWz0yLLdE",
             Rating = 8.4,
             VoteCount = 52780,
@@ -1385,7 +1385,7 @@ public static class DatabaseSeeder
                 38,
                 124,
                 ["Bản Điện Ảnh"],
-                "/images/movies/movie-38-backdrop.jpg")
+                "/images/movies/movie-38-backdrop.webp")
         },
 
         // ==========================================
@@ -1398,8 +1398,8 @@ public static class DatabaseSeeder
             OriginalTitle = "Aether Chronicle",
             Slug = "bien-nien-su-aether",
             Overview = "Trên những hòn đảo trôi giữa tầng mây, một học viên chế tạo trẻ tuổi vô tình đánh thức cổ vật có thể điều khiển bầu trời và trở thành mục tiêu của đế chế đang thống trị thế giới.",
-            PosterUrl = "/images/movies/movie-39-poster.jpg",
-            BackdropUrl = "/images/movies/movie-39-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-39-poster.webp",
+            BackdropUrl = "/images/movies/movie-39-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=iaJ4VVFGIa8",
             Rating = 8.7,
             VoteCount = 121300,
@@ -1432,9 +1432,9 @@ public static class DatabaseSeeder
                     "Bầu Trời Vỡ Đôi",
                     "Ngày Gió Trở Về"
                 ],
-                "/images/movies/movie-39-backdrop.jpg",
-                "/images/movies/movie-39-backdrop.jpg",
-                "/images/movies/movie-39-backdrop.jpg")
+                "/images/movies/movie-39-backdrop.webp",
+                "/images/movies/movie-39-backdrop.webp",
+                "/images/movies/movie-39-backdrop.webp")
         },
 
         // ==========================================
@@ -1447,8 +1447,8 @@ public static class DatabaseSeeder
             OriginalTitle = "The Last Snowfall",
             Slug = "mua-tuyet-cuoi-cung",
             Overview = "Một kiến trúc sư trở về thị trấn ven biển để khôi phục nhà ga cũ và gặp lại người bạn từng rời đi không lời từ biệt. Mùa đông cuối cùng của thị trấn buộc họ đối diện với những điều chưa từng nói.",
-            PosterUrl = "/images/movies/movie-40-poster.jpg",
-            BackdropUrl = "/images/movies/movie-40-backdrop.jpg",
+            PosterUrl = "/images/movies/movie-40-poster.webp",
+            BackdropUrl = "/images/movies/movie-40-backdrop.webp",
             TrailerUrl = "https://www.youtube.com/watch?v=RYmQHMC8NII",
             Rating = 8.6,
             VoteCount = 74360,
@@ -1483,9 +1483,9 @@ public static class DatabaseSeeder
                     "Chuyến Tàu Cuối",
                     "Mùa Xuân Đầu Tiên"
                 ],
-                "/images/movies/movie-40-backdrop.jpg",
-                "/images/movies/movie-40-backdrop.jpg",
-                "/images/movies/movie-40-backdrop.jpg")
+                "/images/movies/movie-40-backdrop.webp",
+                "/images/movies/movie-40-backdrop.webp",
+                "/images/movies/movie-40-backdrop.webp")
         }
     ];
 
@@ -1543,7 +1543,7 @@ public static class DatabaseSeeder
             EpisodeNumber = index + 1,
             Title = $"Tập {index + 1}: {title}",
             DurationMinutes = baseDuration + index % 3 - 1,
-            ThumbnailUrl = thumbnails.Length > 0 ? thumbnails[index % thumbnails.Length] : $"/images/movies/movie-{movieId}-backdrop.jpg",
+            ThumbnailUrl = thumbnails.Length > 0 ? thumbnails[index % thumbnails.Length] : $"/images/movies/movie-{movieId}-backdrop.webp",
             Overview = $"Diễn biến tập {index + 1} của bộ phim, tiếp nối câu chuyện với những khám phá và xung đột mới.",
             Streams = GenerateMultiServerStreams(movieId * 10 + index)
         }).ToList();
@@ -1680,6 +1680,10 @@ public static class DatabaseSeeder
 
         await context.SaveChangesAsync(cancellationToken);
 
+        // Populate the normalized search text for every seeded movie. The FTS trigger keeps the
+        // index in sync through the movies.SearchText column.
+        await PopulateSearchTextAsync(context, cancellationToken);
+
         var episodesToUpdate = await context.Episodes.Include(e => e.Streams)
             .Where(e => e.Streams.Select(s => s.ServerName).Distinct().Count() < 4)
             .ToListAsync(cancellationToken);
@@ -1706,10 +1710,35 @@ public static class DatabaseSeeder
         }
     }
 
+    /// <summary>
+    /// Computes the diacritic free search text for every movie that still misses it.
+    /// </summary>
+    public static async Task<int> PopulateSearchTextAsync(AppDbContext context, CancellationToken cancellationToken = default)
+    {
+        var movies = await context.Movies
+            .Include(movie => movie.CastMembers)
+            .Where(movie => movie.SearchText == null || movie.SearchText == string.Empty)
+            .ToListAsync(cancellationToken);
+
+        if (movies.Count == 0) return 0;
+
+        foreach (var movie in movies)
+        {
+            movie.SearchText = WebXemPhim.Shared.Utils.MovieSearchTextBuilder.Build(
+                movie.Title,
+                movie.OriginalTitle,
+                movie.Director,
+                movie.CastMembers.Select(c => c.Name),
+                movie.Overview);
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
+        return movies.Count;
+    }
+
     public static async Task SeedAsync(AppDbContext context, TimeProvider? timeProvider = null, CancellationToken cancellationToken = default)
     {
-        var provider = timeProvider ?? TimeProvider.System;
-        var now = provider.GetUtcNow().UtcDateTime;
+        var provider = timeProvider ?? TimeProvider.System;        var now = provider.GetUtcNow().UtcDateTime;
 
         // 1. Seed catalog
         await SeedCatalogAsync(context, cancellationToken);

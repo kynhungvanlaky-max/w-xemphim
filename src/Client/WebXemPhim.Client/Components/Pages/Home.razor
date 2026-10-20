@@ -1,7 +1,10 @@
 @page "/"
 @inject IMovieApiClient ApiClient
+@inject ILogger<Home> Logger
+@implements IDisposable
 
 <PageTitle>CinemaFlow - Điện ảnh theo cách của bạn</PageTitle>
+<RouteStylesheet Files="@HomeStyles" />
 
 @if (loading)
 {
@@ -23,7 +26,7 @@ else if (featuredMovie is not null)
     @if (featuredMovie is not null)
     {
         <section class="home-spotlight" aria-labelledby="home-spotlight-title">
-            <img src="@featuredMovie.BackdropUrl" alt="" loading="lazy" />
+            <img src="@featuredMovie.BackdropUrl" alt="" width="1672" height="941" loading="lazy" />
             <div class="home-spotlight-copy">
                 <span class="home-editorial-label">Tâm điểm điện ảnh</span>
                 <h2 id="home-spotlight-title">@featuredMovie.Title</h2>
@@ -45,9 +48,11 @@ else if (featuredMovie is not null)
         <div class="genre-bento-grid">
             <!-- Bento Card 1: Hành động & phiêu lưu (Thẻ lớn bên trái) -->
             <a href="/explore?genre=Hành động" class="bento-card bento-card-action">
-                <img src="/images/generated/redesign-2026/cinemaflow-watch-rain-night.png"
+                <img src="/images/generated/redesign-2026/cinemaflow-watch-rain-night.webp"
                      alt="Hành động & phiêu lưu"
                      class="bento-bg-img"
+                     width="1672"
+                     height="941"
                      loading="lazy" />
                 <div class="bento-overlay"></div>
                 <div class="bento-header">
@@ -62,10 +67,12 @@ else if (featuredMovie is not null)
             </a>
 
             <!-- Bento Card 2: Tình cảm lãng mạn (Phải trên) -->
-            <a href="/explore?genre=Tâm lý" class="bento-card bento-card-romance">
-                <img src="/images/movies/movie-28-backdrop.jpg"
+            <a href="/explore?genre=Lãng mạn" class="bento-card bento-card-romance">
+                <img src="/images/movies/movie-28-backdrop.webp"
                      alt="Tình cảm lãng mạn"
                      class="bento-bg-img"
+                     width="1672"
+                     height="941"
                      loading="lazy" />
                 <div class="bento-overlay"></div>
                 <div class="bento-header">
@@ -81,9 +88,11 @@ else if (featuredMovie is not null)
 
             <!-- Bento Card 3: Anime & hoạt hình (Phải giữa) -->
             <a href="/explore?type=3" class="bento-card bento-card-anime">
-                <img src="/images/movies/movie-33-backdrop.jpg"
+                <img src="/images/movies/movie-33-backdrop.webp"
                      alt="Anime & hoạt hình"
                      class="bento-bg-img"
+                     width="1672"
+                     height="941"
                      loading="lazy" />
                 <div class="bento-overlay"></div>
                 <div class="bento-header">
@@ -99,9 +108,11 @@ else if (featuredMovie is not null)
 
             <!-- Bento Card 4: Khoa học viễn tưởng (Dưới cùng rộng) -->
             <a href="/explore?genre=Khoa học viễn tưởng" class="bento-card bento-card-scifi">
-                <img src="/images/movies/movie-1-backdrop.jpg"
+                <img src="/images/movies/movie-1-backdrop.webp"
                      alt="Khoa học viễn tưởng"
                      class="bento-bg-img"
+                     width="1672"
+                     height="941"
                      loading="lazy" />
                 <div class="bento-overlay"></div>
                 <div class="bento-header">
@@ -124,11 +135,18 @@ else if (featuredMovie is not null)
             <p>Để CinemaFlow chọn giúp bạn một bộ phim trong kho.</p>
             <a class="button primary" href="/random">Chọn phim cho tôi <CinemaIcon Name="CinemaIconName.ArrowRight" Size="16" /></a>
         </div>
-        <img src="/images/generated/redesign-2026/cinemaflow-projector.png" alt="" loading="lazy" />
+        <img src="/images/generated/redesign-2026/cinemaflow-projector.webp" alt="" width="1672" height="941" loading="lazy" />
     </section>
 </div>
 
 @code {
+    private static readonly string[] HomeStyles = ["css/home-expanded.css"];
+
+    // Per-component persistent state: the value survives the prerender -> interactive
+    // handover so the home aggregate is fetched only once per page load.
+    [PersistentState]
+    public PersistentComponentState ApplicationState { get; set; } = default!;
+
     private MovieDto? featuredMovie;
     private List<MovieDto> trendingMovies = [];
     private List<MovieDto> latestMovies = [];
@@ -136,30 +154,64 @@ else if (featuredMovie is not null)
     private List<MovieDto> heroMovies = [];
     private bool loading = true;
 
+    private HomeAggregateDto? _cachedAggregate;
+    private PersistingComponentStateSubscription? _persistingSubscription;
+
     protected override async Task OnInitializedAsync()
     {
+        if (ApplicationState is not null)
+        {
+            _persistingSubscription = ApplicationState.RegisterOnPersisting(PersistHomeData);
+
+            if (ApplicationState.TryTakeFromJson<HomeAggregateDto>("home_aggregate_state", out var restored) && restored is not null)
+            {
+                ApplyAggregate(restored);
+                loading = false;
+                return;
+            }
+        }
+
         try
         {
-            var featured = ApiClient.GetFeaturedAsync();
-            var trending = ApiClient.GetTrendingAsync(6);
-            var latest = ApiClient.GetLatestAsync(6);
-            var series = ApiClient.GetTopSeriesAsync(6);
-            await Task.WhenAll(featured, trending, latest, series);
-            featuredMovie = await featured;
-            trendingMovies = await trending;
-            latestMovies = await latest;
-            seriesMovies = await series;
-
-            var list = new List<MovieDto>();
-            if (featuredMovie is not null) list.Add(featuredMovie);
-            foreach (var m in trendingMovies)
+            var aggregate = await ApiClient.GetHomeAggregateAsync();
+            if (aggregate is not null)
             {
-                if (list.All(x => x.Id != m.Id))
-                    list.Add(m);
-                if (list.Count >= 5) break;
+                ApplyAggregate(aggregate);
             }
-            heroMovies = list;
         }
-        finally { loading = false; }
+        catch (Exception ex)
+        {
+            Logger?.LogWarning(ex, "Không thể tải dữ liệu trang chủ từ API.");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private Task PersistHomeData()
+    {
+        if (ApplicationState is not null && _cachedAggregate is not null)
+        {
+            ApplicationState.PersistAsJson("home_aggregate_state", _cachedAggregate);
+        }
+        return Task.CompletedTask;
+    }
+
+    private void ApplyAggregate(HomeAggregateDto aggregate)
+    {
+        _cachedAggregate = aggregate;
+        featuredMovie = aggregate.Featured;
+        trendingMovies = aggregate.Trending;
+        latestMovies = aggregate.Latest;
+        seriesMovies = aggregate.TopSeries;
+        heroMovies = aggregate.HeroMovies.Count > 0
+            ? aggregate.HeroMovies
+            : (featuredMovie is not null ? [featuredMovie] : []);
+    }
+
+    public void Dispose()
+    {
+        _persistingSubscription?.Dispose();
     }
 }

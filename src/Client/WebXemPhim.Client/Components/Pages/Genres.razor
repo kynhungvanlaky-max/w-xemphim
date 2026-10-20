@@ -5,6 +5,8 @@
 @using WebXemPhim.Client.Components.Icons
 
 <PageTitle>Thể loại phim - CinemaFlow</PageTitle>
+<RouteStylesheet Files="@GenresStyles" />
+
 
 <section class="genres-catalog-page" aria-labelledby="genres-page-title">
     <div class="genres-container">
@@ -160,6 +162,8 @@
 </section>
 
 @code {
+    private static readonly string[] GenresStyles = ["css/genres-page.css"];
+
     private List<GenreDto>? genres;
     private List<MovieDto> movies = [];
     private string searchQuery = string.Empty;
@@ -270,7 +274,7 @@
                 return fallback.BackdropUrl;
         }
 
-        return "/images/movies/movie-1-backdrop.jpg";
+        return "/images/movies/movie-1-backdrop.webp";
     }
 
     private static string GetGenreCategory(string genreName) => genreName switch

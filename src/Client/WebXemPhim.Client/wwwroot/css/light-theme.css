@@ -7402,7 +7402,7 @@ body[data-theme="light"] .site-main .account-overview-page,
 body[data-theme="light"] .site-main .account-overview-guest,
 [data-theme="light"] .account-overview-guest {
     background: linear-gradient(90deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.86) 50%, rgba(255, 255, 255, 0.4) 100%),
-                url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.png') center / cover no-repeat !important;
+                url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.webp') center / cover no-repeat !important;
     border-bottom: 1px solid var(--line) !important;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.03) !important;
 }
@@ -7449,7 +7449,7 @@ body[data-theme="light"] .site-main .account-guest-benefits > span svg,
 body[data-theme="light"] .site-main .account-overview-hero,
 [data-theme="light"] .account-overview-hero {
     background: linear-gradient(90deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.82) 50%, rgba(255, 255, 255, 0.35) 100%),
-                url('/images/generated/redesign-2026/cinemaflow-watch-rain-night.png') 65% 48% / cover no-repeat !important;
+                url('/images/generated/redesign-2026/cinemaflow-watch-rain-night.webp') 65% 48% / cover no-repeat !important;
     border-bottom: 1px solid var(--line) !important;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03) !important;
 }
@@ -7789,7 +7789,7 @@ body[data-theme="light"] .site-main .account-inline-empty > svg,
 body[data-theme="light"] .site-main .settings-cinema-hero,
 [data-theme="light"] .settings-cinema-hero {
     background: linear-gradient(90deg, rgba(255, 255, 255, 0.94) 0%, rgba(255, 255, 255, 0.8) 50%, rgba(255, 255, 255, 0.3) 100%),
-                url('/images/generated/redesign-2026/settings-cinema-banner.jpg') center 38% / cover no-repeat !important;
+                url('/images/generated/redesign-2026/settings-cinema-banner.webp') center 38% / cover no-repeat !important;
     border: 1px solid var(--line) !important;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04) !important;
 }
@@ -8308,7 +8308,7 @@ body[data-theme="light"] .site-main .auth-shell,
 body[data-theme="light"] .site-main .auth-intro,
 [data-theme="light"] .auth-intro {
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.94) 0%, rgba(255, 255, 255, 0.86) 55%, rgba(255, 255, 255, 0.4) 100%),
-                url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.png') center / cover no-repeat !important;
+                url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.webp') center / cover no-repeat !important;
     border-right: 1px solid var(--line) !important;
 }
 
@@ -9927,7 +9927,7 @@ body[data-theme="light"] .site-main .account-workspace-nav > a.active,
 
 body[data-theme="light"] .site-main .account-overview-hero,
 [data-theme="light"] .account-overview-hero {
-    background: #0f172a url('/images/generated/redesign-2026/cinemaflow-watch-rain-night.png') 65% 48% / cover no-repeat !important;
+    background: #0f172a url('/images/generated/redesign-2026/cinemaflow-watch-rain-night.webp') 65% 48% / cover no-repeat !important;
     border-bottom: 1px solid var(--line) !important;
 }
 
@@ -10005,7 +10005,7 @@ body[data-theme="light"] .site-main .account-overview-metrics small,
 
 body[data-theme="light"] .site-main .account-membership-feature,
 [data-theme="light"] .account-membership-feature {
-    background: #ffffff url('/images/generated/redesign-2026/account-membership-ticket.png') center / cover no-repeat !important;
+    background: #ffffff url('/images/generated/redesign-2026/account-membership-ticket.webp') center / cover no-repeat !important;
     border: 1px solid rgba(217, 119, 6, 0.28) !important;
     box-shadow: 0 8px 30px rgba(161, 98, 7, 0.08) !important;
 }
@@ -10169,7 +10169,7 @@ body[data-theme="light"] .site-main .account-continue-info small,
    ═══════════════════════════════════════════════════════ */
 body[data-theme="light"] .site-main .settings-cinema-hero,
 [data-theme="light"] .settings-cinema-hero {
-    background: #f8fafc url('/images/generated/redesign-2026/settings-cinema-banner.jpg') center 38% / cover no-repeat !important;
+    background: #f8fafc url('/images/generated/redesign-2026/settings-cinema-banner.webp') center 38% / cover no-repeat !important;
     border: 1px solid var(--line-strong) !important;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08) !important;
 }

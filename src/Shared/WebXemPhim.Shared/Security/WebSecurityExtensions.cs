@@ -33,6 +33,91 @@ public static class WebSecurityExtensions
                 throw new InvalidOperationException("Production origins must be explicit HTTPS origins without paths or wildcards.");
         if (client && (!Uri.TryCreate(config["ApiBaseUrl"], UriKind.Absolute, out var api) || api.Scheme != Uri.UriSchemeHttps))
             throw new InvalidOperationException("Production ApiBaseUrl must use HTTPS.");
+
+        if (!client)
+        {
+            var defaultConnectionString = !string.IsNullOrWhiteSpace(config.GetConnectionString("Default"))
+                ? config.GetConnectionString("Default")
+                : (!string.IsNullOrWhiteSpace(config["ConnectionStrings:Default"])
+                    ? config["ConnectionStrings:Default"]
+                    : config["DATABASE_CONNECTION_STRING"]);
+            if (string.IsNullOrWhiteSpace(defaultConnectionString))
+            {
+                throw new InvalidOperationException("Production database connection string (ConnectionStrings:Default) cannot be empty.");
+            }
+
+            const string defaultStreamKey = "CinemaFlow_Secure_Stream_HMAC_Secret_Key_2026_AtLeast32Bytes!";
+            var rawStreamKey = !string.IsNullOrWhiteSpace(config["Security:StreamSigningKey"])
+                ? config["Security:StreamSigningKey"]
+                : config["STREAM_SIGNING_KEY"];
+            var streamKey = rawStreamKey?.Trim();
+            if (string.IsNullOrWhiteSpace(streamKey))
+            {
+                throw new InvalidOperationException("Production requires an explicit Security:StreamSigningKey configuration.");
+            }
+            if (string.Equals(streamKey, defaultStreamKey, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Production Security:StreamSigningKey cannot be the default placeholder key.");
+            }
+            if (streamKey.Length < 32)
+            {
+                throw new InvalidOperationException("Production Security:StreamSigningKey must be at least 32 characters long.");
+            }
+
+            const string defaultWebhookSecret = "CinemaFlow_Secure_Payment_Webhook_HMAC_SHA512_Secret_Key_2026_AtLeast32Bytes!";
+            var rawWebhookSecret = !string.IsNullOrWhiteSpace(config["Payment:WebhookSecret"])
+                ? config["Payment:WebhookSecret"]
+                : (!string.IsNullOrWhiteSpace(config["Security:PaymentWebhookSecret"])
+                    ? config["Security:PaymentWebhookSecret"]
+                    : config["PAYMENT_WEBHOOK_SECRET"]);
+            var webhookSecret = rawWebhookSecret?.Trim();
+            if (string.IsNullOrWhiteSpace(webhookSecret))
+            {
+                throw new InvalidOperationException("Production requires an explicit Payment:WebhookSecret configuration.");
+            }
+            if (string.Equals(webhookSecret, defaultWebhookSecret, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Production Payment:WebhookSecret cannot be the default placeholder key.");
+            }
+            if (webhookSecret.Length < 32)
+            {
+                throw new InvalidOperationException("Production Payment:WebhookSecret must be at least 32 characters long.");
+            }
+
+            const string defaultPayOsSecret = "CinemaFlow_PayOS_Webhook_Secret_Key_2026_AtLeast32Bytes!";
+            var rawPayOsSecret = !string.IsNullOrWhiteSpace(config["Payment:Gateways:PayOS:WebhookSecret"])
+                ? config["Payment:Gateways:PayOS:WebhookSecret"]
+                : config["PAYOS_WEBHOOK_SECRET"];
+            var payOsSecret = rawPayOsSecret?.Trim();
+            if (!string.IsNullOrWhiteSpace(payOsSecret))
+            {
+                if (string.Equals(payOsSecret, defaultPayOsSecret, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("Production PayOS webhook secret cannot be the default placeholder key.");
+                }
+                if (payOsSecret.Length < 32)
+                {
+                    throw new InvalidOperationException("Production PayOS webhook secret must be at least 32 characters long.");
+                }
+            }
+
+            const string defaultVnPaySecret = "CinemaFlow_VNPay_Hash_Secret_Key_2026_AtLeast32Bytes!";
+            var rawVnPaySecret = !string.IsNullOrWhiteSpace(config["Payment:Gateways:VNPay:HashSecret"])
+                ? config["Payment:Gateways:VNPay:HashSecret"]
+                : config["VNPAY_HASH_SECRET"];
+            var vnPaySecret = rawVnPaySecret?.Trim();
+            if (!string.IsNullOrWhiteSpace(vnPaySecret))
+            {
+                if (string.Equals(vnPaySecret, defaultVnPaySecret, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("Production VNPay hash secret cannot be the default placeholder key.");
+                }
+                if (vnPaySecret.Length < 32)
+                {
+                    throw new InvalidOperationException("Production VNPay hash secret must be at least 32 characters long.");
+                }
+            }
+        }
     }
 
     public static void AddSiteDataProtection(this IServiceCollection services, IConfiguration config, string applicationName)
@@ -63,7 +148,7 @@ public static class WebSecurityExtensions
                 headers["X-Download-Options"] = "noopen";
                 headers["Cross-Origin-Opener-Policy"] = "same-origin";
                 headers["Content-Security-Policy"] = client
-                    ? $"default-src 'self'; script-src 'self' 'nonce-{nonce}'; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' https: blob:; connect-src 'self' https: wss:{(development ? " http: ws:" : "")}; frame-src https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+                    ? $"default-src 'self'; script-src 'self' 'nonce-{nonce}'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; media-src 'self' https: blob:; connect-src 'self' https: wss:{(development ? " http: ws:" : "")}; frame-src https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
                     : "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
                 if ((client && context.Response.ContentType?.StartsWith("text/html", StringComparison.OrdinalIgnoreCase) == true) ||
                     context.Request.Headers.ContainsKey("Authorization") || context.Request.Path.StartsWithSegments("/api/auth") || context.Request.Path.StartsWithSegments("/api/admin") || context.Request.Path.StartsWithSegments("/api/payments/history"))

@@ -1,6 +1,8 @@
 using WebXemPhim.Client.Components;
 using WebXemPhim.Client.Services;
 using Microsoft.AspNetCore.DataProtection;
+using System.IO.Compression;
+using Microsoft.AspNetCore.ResponseCompression;
 using WebXemPhim.Shared.Security;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,10 +12,41 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Services.AddSiteDataProtection(builder.Configuration, "WebXemPhim.Client");
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddTransient<ForwardedClientIpHandler>();
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+// Configure HttpClient Resilience & Fallback Defaults
+builder.Services.ConfigureHttpClientDefaults(http =>
+{
+    http.AddStandardResilienceHandler(options =>
+    {
+        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(5);
+        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(15);
+        options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(10);
+    });
+});
+
+// Compress HTML/CSS/JS/JSON responses (Brotli first, Gzip fallback).
+// The Blazor client serves the whole design system, so this is the single
+// biggest transfer-size win for first page load.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = ResponseCompressionDefaults.MimeTypes;
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(options =>
+{
+    options.Level = CompressionLevel.Fastest;
+});
+builder.Services.Configure<GzipCompressionProviderOptions>(options =>
+{
+    options.Level = CompressionLevel.Fastest;
+});
 
 // Configure HttpClient for Server REST API
 var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5085";
@@ -21,17 +54,17 @@ builder.Services.AddHttpClient<IMovieApiClient, MovieApiClient>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(10);
-});
+}).AddHttpMessageHandler<ForwardedClientIpHandler>();
 builder.Services.AddHttpClient("AccountApi", client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(10);
-});
+}).AddHttpMessageHandler<ForwardedClientIpHandler>();
 builder.Services.AddHttpClient<IAdminApiClient, AdminApiClient>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(15);
-});
+}).AddHttpMessageHandler<ForwardedClientIpHandler>();
 
 // Register reactive state
 builder.Services.AddScoped<IAccountApiClient>(services => new AccountApiClient(
@@ -47,6 +80,7 @@ builder.Services.AddScoped<CinemaHubClient>();
 
 var app = builder.Build();
 app.UseSiteSecurity(client: true, app.Environment.IsDevelopment(), app.Configuration);
+app.UseResponseCompression();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
@@ -65,7 +99,7 @@ app.MapRazorComponents<App>()
 var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
 lifetime.ApplicationStopping.Register(() =>
 {
-    app.Logger.LogInformation("WebXemPhim.Client application is stopping. Trace: {StackTrace}", Environment.StackTrace);
+    app.Logger.LogInformation("WebXemPhim.Client application is stopping gracefully.");
 });
 
 app.Run();

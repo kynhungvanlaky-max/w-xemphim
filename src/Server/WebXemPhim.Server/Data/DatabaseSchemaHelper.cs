@@ -66,6 +66,10 @@ public static class DatabaseSchemaHelper
             ? "CREATE TABLE IF NOT EXISTS active_streams (Id TEXT NOT NULL PRIMARY KEY, UserId TEXT NOT NULL, MovieId INTEGER NOT NULL, EpisodeId INTEGER NULL, SessionId TEXT NOT NULL, ConnectionId TEXT NULL, IpAddress TEXT NULL, DeviceInfo TEXT NULL, StartedAtUtc TEXT NOT NULL, LastHeartbeatUtc TEXT NOT NULL, ExpiresAtUtc TEXT NOT NULL, IsActive INTEGER NOT NULL DEFAULT 1, FOREIGN KEY (UserId) REFERENCES users(Id) ON DELETE CASCADE, FOREIGN KEY (MovieId) REFERENCES movies(Id) ON DELETE CASCADE, FOREIGN KEY (EpisodeId) REFERENCES episodes(Id) ON DELETE SET NULL);"
             : "CREATE TABLE IF NOT EXISTS active_streams (Id char(36) NOT NULL PRIMARY KEY, UserId char(36) NOT NULL, MovieId int NOT NULL, EpisodeId int NULL, SessionId varchar(64) NOT NULL, ConnectionId varchar(64) NULL, IpAddress varchar(45) NULL, DeviceInfo varchar(256) NULL, StartedAtUtc datetime(6) NOT NULL, LastHeartbeatUtc datetime(6) NOT NULL, ExpiresAtUtc datetime(6) NOT NULL, IsActive tinyint(1) NOT NULL DEFAULT 1, UNIQUE INDEX IX_active_streams_SessionId (SessionId), INDEX IX_active_streams_UserId (UserId), INDEX IX_active_streams_ExpiresAtUtc (ExpiresAtUtc), INDEX IX_active_streams_User_Active_Exp (UserId, IsActive, ExpiresAtUtc), CONSTRAINT FK_active_streams_users_UserId FOREIGN KEY (UserId) REFERENCES users(Id) ON DELETE CASCADE, CONSTRAINT FK_active_streams_movies_MovieId FOREIGN KEY (MovieId) REFERENCES movies(Id) ON DELETE CASCADE, CONSTRAINT FK_active_streams_episodes_EpisodeId FOREIGN KEY (EpisodeId) REFERENCES episodes(Id) ON DELETE SET NULL);";
 
+        var maintenanceFlagsSql = isSqlite
+            ? "CREATE TABLE IF NOT EXISTS app_maintenance_flags (Flag TEXT NOT NULL PRIMARY KEY, CompletedAtUtc TEXT NOT NULL);"
+            : "CREATE TABLE IF NOT EXISTS app_maintenance_flags (Flag varchar(120) NOT NULL PRIMARY KEY, CompletedAtUtc datetime(6) NOT NULL);";
+
         await db.Database.ExecuteSqlRawAsync(userSecuritySql, cancellationToken);
         await db.Database.ExecuteSqlRawAsync(mfaCredentialsSql, cancellationToken);
         await db.Database.ExecuteSqlRawAsync(mfaChallengesSql, cancellationToken);
@@ -80,6 +84,7 @@ public static class DatabaseSchemaHelper
         await db.Database.ExecuteSqlRawAsync(vipPlansSql, cancellationToken);
         await db.Database.ExecuteSqlRawAsync(couponsSql, cancellationToken);
         await db.Database.ExecuteSqlRawAsync(activeStreamsSql, cancellationToken);
+        await db.Database.ExecuteSqlRawAsync(maintenanceFlagsSql, cancellationToken);
 
         // Ensure secondary indexes in SQLite
         if (isSqlite)
@@ -113,30 +118,101 @@ CREATE VIRTUAL TABLE IF NOT EXISTS movies_fts USING fts5(
 );", cancellationToken);
 
             var moviesTableExists = await CheckTableExistsAsync(db, isSqlite, "movies", cancellationToken);
-            if (moviesTableExists)
+            var castTableExists = await CheckTableExistsAsync(db, isSqlite, "cast_members", cancellationToken);
+            if (moviesTableExists && castTableExists)
             {
+                // Triggers are recreated (DROP + CREATE) so schema upgrades always pick up
+                // the latest definition, including cast member synchronization.
+                await db.Database.ExecuteSqlRawAsync("DROP TRIGGER IF EXISTS trg_movies_fts_delete;", cancellationToken);
+                await db.Database.ExecuteSqlRawAsync("DROP TRIGGER IF EXISTS trg_movies_fts_insert;", cancellationToken);
+                await db.Database.ExecuteSqlRawAsync("DROP TRIGGER IF EXISTS trg_movies_fts_update;", cancellationToken);
+                await db.Database.ExecuteSqlRawAsync("DROP TRIGGER IF EXISTS trg_movies_fts_search_update;", cancellationToken);
+                await db.Database.ExecuteSqlRawAsync("DROP TRIGGER IF EXISTS trg_cast_movies_fts_insert;", cancellationToken);
+                await db.Database.ExecuteSqlRawAsync("DROP TRIGGER IF EXISTS trg_cast_movies_fts_update;", cancellationToken);
+                await db.Database.ExecuteSqlRawAsync("DROP TRIGGER IF EXISTS trg_cast_movies_fts_delete;", cancellationToken);
+
+                // The normalized_content column stores the pre-normalized SearchText.
+                // SQLite's built-in tokenizer cannot fold the Vietnamese "Đ/đ" letter, so the
+                // normalized column is the only place where "Hành Động" becomes "hanh dong".
+                const string normalizedFallback = @"
+        COALESCE(NULLIF(new.SearchText, ''),
+            new.Title || ' ' || COALESCE(new.OriginalTitle, '') || ' ' || COALESCE(new.Director, '') || ' ' ||
+            COALESCE((SELECT GROUP_CONCAT(Name, ', ') FROM cast_members WHERE MovieId = new.Id), '') || ' ' || COALESCE(new.Overview, ''))";
+
                 await db.Database.ExecuteSqlRawAsync(@"
-CREATE TRIGGER IF NOT EXISTS trg_movies_fts_delete AFTER DELETE ON movies
+CREATE TRIGGER trg_movies_fts_delete AFTER DELETE ON movies
 BEGIN
     DELETE FROM movies_fts WHERE movie_id = old.Id;
 END;", cancellationToken);
 
-                await db.Database.ExecuteSqlRawAsync(@"
-CREATE TRIGGER IF NOT EXISTS trg_movies_fts_insert AFTER INSERT ON movies
+                await db.Database.ExecuteSqlRawAsync($@"
+CREATE TRIGGER trg_movies_fts_insert AFTER INSERT ON movies
 BEGIN
     INSERT INTO movies_fts(movie_id, title, original_title, director, cast_members, normalized_content)
-    VALUES (new.Id, new.Title, new.OriginalTitle, new.Director, '', new.Title || ' ' || COALESCE(new.OriginalTitle, '') || ' ' || COALESCE(new.Director, ''));
+    VALUES (
+        new.Id,
+        new.Title,
+        new.OriginalTitle,
+        new.Director,
+        COALESCE((SELECT GROUP_CONCAT(Name, ', ') FROM cast_members WHERE MovieId = new.Id), ''),
+        {normalizedFallback}
+    );
 END;", cancellationToken);
 
-                await db.Database.ExecuteSqlRawAsync(@"
-CREATE TRIGGER IF NOT EXISTS trg_movies_fts_update AFTER UPDATE ON movies
+                await db.Database.ExecuteSqlRawAsync($@"
+CREATE TRIGGER trg_movies_fts_update AFTER UPDATE ON movies
 BEGIN
     UPDATE movies_fts
     SET title = new.Title,
         original_title = new.OriginalTitle,
         director = new.Director,
-        normalized_content = new.Title || ' ' || COALESCE(new.OriginalTitle, '') || ' ' || COALESCE(new.Director, '')
+        cast_members = COALESCE((SELECT GROUP_CONCAT(Name, ', ') FROM cast_members WHERE MovieId = new.Id), ''),
+        normalized_content = {normalizedFallback}
     WHERE movie_id = old.Id;
+END;", cancellationToken);
+
+                // Keeps the FTS row aligned when SearchText is (re)computed after the insert.
+                await db.Database.ExecuteSqlRawAsync($@"
+CREATE TRIGGER trg_movies_fts_search_update AFTER UPDATE OF SearchText ON movies
+WHEN old.SearchText IS NOT new.SearchText
+BEGIN
+    UPDATE movies_fts
+    SET normalized_content = {normalizedFallback}
+    WHERE movie_id = new.Id;
+END;", cancellationToken);
+
+                // Keep the FTS index in sync when the cast list changes independently of the movie row.
+                await db.Database.ExecuteSqlRawAsync(@"
+CREATE TRIGGER trg_cast_movies_fts_insert AFTER INSERT ON cast_members
+BEGIN
+    UPDATE movies_fts
+    SET cast_members = COALESCE((SELECT GROUP_CONCAT(Name, ', ') FROM cast_members WHERE MovieId = new.MovieId), ''),
+        normalized_content = COALESCE(NULLIF((SELECT SearchText FROM movies WHERE Id = new.MovieId), ''),
+            COALESCE((SELECT Title || ' ' || COALESCE(OriginalTitle, '') || ' ' || COALESCE(Director, '') || ' ' || COALESCE(Overview, '') FROM movies WHERE Id = new.MovieId), '') || ' ' ||
+            COALESCE((SELECT GROUP_CONCAT(Name, ', ') FROM cast_members WHERE MovieId = new.MovieId), ''))
+    WHERE movie_id = new.MovieId;
+END;", cancellationToken);
+
+                await db.Database.ExecuteSqlRawAsync(@"
+CREATE TRIGGER trg_cast_movies_fts_update AFTER UPDATE ON cast_members
+BEGIN
+    UPDATE movies_fts
+    SET cast_members = COALESCE((SELECT GROUP_CONCAT(Name, ', ') FROM cast_members WHERE MovieId = new.MovieId), ''),
+        normalized_content = COALESCE(NULLIF((SELECT SearchText FROM movies WHERE Id = new.MovieId), ''),
+            COALESCE((SELECT Title || ' ' || COALESCE(OriginalTitle, '') || ' ' || COALESCE(Director, '') || ' ' || COALESCE(Overview, '') FROM movies WHERE Id = new.MovieId), '') || ' ' ||
+            COALESCE((SELECT GROUP_CONCAT(Name, ', ') FROM cast_members WHERE MovieId = new.MovieId), ''))
+    WHERE movie_id = new.MovieId;
+END;", cancellationToken);
+
+                await db.Database.ExecuteSqlRawAsync(@"
+CREATE TRIGGER trg_cast_movies_fts_delete AFTER DELETE ON cast_members
+BEGIN
+    UPDATE movies_fts
+    SET cast_members = COALESCE((SELECT GROUP_CONCAT(Name, ', ') FROM cast_members WHERE MovieId = old.MovieId), ''),
+        normalized_content = COALESCE(NULLIF((SELECT SearchText FROM movies WHERE Id = old.MovieId), ''),
+            COALESCE((SELECT Title || ' ' || COALESCE(OriginalTitle, '') || ' ' || COALESCE(Director, '') || ' ' || COALESCE(Overview, '') FROM movies WHERE Id = old.MovieId), '') || ' ' ||
+            COALESCE((SELECT GROUP_CONCAT(Name, ', ') FROM cast_members WHERE MovieId = old.MovieId), ''))
+    WHERE movie_id = old.MovieId;
 END;", cancellationToken);
             }
         }
@@ -152,6 +228,9 @@ END;", cancellationToken);
         await EnsureColumnExistsAsync(db, isSqlite, "users", "EmailLookupHash", "TEXT NULL", "varchar(64) NULL", cancellationToken);
 
         await EnsureColumnExistsAsync(db, isSqlite, "user_settings", "Language", "TEXT NOT NULL DEFAULT 'vi'", "varchar(10) NOT NULL DEFAULT 'vi'", cancellationToken);
+
+        await EnsureColumnExistsAsync(db, isSqlite, "movies", "SearchText", "TEXT NULL", "longtext NULL", cancellationToken);
+        await EnsureSearchTextIndexAsync(db, isSqlite, cancellationToken);
 
         if (isSqlite)
         {
@@ -200,6 +279,128 @@ END;", cancellationToken);
             {
                 // Non-critical startup check
             }
+        }
+
+        try
+        {
+            var moviesNeedingSearchText = await db.Movies
+                .Include(m => m.CastMembers)
+                .Where(m => m.SearchText == null || m.SearchText == string.Empty)
+                .ToListAsync(cancellationToken);
+            if (moviesNeedingSearchText.Count > 0)
+            {
+                foreach (var movie in moviesNeedingSearchText)
+                {
+                    movie.SearchText = WebXemPhim.Shared.Utils.MovieSearchTextBuilder.Build(
+                        movie.Title,
+                        movie.OriginalTitle,
+                        movie.Director,
+                        movie.CastMembers.Select(c => c.Name),
+                        movie.Overview);
+                }
+                await db.SaveChangesAsync(cancellationToken);
+            }
+        }
+        catch
+        {
+            // Non-critical startup backfill.
+        }
+    }
+
+    /// <summary>
+    /// Rewrites legacy seeded movie artwork URLs (<c>/images/movies/movie-N-poster.jpg</c>) to the
+    /// WebP variants that are shipped with the client. Only the deterministic seeded pattern is
+    /// touched, so custom artwork uploaded by an administrator is never modified.
+    /// </summary>
+    public static async Task<int> MigrateLegacyMovieImageUrlsAsync(AppDbContext db, CancellationToken cancellationToken = default)
+    {
+        var pattern = new System.Text.RegularExpressions.Regex(
+            @"^(/images/movies/movie-\d+-(?:poster|backdrop))\.jpg$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        var changed = 0;
+
+        var movies = await db.Movies
+            .Where(item => item.PosterUrl.EndsWith(".jpg") || item.BackdropUrl.EndsWith(".jpg"))
+            .ToListAsync(cancellationToken);
+        foreach (var movie in movies)
+        {
+            var poster = pattern.Replace(movie.PosterUrl, "$1.webp");
+            var backdrop = pattern.Replace(movie.BackdropUrl, "$1.webp");
+            if (!string.Equals(poster, movie.PosterUrl, StringComparison.Ordinal) ||
+                !string.Equals(backdrop, movie.BackdropUrl, StringComparison.Ordinal))
+            {
+                movie.PosterUrl = poster;
+                movie.BackdropUrl = backdrop;
+                changed++;
+            }
+        }
+
+        var episodes = await db.Episodes
+            .Where(item => item.ThumbnailUrl != null && item.ThumbnailUrl.EndsWith(".jpg"))
+            .ToListAsync(cancellationToken);
+        foreach (var episode in episodes)
+        {
+            var thumbnail = pattern.Replace(episode.ThumbnailUrl ?? string.Empty, "$1.webp");
+            if (!string.Equals(thumbnail, episode.ThumbnailUrl, StringComparison.Ordinal))
+            {
+                episode.ThumbnailUrl = thumbnail;
+                changed++;
+            }
+        }
+
+        if (changed > 0)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        return changed;
+    }
+
+    private static async Task EnsureSearchTextIndexAsync(AppDbContext db, bool isSqlite, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var connection = db.Database.GetDbConnection();
+            var shouldClose = false;
+            if (connection.State != System.Data.ConnectionState.Open)
+            {
+                await connection.OpenAsync(cancellationToken);
+                shouldClose = true;
+            }
+
+            try
+            {
+                await using var checkCmd = connection.CreateCommand();
+                if (isSqlite)
+                {
+                    checkCmd.CommandText = "SELECT COUNT(1) FROM sqlite_master WHERE type='index' AND name='IX_movies_SearchText';";
+                }
+                else
+                {
+                    checkCmd.CommandText = "SELECT COUNT(1) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='movies' AND INDEX_NAME='IX_movies_SearchText';";
+                }
+
+                var existing = await checkCmd.ExecuteScalarAsync(cancellationToken);
+                if (existing is not null && Convert.ToInt32(existing) > 0) return;
+
+                await db.Database.ExecuteSqlRawAsync(
+                    isSqlite
+                        ? "CREATE INDEX IF NOT EXISTS IX_movies_SearchText ON movies (SearchText);"
+                        : "CREATE INDEX IX_movies_SearchText ON movies (SearchText(191));",
+                    cancellationToken);
+            }
+            finally
+            {
+                if (shouldClose)
+                {
+                    await connection.CloseAsync();
+                }
+            }
+        }
+        catch
+        {
+            // Index creation is an optimization; search still works without it.
         }
     }
 
@@ -371,7 +572,9 @@ END;", cancellationToken);
                 {
                     var castText = string.Join(", ", movie.CastMembers.Select(c => c.Name));
                     var fullContent = $"{movie.Title} {movie.OriginalTitle} {movie.Director} {castText} {movie.Overview}";
-                    var normalized = VietnameseTextNormalizer.NormalizeForSearch(fullContent);
+                    var normalized = string.IsNullOrWhiteSpace(movie.SearchText)
+                        ? VietnameseTextNormalizer.NormalizeForSearch(fullContent)
+                        : movie.SearchText;
 
                     pId.Value = movie.Id;
                     pTitle.Value = movie.Title ?? string.Empty;
@@ -428,7 +631,9 @@ END;", cancellationToken);
             {
                 var castText = string.Join(", ", movie.CastMembers.Select(c => c.Name));
                 var fullContent = $"{movie.Title} {movie.OriginalTitle} {movie.Director} {castText} {movie.Overview}";
-                var normalized = VietnameseTextNormalizer.NormalizeForSearch(fullContent);
+                var normalized = string.IsNullOrWhiteSpace(movie.SearchText)
+                    ? VietnameseTextNormalizer.NormalizeForSearch(fullContent)
+                    : movie.SearchText;
 
                 await using var insCmd = connection.CreateCommand();
                 insCmd.CommandText = "INSERT INTO movies_fts (movie_id, title, original_title, director, cast_members, normalized_content) VALUES (@id, @title, @originalTitle, @director, @cast, @normalized);";

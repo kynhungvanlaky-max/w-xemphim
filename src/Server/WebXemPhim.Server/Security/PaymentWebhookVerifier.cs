@@ -10,6 +10,8 @@ namespace WebXemPhim.Server.Security;
 public sealed class PaymentWebhookVerifier : IPaymentWebhookVerifier
 {
     public const string DefaultWebhookSecret = "CinemaFlow_Secure_Payment_Webhook_HMAC_SHA512_Secret_Key_2026_AtLeast32Bytes!";
+    public const string DefaultPayOSSecret = "CinemaFlow_PayOS_Webhook_Secret_Key_2026_AtLeast32Bytes!";
+    public const string DefaultVNPaySecret = "CinemaFlow_VNPay_Hash_Secret_Key_2026_AtLeast32Bytes!";
 
     private readonly IConfiguration _configuration;
     private readonly TimeProvider _timeProvider;
@@ -29,19 +31,84 @@ public sealed class PaymentWebhookVerifier : IPaymentWebhookVerifier
     {
         if (!string.IsNullOrWhiteSpace(gateway))
         {
-            var gatewayKey = _configuration[$"Payment:Gateways:{gateway}:WebhookSecret"]
-                          ?? _configuration[$"Payment:Gateways:{gateway}:HashSecret"];
+            string? rawGatewayKey = null;
+            var gwWebhook = _configuration[$"Payment:Gateways:{gateway}:WebhookSecret"];
+            if (!string.IsNullOrWhiteSpace(gwWebhook))
+            {
+                rawGatewayKey = gwWebhook;
+            }
+            else
+            {
+                var gwHash = _configuration[$"Payment:Gateways:{gateway}:HashSecret"];
+                if (!string.IsNullOrWhiteSpace(gwHash))
+                {
+                    rawGatewayKey = gwHash;
+                }
+                else if (gateway.Equals("PayOS", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(_configuration["PAYOS_WEBHOOK_SECRET"]))
+                {
+                    rawGatewayKey = _configuration["PAYOS_WEBHOOK_SECRET"];
+                }
+                else if (gateway.Equals("VNPay", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(_configuration["VNPAY_HASH_SECRET"]))
+                {
+                    rawGatewayKey = _configuration["VNPAY_HASH_SECRET"];
+                }
+            }
+
+            var gatewayKey = rawGatewayKey?.Trim();
+
             if (!string.IsNullOrWhiteSpace(gatewayKey))
             {
+                if (_environment?.IsProduction() == true)
+                {
+                    if (string.Equals(gatewayKey, DefaultWebhookSecret, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(gatewayKey, DefaultPayOSSecret, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(gatewayKey, DefaultVNPaySecret, StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new InvalidOperationException($"Production gateway secret key for '{gateway}' cannot be the default placeholder key.");
+                    }
+                    if (gatewayKey.Length < 32)
+                    {
+                        throw new InvalidOperationException($"Production gateway secret key for '{gateway}' must be at least 32 characters long.");
+                    }
+                }
                 return gatewayKey;
             }
         }
 
-        var masterKey = _configuration["Payment:WebhookSecret"]
-                     ?? _configuration["Security:PaymentWebhookSecret"];
+        string? rawMasterKey = null;
+        var payWebhook = _configuration["Payment:WebhookSecret"];
+        if (!string.IsNullOrWhiteSpace(payWebhook))
+        {
+            rawMasterKey = payWebhook;
+        }
+        else
+        {
+            var secPayWebhook = _configuration["Security:PaymentWebhookSecret"];
+            if (!string.IsNullOrWhiteSpace(secPayWebhook))
+            {
+                rawMasterKey = secPayWebhook;
+            }
+            else if (!string.IsNullOrWhiteSpace(_configuration["PAYMENT_WEBHOOK_SECRET"]))
+            {
+                rawMasterKey = _configuration["PAYMENT_WEBHOOK_SECRET"];
+            }
+        }
+
+        var masterKey = rawMasterKey?.Trim();
 
         if (!string.IsNullOrWhiteSpace(masterKey))
         {
+            if (_environment?.IsProduction() == true)
+            {
+                if (string.Equals(masterKey, DefaultWebhookSecret, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("Production payment webhook secret cannot be the default placeholder key.");
+                }
+                if (masterKey.Length < 32)
+                {
+                    throw new InvalidOperationException("Production payment webhook secret must be at least 32 characters long.");
+                }
+            }
             return masterKey;
         }
 
@@ -67,7 +134,7 @@ public sealed class PaymentWebhookVerifier : IPaymentWebhookVerifier
 
     public string ComputeSignature(PaymentWebhookRequest request, string? secretKey = null)
     {
-        var key = !string.IsNullOrWhiteSpace(secretKey) ? secretKey : GetSecretKeyForGateway(request.Gateway);
+        var key = !string.IsNullOrWhiteSpace(secretKey) ? secretKey.Trim() : GetSecretKeyForGateway(request.Gateway);
         var keyBytes = Encoding.UTF8.GetBytes(key);
         var payload = BuildCanonicalPayload(request);
         var payloadBytes = Encoding.UTF8.GetBytes(payload);

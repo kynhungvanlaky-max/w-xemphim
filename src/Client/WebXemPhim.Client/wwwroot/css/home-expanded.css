@@ -1,7 +1,7 @@
 /* Extends the existing image-first Obsidian/Crimson design, without changing routes. */
 body .site-main .hero-title { max-width: 24ch; font-size: clamp(2.8rem, 4.2vw, 4.8rem); }
 body .site-main .hero-content-wrapper { padding-top: 4rem; padding-bottom: 4rem; }
-body .site-main .cinema-recovery-page { min-height: calc(100dvh - 164px); padding: 5rem clamp(1.5rem, 7vw, 7rem); justify-content: flex-start; align-items: center; background: linear-gradient(90deg, rgb(8 9 11 / 98%), rgb(8 9 11 / 70%) 45%, rgb(8 9 11 / 10%)), url('/images/generated/redesign-2026/cinemaflow-projector.png') right center / cover; }
+body .site-main .cinema-recovery-page { min-height: calc(100dvh - 164px); padding: 5rem clamp(1.5rem, 7vw, 7rem); justify-content: flex-start; align-items: center; background: linear-gradient(90deg, rgb(8 9 11 / 98%), rgb(8 9 11 / 70%) 45%, rgb(8 9 11 / 10%)), url('/images/generated/redesign-2026/cinemaflow-projector.webp') right center / cover; }
 body .site-main .cinema-recovery-page .system-state-panel { width: min(640px, 100%); max-width: none; background: transparent; border: 0; box-shadow: none; text-align: left; padding: 0; }
 body .site-main .cinema-recovery-page h1 { font-family: var(--font-display); font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.22; letter-spacing: -0.015em; }
 body .site-main .cinema-recovery-page .system-state-actions { justify-content: flex-start; }
@@ -54,7 +54,7 @@ body .site-main .home-expanded .genre-bento-grid {
     box-sizing: border-box !important;
 }
 body .site-main .explore-search-box { max-width: 850px; margin-top: 0; position: relative; z-index: 1; }
-body .site-main .explore-header-row::after { background-image: url('/images/generated/redesign-2026/cinemaflow-projector.png'); opacity: .4; }
+body .site-main .explore-header-row::after { background-image: url('/images/generated/redesign-2026/cinemaflow-projector.webp'); opacity: .4; }
 body .site-main .explore-heading { font-size: clamp(2rem, 3.6vw, 2.8rem); line-height: 1.22; letter-spacing: -0.015em; }
 body .site-main .explore-live-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2rem 1.25rem; }
 body .site-main .explore-live-grid .movie-card { width: 100%; min-width: 0; }

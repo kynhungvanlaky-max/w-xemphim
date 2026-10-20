@@ -8,10 +8,14 @@
 @inject AuthState Auth
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject ILogger<Watch> Logger
 @implements IDisposable
 @implements IAsyncDisposable
 
 <PageTitle>@(movie is null ? "Xem phim" : $"{movie.Title} - Tập {playback.Current?.EpisodeNumber}") - CinemaFlow</PageTitle>
+
+
+<RouteStylesheet Files="@WatchStyles" />
 
 <div class="watch-v2">
     @if (loading)
@@ -293,6 +297,8 @@
     </div>
 }
 @code {
+    private static readonly string[] WatchStyles = ["css/watch-workspace.css"];
+
     [Parameter] public int MovieId { get; set; }
     [SupplyParameterFromQuery(Name = "ep")] public int? EpQuery { get; set; }
     private readonly WatchPlaybackState playback = new();
@@ -366,7 +372,10 @@
                 }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Lỗi khi nạp cài đặt xem phim của người dùng.");
+        }
     }
 
     private async Task LoadMovie()
@@ -406,9 +415,9 @@
                             }
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // Non-critical fallback
+                        Logger.LogWarning(ex, "Lỗi khi lấy tiến độ xem phim {MovieId}.", id);
                     }
                 }
 
@@ -573,7 +582,7 @@
     private async Task Share()
     {
         try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", Nav.Uri); status = "Đã sao chép liên kết đến tập phim."; }
-        catch (JSException) { showShare = true; status = "Bạn có thể sao chép liên kết bên dưới."; }
+        catch (JSException ex) { Logger.LogDebug(ex, "Không thể ghi clipboard tự động, chuyển sang phương án hiển thị link."); showShare = true; status = "Bạn có thể sao chép liên kết bên dưới."; }
     }
 
     private async Task SelectShare() => await JS.InvokeVoidAsync("CinemaPlayer.selectShareLink");
@@ -599,7 +608,7 @@
             if (response?.Success == true) { reportOpen = false; focusReportTrigger = true; status = response.Message; }
             else reportStatus = response?.Message ?? "Chưa gửi được báo lỗi. Vui lòng thử lại.";
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { reportStatus = "Chưa gửi được báo lỗi. Vui lòng thử lại."; }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { Logger.LogWarning(ex, "Lỗi truyền thông khi gửi báo lỗi phim {MovieId}.", MovieId); reportStatus = "Chưa gửi được báo lỗi. Vui lòng thử lại."; }
         finally { reportSending = false; }
     }
 
@@ -688,7 +697,10 @@
             }
         }
         catch (OperationCanceledException) { }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Lỗi vòng lặp heartbeat phiên phát phim {SessionId}.", sessionId);
+        }
     }
 
     private void StopHeartbeatTimer()

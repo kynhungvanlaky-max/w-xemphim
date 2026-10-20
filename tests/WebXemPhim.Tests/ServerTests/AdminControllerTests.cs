@@ -1,9 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using WebXemPhim.Server.Controllers;
+using WebXemPhim.Server.Controllers.Admin;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Shared.Enums;
 using WebXemPhim.Shared.Models;
+using WebXemPhim.Shared.Requests;
 using WebXemPhim.Shared.Responses;
 
 namespace WebXemPhim.Tests.ServerTests;
@@ -17,15 +18,33 @@ public sealed class AdminControllerTests
             Task.FromResult(new AppDbContext(options));
     }
 
-    private static (AdminController controller, TestContextFactory factory, DbContextOptions<AppDbContext> options) CreateController()
+    private sealed record TestControllers(
+        AdminOverviewController Overview,
+        AdminMoviesController Movies,
+        AdminEpisodesController Episodes,
+        AdminUsersController Users,
+        AdminReviewsController Reviews,
+        AdminPaymentsController Payments,
+        TestContextFactory Factory,
+        DbContextOptions<AppDbContext> Options);
+
+    private static TestControllers CreateControllers()
     {
         var dbName = $"webxemphim-admin-tests-{Guid.NewGuid():N}";
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(dbName)
             .Options;
         var factory = new TestContextFactory(options);
-        var controller = new AdminController(factory, TimeProvider.System);
-        return (controller, factory, options);
+        var timeProvider = TimeProvider.System;
+        return new TestControllers(
+            new AdminOverviewController(factory, timeProvider),
+            new AdminMoviesController(factory, timeProvider),
+            new AdminEpisodesController(factory, timeProvider),
+            new AdminUsersController(factory, timeProvider),
+            new AdminReviewsController(factory, timeProvider),
+            new AdminPaymentsController(factory, timeProvider),
+            factory,
+            options);
     }
 
     private static async Task SeedSampleDataAsync(DbContextOptions<AppDbContext> options)
@@ -106,10 +125,10 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task GetStats_ReturnsValidDashboardMetrics()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
-        var actionResult = await controller.GetStats();
+        var actionResult = await test.Overview.GetStats();
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
         var envelope = Assert.IsType<ApiResponse<AdminDashboardDto>>(okResult.Value);
 
@@ -126,24 +145,24 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task GetMovies_WithFilter_ReturnsMatchingMovies()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
-        var actionResult = await controller.GetMovies(q: "Thử Nghiệm", type: MovieType.Movie);
+        var actionResult = await test.Movies.GetMovies(q: "Thử Nghiệm", type: MovieType.Movie);
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
-        var envelope = Assert.IsType<ApiResponse<List<MovieDetailDto>>>(okResult.Value);
+        var envelope = Assert.IsType<ApiResponse<PagedResult<MovieDetailDto>>>(okResult.Value);
 
         Assert.True(envelope.Success);
         Assert.NotNull(envelope.Data);
-        Assert.Single(envelope.Data);
-        Assert.Equal("Thử Nghiệm", envelope.Data[0].Title);
+        Assert.Single(envelope.Data.Items);
+        Assert.Equal("Thử Nghiệm", envelope.Data.Items[0].Title);
     }
 
     [Fact]
     public async Task CreateMovie_AddsMovieAndDefaultEpisode()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
         var request = new UpsertMovieRequest
         {
@@ -161,7 +180,7 @@ public sealed class AdminControllerTests
             CastNames = ["Diễn Viên 1", "Diễn Viên 2"]
         };
 
-        var actionResult = await controller.CreateMovie(request);
+        var actionResult = await test.Movies.CreateMovie(request);
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
         var envelope = Assert.IsType<ApiResponse<MovieDetailDto>>(okResult.Value);
 
@@ -171,7 +190,7 @@ public sealed class AdminControllerTests
         Assert.Single(envelope.Data.Genres);
         Assert.Equal(2, envelope.Data.Cast.Count);
 
-        await using var context = new AppDbContext(options);
+        await using var context = new AppDbContext(test.Options);
         var saved = await context.Movies.Include(m => m.Episodes).FirstOrDefaultAsync(m => m.Title == "Phim Mới 2026");
         Assert.NotNull(saved);
         Assert.Single(saved.Episodes);
@@ -180,8 +199,8 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task UpdateMovie_ModifiesExistingFields()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
         var request = new UpsertMovieRequest
         {
@@ -197,14 +216,14 @@ public sealed class AdminControllerTests
             GenreIds = [2]
         };
 
-        var actionResult = await controller.UpdateMovie(1, request);
+        var actionResult = await test.Movies.UpdateMovie(1, request);
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
         var envelope = Assert.IsType<ApiResponse<MovieDetailDto>>(okResult.Value);
 
         Assert.True(envelope.Success);
         Assert.Equal("Thử Nghiệm Đã Đổi Tên", envelope.Data!.Title);
 
-        await using var context = new AppDbContext(options);
+        await using var context = new AppDbContext(test.Options);
         var updated = await context.Movies.Include(m => m.MovieGenres).FirstAsync(m => m.Id == 1);
         Assert.Equal("Thử Nghiệm Đã Đổi Tên", updated.Title);
         Assert.Equal(2, updated.MovieGenres.First().GenreId);
@@ -213,25 +232,25 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task DeleteMovie_RemovesMovieFromDatabase()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
-        var actionResult = await controller.DeleteMovie(1);
+        var actionResult = await test.Movies.DeleteMovie(1);
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
         var envelope = Assert.IsType<ApiResponse<bool>>(okResult.Value);
 
         Assert.True(envelope.Success);
         Assert.True(envelope.Data);
 
-        await using var context = new AppDbContext(options);
+        await using var context = new AppDbContext(test.Options);
         Assert.Null(await context.Movies.FindAsync(1));
     }
 
     [Fact]
     public async Task AddEpisode_IncreasesEpisodesAndUpdatesTotal()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
         var request = new UpsertEpisodeRequest
         {
@@ -241,14 +260,14 @@ public sealed class AdminControllerTests
             StreamUrl = "https://example.com/stream2.m3u8"
         };
 
-        var actionResult = await controller.AddEpisode(1, request);
+        var actionResult = await test.Episodes.AddEpisode(1, request);
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
         var envelope = Assert.IsType<ApiResponse<EpisodeDto>>(okResult.Value);
 
         Assert.True(envelope.Success);
         Assert.Equal("Tập 2 Đặc Sắc", envelope.Data!.Title);
 
-        await using var context = new AppDbContext(options);
+        await using var context = new AppDbContext(test.Options);
         var movie = await context.Movies.FindAsync(1);
         Assert.Equal(2, movie!.CurrentEpisode);
     }
@@ -256,10 +275,10 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task UpdateUserMembership_ModifiesTierAndExtendsVip()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
-        await using var initContext = new AppDbContext(options);
+        await using var initContext = new AppDbContext(test.Options);
         var user = await initContext.Users.FirstAsync();
 
         var request = new AdminUpdateUserRequest
@@ -268,7 +287,7 @@ public sealed class AdminControllerTests
             ExtendDays = 90
         };
 
-        var actionResult = await controller.UpdateUserMembership(user.Id, request);
+        var actionResult = await test.Users.UpdateUserMembership(user.Id, request);
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
         var envelope = Assert.IsType<ApiResponse<UserDto>>(okResult.Value);
 
@@ -280,30 +299,30 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task DeleteReview_RemovesReviewFromDatabase()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
-        await using var initContext = new AppDbContext(options);
+        await using var initContext = new AppDbContext(test.Options);
         var review = await initContext.Reviews.FirstAsync();
 
-        var actionResult = await controller.DeleteReview(review.Id);
+        var actionResult = await test.Reviews.DeleteReview(review.Id);
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
         var envelope = Assert.IsType<ApiResponse<bool>>(okResult.Value);
 
         Assert.True(envelope.Success);
         Assert.True(envelope.Data);
 
-        await using var verifyContext = new AppDbContext(options);
+        await using var verifyContext = new AppDbContext(test.Options);
         Assert.Empty(await verifyContext.Reviews.ToListAsync());
     }
 
     [Fact]
     public async Task GetSystemHealth_ReturnsAccurateMetrics()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
-        var actionResult = await controller.GetSystemHealth();
+        var actionResult = await test.Overview.GetSystemHealth();
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
         var envelope = Assert.IsType<ApiResponse<SystemHealthDto>>(okResult.Value);
 
@@ -317,10 +336,10 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task GetAuditLogs_WithFilters_ReturnsMatchingLogs()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
-        await using (var context = new AppDbContext(options))
+        await using (var context = new AppDbContext(test.Options))
         {
             context.AuditLogs.AddRange(
                 new AuditLogEntity
@@ -347,24 +366,25 @@ public sealed class AdminControllerTests
             await context.SaveChangesAsync();
         }
 
-        var result = await controller.GetAuditLogs(entityType: "Movie");
+        var result = await test.Overview.GetAuditLogs(entityType: "Movie");
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
-        var envelope = Assert.IsType<ApiResponse<List<AuditLogDto>>>(okResult.Value);
+        var envelope = Assert.IsType<ApiResponse<PagedResult<AuditLogDto>>>(okResult.Value);
 
         Assert.True(envelope.Success);
-        Assert.Single(envelope.Data!);
-        Assert.Equal("Movie", envelope.Data![0].EntityType);
-        Assert.Equal("CREATE_MOVIE", envelope.Data[0].Action);
+        Assert.NotNull(envelope.Data);
+        Assert.Single(envelope.Data.Items);
+        Assert.Equal("Movie", envelope.Data.Items[0].EntityType);
+        Assert.Equal("CREATE_MOVIE", envelope.Data.Items[0].Action);
     }
 
     [Fact]
     public async Task BulkMovieAction_SetTrending_And_Delete_Works()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
         // Add second movie
-        await using (var context = new AppDbContext(options))
+        await using (var context = new AppDbContext(test.Options))
         {
             context.Movies.Add(new MovieEntity
             {
@@ -398,14 +418,14 @@ public sealed class AdminControllerTests
             Action = "set_trending",
             MovieIds = [1, 2]
         };
-        var actionResult = await controller.BulkMovieAction(bulkTrending);
+        var actionResult = await test.Movies.BulkMovieAction(bulkTrending);
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
         var envelope = Assert.IsType<ApiResponse<int>>(okResult.Value);
         Assert.True(envelope.Success);
         Assert.Equal(2, envelope.Data);
 
         // Verify in DB
-        await using (var context = new AppDbContext(options))
+        await using (var context = new AppDbContext(test.Options))
         {
             var m2 = await context.Movies.FindAsync(2);
             Assert.True(m2!.IsTrending);
@@ -417,13 +437,13 @@ public sealed class AdminControllerTests
             Action = "delete",
             MovieIds = [2]
         };
-        var delResult = await controller.BulkMovieAction(bulkDelete);
+        var delResult = await test.Movies.BulkMovieAction(bulkDelete);
         var delOkResult = Assert.IsType<OkObjectResult>(delResult.Result);
         var delEnvelope = Assert.IsType<ApiResponse<int>>(delOkResult.Value);
         Assert.True(delEnvelope.Success);
         Assert.Equal(1, delEnvelope.Data);
 
-        await using (var context = new AppDbContext(options))
+        await using (var context = new AppDbContext(test.Options))
         {
             Assert.Null(await context.Movies.FindAsync(2));
         }
@@ -432,27 +452,27 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task BulkMovieAction_EmptyMovieIds_ReturnsBadRequest()
     {
-        var (controller, _, options) = CreateController();
+        var test = CreateControllers();
         var request = new BulkMovieActionRequest { Action = "delete", MovieIds = [] };
-        var result = await controller.BulkMovieAction(request);
+        var result = await test.Movies.BulkMovieAction(request);
         Assert.IsType<BadRequestObjectResult>(result.Result);
     }
 
     [Fact]
     public async Task ToggleTrending_And_ToggleFeatured_TogglesFlags()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
         // Toggle trending from true to false
-        var trendingResult = await controller.ToggleTrending(1);
+        var trendingResult = await test.Movies.ToggleTrending(1);
         var okTrending = Assert.IsType<OkObjectResult>(trendingResult.Result);
         var trendingEnv = Assert.IsType<ApiResponse<bool>>(okTrending.Value);
         Assert.True(trendingEnv.Success);
         Assert.False(trendingEnv.Data);
 
         // Toggle featured from true to false
-        var featuredResult = await controller.ToggleFeatured(1);
+        var featuredResult = await test.Movies.ToggleFeatured(1);
         var okFeatured = Assert.IsType<OkObjectResult>(featuredResult.Result);
         var featuredEnv = Assert.IsType<ApiResponse<bool>>(okFeatured.Value);
         Assert.True(featuredEnv.Success);
@@ -462,11 +482,11 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task CloneMovie_ReplicatesMovieAndAssignsUniqueSlug()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
         // Add episode and stream to source movie
-        await using (var context = new AppDbContext(options))
+        await using (var context = new AppDbContext(test.Options))
         {
             var ep = new EpisodeEntity
             {
@@ -499,7 +519,7 @@ public sealed class AdminControllerTests
             CopyEpisodes = true
         };
 
-        var actionResult = await controller.CloneMovie(1, cloneRequest);
+        var actionResult = await test.Movies.CloneMovie(1, cloneRequest);
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
         var envelope = Assert.IsType<ApiResponse<MovieDetailDto>>(okResult.Value);
 
@@ -510,7 +530,7 @@ public sealed class AdminControllerTests
         Assert.Equal(2027, envelope.Data.ReleaseYear);
 
         // Verify episodes copied
-        await using (var context = new AppDbContext(options))
+        await using (var context = new AppDbContext(test.Options))
         {
             var cloned = await context.Movies.Include(m => m.Episodes).ThenInclude(e => e.Streams).FirstOrDefaultAsync(m => m.Slug == "thu-nghiem-1");
             Assert.NotNull(cloned);
@@ -522,11 +542,11 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task StreamSources_Crud_Lifecycle()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
         // Setup episode
-        await using (var context = new AppDbContext(options))
+        await using (var context = new AppDbContext(test.Options))
         {
             context.Episodes.Add(new EpisodeEntity
             {
@@ -547,7 +567,7 @@ public sealed class AdminControllerTests
             Quality = "4K UHD",
             StreamUrl = "https://cdn.example.com/movie.m3u8"
         };
-        var addResult = await controller.AddStreamSource(20, addRequest);
+        var addResult = await test.Episodes.AddStreamSource(20, addRequest);
         var addOk = Assert.IsType<OkObjectResult>(addResult.Result);
         var addEnv = Assert.IsType<ApiResponse<StreamSourceDto>>(addOk.Value);
         Assert.True(addEnv.Success);
@@ -555,7 +575,7 @@ public sealed class AdminControllerTests
         Assert.Equal("Hydra CDN 1", addEnv.Data.ServerName);
 
         // 2. Get Streams
-        var getResult = await controller.GetStreamsForEpisode(20);
+        var getResult = await test.Episodes.GetStreamsForEpisode(20);
         var getOk = Assert.IsType<OkObjectResult>(getResult.Result);
         var getEnv = Assert.IsType<ApiResponse<List<StreamSourceDto>>>(getOk.Value);
         Assert.Single(getEnv.Data!);
@@ -568,19 +588,19 @@ public sealed class AdminControllerTests
             Quality = "1080p",
             StreamUrl = "https://backup.example.com/movie.m3u8"
         };
-        var updateResult = await controller.UpdateStreamSource(20, 1, updateRequest);
+        var updateResult = await test.Episodes.UpdateStreamSource(20, 1, updateRequest);
         var updateOk = Assert.IsType<OkObjectResult>(updateResult.Result);
         var updateEnv = Assert.IsType<ApiResponse<StreamSourceDto>>(updateOk.Value);
         Assert.True(updateEnv.Success);
         Assert.Equal("Hydra CDN Backup", updateEnv.Data!.ServerName);
 
         // 4. Delete Stream
-        var deleteResult = await controller.DeleteStreamSource(20, 1);
+        var deleteResult = await test.Episodes.DeleteStreamSource(20, 1);
         var delOk = Assert.IsType<OkObjectResult>(deleteResult.Result);
         var delEnv = Assert.IsType<ApiResponse<bool>>(delOk.Value);
         Assert.True(delEnv.Success);
 
-        await using (var context = new AppDbContext(options))
+        await using (var context = new AppDbContext(test.Options))
         {
             Assert.Empty(await context.StreamSources.Where(s => s.EpisodeId == 20).ToListAsync());
         }
@@ -589,10 +609,10 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task ProbeStream_InvalidUrl_ReturnsSafeFailureResult()
     {
-        var (controller, _, _) = CreateController();
+        var test = CreateControllers();
         var request = new ProbeStreamRequest { StreamUrl = "http://invalid-non-existing-domain-test.local/video.m3u8" };
 
-        var result = await controller.ProbeStream(request);
+        var result = await test.Episodes.ProbeStream(request);
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var envelope = Assert.IsType<ApiResponse<ProbeStreamResultDto>>(okResult.Value);
 
@@ -604,8 +624,8 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task BatchGenerateEpisodes_CreatesEpisodesWithSequentialData()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
         var request = new BatchEpisodeGenerateRequest
         {
@@ -620,14 +640,14 @@ public sealed class AdminControllerTests
             DurationMinutes = 45
         };
 
-        var result = await controller.BatchGenerateEpisodes(request);
+        var result = await test.Episodes.BatchGenerateEpisodes(request);
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var envelope = Assert.IsType<ApiResponse<int>>(okResult.Value);
 
         Assert.True(envelope.Success);
         Assert.Equal(5, envelope.Data);
 
-        await using var context = new AppDbContext(options);
+        await using var context = new AppDbContext(test.Options);
         var episodes = await context.Episodes.Where(e => e.MovieId == 1).OrderBy(e => e.EpisodeNumber).ToListAsync();
         Assert.Equal(5, episodes.Count);
         Assert.Equal("Tập 1 Thuyết Minh", episodes[0].Title);
@@ -640,13 +660,13 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task GetUserDetail_ReturnsFull360Overview()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
-        await using var initContext = new AppDbContext(options);
+        await using var initContext = new AppDbContext(test.Options);
         var user = await initContext.Users.FirstAsync();
 
-        var result = await controller.GetUserDetail(user.Id);
+        var result = await test.Users.GetUserDetail(user.Id);
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var envelope = Assert.IsType<ApiResponse<AdminUserDetailDto>>(okResult.Value);
 
@@ -662,21 +682,21 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task UpdateUserAdminRole_TogglesSecurityAdminRole()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
-        await using var initContext = new AppDbContext(options);
+        await using var initContext = new AppDbContext(test.Options);
         var user = await initContext.Users.FirstAsync();
 
         var request = new AdminUpdateUserRoleRequest { IsAdmin = true };
-        var result = await controller.UpdateUserAdminRole(user.Id, request);
+        var result = await test.Users.UpdateUserAdminRole(user.Id, request);
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var envelope = Assert.IsType<ApiResponse<bool>>(okResult.Value);
 
         Assert.True(envelope.Success);
         Assert.True(envelope.Data);
 
-        await using var verifyContext = new AppDbContext(options);
+        await using var verifyContext = new AppDbContext(test.Options);
         var security = await verifyContext.UserSecurity.FirstOrDefaultAsync(s => s.UserId == user.Id);
         Assert.NotNull(security);
         Assert.True(security.IsAdmin);
@@ -685,15 +705,15 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task UpdateUserLockStatus_LocksAndUnlocksUser()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
-        await using var initContext = new AppDbContext(options);
+        await using var initContext = new AppDbContext(test.Options);
         var user = await initContext.Users.FirstAsync();
 
         // 1. Lock user for 60 minutes
         var lockRequest = new AdminUpdateUserLockRequest { IsLocked = true, LockMinutes = 60 };
-        var lockResult = await controller.UpdateUserLockStatus(user.Id, lockRequest);
+        var lockResult = await test.Users.UpdateUserLockStatus(user.Id, lockRequest);
         var lockOk = Assert.IsType<OkObjectResult>(lockResult.Result);
         var lockEnv = Assert.IsType<ApiResponse<bool>>(lockOk.Value);
         Assert.True(lockEnv.Success);
@@ -701,7 +721,7 @@ public sealed class AdminControllerTests
 
         // 2. Unlock user
         var unlockRequest = new AdminUpdateUserLockRequest { IsLocked = false };
-        var unlockResult = await controller.UpdateUserLockStatus(user.Id, unlockRequest);
+        var unlockResult = await test.Users.UpdateUserLockStatus(user.Id, unlockRequest);
         var unlockOk = Assert.IsType<OkObjectResult>(unlockResult.Result);
         var unlockEnv = Assert.IsType<ApiResponse<bool>>(unlockOk.Value);
         Assert.True(unlockEnv.Success);
@@ -711,10 +731,10 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task ReplyToReview_SetsAdminReplyAndReportStatus()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
-        await using var initContext = new AppDbContext(options);
+        await using var initContext = new AppDbContext(test.Options);
         var review = await initContext.Reviews.FirstAsync();
 
         var request = new AdminReviewModerationRequest
@@ -723,7 +743,7 @@ public sealed class AdminControllerTests
             IsReported = true
         };
 
-        var result = await controller.ReplyToReview(review.Id, request);
+        var result = await test.Reviews.ReplyToReview(review.Id, request);
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var envelope = Assert.IsType<ApiResponse<AdminReviewDto>>(okResult.Value);
 
@@ -737,12 +757,12 @@ public sealed class AdminControllerTests
     [Fact]
     public async Task MarkPaymentPaid_ApprovesPaymentAndExtendsVipTier()
     {
-        var (controller, _, options) = CreateController();
-        await SeedSampleDataAsync(options);
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
 
         Guid paymentId;
         Guid userId;
-        await using (var context = new AppDbContext(options))
+        await using (var context = new AppDbContext(test.Options))
         {
             var user = await context.Users.FirstAsync();
             userId = user.Id;
@@ -772,7 +792,7 @@ public sealed class AdminControllerTests
             Note = "Duyệt chuyển khoản thủ công VCB"
         };
 
-        var result = await controller.MarkPaymentPaid(paymentId, approvalRequest);
+        var result = await test.Payments.MarkPaymentPaid(paymentId, approvalRequest);
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var envelope = Assert.IsType<ApiResponse<PaymentDto>>(okResult.Value);
 
@@ -782,7 +802,7 @@ public sealed class AdminControllerTests
         Assert.NotNull(envelope.Data.PaidAt);
 
         // Verify user became VIP
-        await using var verifyContext = new AppDbContext(options);
+        await using var verifyContext = new AppDbContext(test.Options);
         var verifiedUser = await verifyContext.Users.FindAsync(userId);
         Assert.Equal(MembershipTier.Vip, verifiedUser!.Membership);
         Assert.NotNull(verifiedUser.VipExpiresAtUtc);

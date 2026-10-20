@@ -134,11 +134,19 @@ public sealed class CinemaPlayerVisualTests
         var appPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Client", "WebXemPhim.Client", "Components", "App.razor");
         var appContent = File.ReadAllText(appPath);
 
-        var hlsIndex = appContent.IndexOf("js/hls.min.js", StringComparison.Ordinal);
-        var playerIndex = appContent.IndexOf("js/cinema-player.js", StringComparison.Ordinal);
+        // Under Milestone 4, static script tags are removed from App.razor to optimize initial bundle
+        Assert.DoesNotContain("<script src=\"js/hls.min.js\"></script>", appContent, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<script src=\"js/cinema-player.js\"></script>", appContent, StringComparison.OrdinalIgnoreCase);
 
-        Assert.True(hlsIndex >= 0, "App.razor must reference js/hls.min.js");
-        Assert.True(playerIndex >= 0, "App.razor must reference js/cinema-player.js");
+        // Scripts are dynamically loaded via ensureCinemaPlayerLoaded in cinema-navbar.js in proper dependency order
+        var navbarJsPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Client", "WebXemPhim.Client", "wwwroot", "js", "cinema-navbar.js");
+        var navbarContent = File.ReadAllText(navbarJsPath);
+
+        var hlsIndex = navbarContent.IndexOf("js/hls.min.js", StringComparison.Ordinal);
+        var playerIndex = navbarContent.IndexOf("js/cinema-player.js", StringComparison.Ordinal);
+
+        Assert.True(hlsIndex >= 0, "ensureCinemaPlayerLoaded must reference js/hls.min.js");
+        Assert.True(playerIndex >= 0, "ensureCinemaPlayerLoaded must reference js/cinema-player.js");
         Assert.True(hlsIndex < playerIndex, "js/hls.min.js must be loaded before js/cinema-player.js");
     }
 

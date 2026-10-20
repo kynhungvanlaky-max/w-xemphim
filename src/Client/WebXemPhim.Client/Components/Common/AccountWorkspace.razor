@@ -1,5 +1,9 @@
 @inject AuthState Auth
 @inject NavigationManager Nav
+@implements IDisposable
+@using WebXemPhim.Client.Components.Common
+
+<RouteStylesheet Files="@AccountStyles" />
 
 <div class="account-workspace">
     <aside class="account-workspace-rail" aria-label="Điều hướng tài khoản">
@@ -69,12 +73,30 @@
 </div>
 
 @code {
+    private static readonly string[] AccountStyles = ["css/account-overview.css"];
+
     [Parameter] public string ActiveSection { get; set; } = "overview";
     [Parameter] public string Eyebrow { get; set; } = "Không gian cá nhân";
     [Parameter] public string Title { get; set; } = string.Empty;
     [Parameter] public string Description { get; set; } = string.Empty;
     [Parameter] public bool ShowHeader { get; set; } = true;
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Auth.OnChange += OnAuthChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !Auth.IsInitialized)
+        {
+            await Auth.InitializeAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void OnAuthChanged() => _ = InvokeAsync(StateHasChanged);
 
     private string DisplayName => !Auth.IsInitialized
         ? "Đang xác thực"
@@ -104,5 +126,10 @@
     {
         await Auth.LogoutAsync();
         Nav.NavigateTo("/");
+    }
+
+    public void Dispose()
+    {
+        Auth.OnChange -= OnAuthChanged;
     }
 }

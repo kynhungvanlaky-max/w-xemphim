@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Server.Security;
 using WebXemPhim.Server.Services;
@@ -16,10 +18,13 @@ namespace WebXemPhim.Server.Controllers;
 public class MoviesController(
     IMovieService movieService,
     IDbContextFactory<AppDbContext>? contextFactory = null,
-    IStreamUrlSigner? urlSigner = null) : ControllerBase
+    IStreamUrlSigner? urlSigner = null,
+    IMemoryCache? memoryCache = null) : ControllerBase
 {
     private readonly IStreamUrlSigner _urlSigner = urlSigner ?? new StreamUrlSigner();
+    private readonly IMemoryCache? _memoryCache = memoryCache;
     [HttpGet("filter-options")]
+    [OutputCache(Duration = 120, Tags = ["movies", "genres"])]
     public async Task<ActionResult<ApiResponse<MovieFilterOptionsDto>>> FilterOptions() =>
         Ok(ApiResponse<MovieFilterOptionsDto>.Ok(await movieService.GetFilterOptionsAsync()));
     [HttpGet]
@@ -30,6 +35,7 @@ public class MoviesController(
     }
 
     [HttpGet("featured")]
+    [OutputCache(Duration = 60, Tags = ["movies"])]
     public async Task<ActionResult<ApiResponse<MovieDto>>> GetFeatured()
     {
         var movie = await movieService.GetFeaturedMovieAsync();
@@ -40,6 +46,7 @@ public class MoviesController(
     }
 
     [HttpGet("trending")]
+    [OutputCache(Duration = 60, Tags = ["movies"])]
     public async Task<ActionResult<ApiResponse<List<MovieDto>>>> GetTrending([FromQuery] int count = 10)
     {
         var movies = await movieService.GetTrendingMoviesAsync(count);
@@ -47,6 +54,7 @@ public class MoviesController(
     }
 
     [HttpGet("top-series")]
+    [OutputCache(Duration = 60, Tags = ["movies"])]
     public async Task<ActionResult<ApiResponse<List<MovieDto>>>> GetTopSeries([FromQuery] int count = 10)
     {
         var series = await movieService.GetTopSeriesAsync(count);
@@ -54,6 +62,7 @@ public class MoviesController(
     }
 
     [HttpGet("latest")]
+    [OutputCache(Duration = 60, Tags = ["movies"])]
     public async Task<ActionResult<ApiResponse<List<MovieDto>>>> GetLatest([FromQuery] int count = 12)
     {
         var movies = await movieService.GetLatestMoviesAsync(count);
@@ -87,22 +96,12 @@ public class MoviesController(
     [HttpPost("{id:int}/view")]
     public async Task<ActionResult<ApiResponse<bool>>> IncrementView(int id)
     {
-        if (contextFactory is not null)
+        var clientIp = HttpContext?.Connection?.RemoteIpAddress?.ToString();
+        var success = await movieService.IncrementViewCountAsync(id, clientIp);
+        if (!success)
         {
-            await using var context = await contextFactory.CreateDbContextAsync();
-            var movie = await context.Movies.FindAsync(id);
-            if (movie is null) return NotFound(ApiResponse<bool>.Fail($"Không tìm thấy phim với ID: {id}"));
-            movie.ViewCount++;
-            await context.SaveChangesAsync();
-            return Ok(ApiResponse<bool>.Ok(true));
+            return NotFound(ApiResponse<bool>.Fail($"Không tìm thấy phim với ID: {id}"));
         }
-        else if (movieService is DatabaseMovieService dbService)
-        {
-            var success = await dbService.IncrementViewCountAsync(id);
-            if (!success) return NotFound(ApiResponse<bool>.Fail($"Không tìm thấy phim với ID: {id}"));
-            return Ok(ApiResponse<bool>.Ok(true));
-        }
-
         return Ok(ApiResponse<bool>.Ok(true));
     }
 
@@ -125,6 +124,13 @@ public class MoviesController(
         if (User?.Identity?.IsAuthenticated != true) return false;
         if (User.IsInRole("Admin")) return true;
 
+        var cacheKey = _memoryCache is null ? null : $"isvip:{User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.Identity?.Name}";
+        if (cacheKey is not null && _memoryCache!.TryGetValue(cacheKey, out bool cached))
+        {
+            return cached;
+        }
+
+        var isVip = false;
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (Guid.TryParse(userIdClaim, out var userId) && contextFactory is not null)
         {
@@ -132,15 +138,20 @@ public class MoviesController(
             var user = await db.Users.FindAsync(userId);
             if (user is not null && user.Membership != MembershipTier.Free && (!user.VipExpiresAtUtc.HasValue || user.VipExpiresAtUtc.Value > DateTime.UtcNow))
             {
-                return true;
+                isVip = true;
             }
         }
         else if (User.FindFirst("membership")?.Value is { } m && !m.Equals("Free", StringComparison.OrdinalIgnoreCase))
         {
-            return true;
+            isVip = true;
         }
 
-        return false;
+        if (cacheKey is not null)
+        {
+            _memoryCache!.Set(cacheKey, isVip, TimeSpan.FromSeconds(30));
+        }
+
+        return isVip;
     }
 
     private void MaskVipStreams(MovieDetailDto? movie, bool isVip)

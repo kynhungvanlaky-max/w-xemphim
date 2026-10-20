@@ -8,6 +8,7 @@
 @inject AuthState Auth
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject ILogger<Vip> Logger
 @implements IDisposable
 
 <PageTitle>CinemaFlow VIP - Trải nghiệm điện ảnh đỉnh cao, không giới hạn</PageTitle>
@@ -15,7 +16,7 @@
 <main class="vip-landing-page">
     <!-- 1. Ambient Background Layer with Cinema Flow Art -->
     <div class="vip-art-layer" aria-hidden="true">
-        <img src="/images/generated/redesign-2026/cinemaflow-vip-corridor.png" alt="" class="vip-art-bg" />
+        <img src="/images/generated/redesign-2026/cinemaflow-vip-corridor.webp" alt="" width="1860" height="845" class="vip-art-bg" />
         <div class="vip-art-gradient-left"></div>
         <div class="vip-art-gradient-bottom"></div>
         <div class="vip-art-gradient-top"></div>
@@ -673,7 +674,10 @@
         {
             plans = await Api.GetPlansAsync();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Lỗi khi tải danh sách gói VIP.");
+        }
 
         selected = plans.FirstOrDefault(p => p.IsRecommended)
                    ?? plans.FirstOrDefault(p => p.DurationDays >= 365)
@@ -795,7 +799,10 @@
                 _ = InvokeAsync(StateHasChanged);
             });
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Lỗi sao chép vào bộ nhớ tạm: {FieldKey}", fieldKey);
+        }
     }
 
     private void CloseCheckout()

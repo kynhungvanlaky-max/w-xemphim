@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,7 +15,8 @@ namespace WebXemPhim.Server.Controllers;
 [Route("api/[controller]")]
 public class StreamController(
     IDbContextFactory<AppDbContext> contextFactory,
-    IStreamUrlSigner urlSigner) : ControllerBase
+    IStreamUrlSigner urlSigner,
+    IMemoryCache? cache = null) : ControllerBase
 {
     [HttpPost("sign")]
     public async Task<ActionResult<ApiResponse<SignedStreamDto>>> SignStream([FromBody] SignStreamRequest request)
@@ -107,11 +109,20 @@ public class StreamController(
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (Guid.TryParse(userIdClaim, out var userId))
         {
-            var user = await db.Users.FindAsync(userId);
-            if (user is not null && user.Membership != MembershipTier.Free && (!user.VipExpiresAtUtc.HasValue || user.VipExpiresAtUtc.Value > DateTime.UtcNow))
+            var cacheKey = $"vip_status_{userId}";
+            if (cache is not null && cache.TryGetValue(cacheKey, out bool cachedVip))
             {
-                return true;
+                return cachedVip;
             }
+
+            var user = await db.Users.FindAsync(userId);
+            var isVip = user is not null && user.Membership != MembershipTier.Free && (!user.VipExpiresAtUtc.HasValue || user.VipExpiresAtUtc.Value > DateTime.UtcNow);
+            
+            if (cache is not null)
+            {
+                cache.Set(cacheKey, isVip, TimeSpan.FromMinutes(5));
+            }
+            return isVip;
         }
         else if (User.FindFirst("membership")?.Value is { } m && !m.Equals("Free", StringComparison.OrdinalIgnoreCase))
         {

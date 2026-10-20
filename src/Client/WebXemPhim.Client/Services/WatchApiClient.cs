@@ -1,13 +1,17 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.Extensions.Logging;
 using WebXemPhim.Shared.Models;
 using WebXemPhim.Shared.Requests;
 using WebXemPhim.Shared.Responses;
 
 namespace WebXemPhim.Client.Services;
 
-public sealed class WatchApiClient(IHttpClientFactory factory, AuthState auth)
+public sealed class WatchApiClient(
+    IHttpClientFactory factory,
+    AuthState auth,
+    ILogger<WatchApiClient>? logger = null)
 {
     public async Task<MovieDetailDto?> GetMovieAsync(int id)
     {
@@ -38,8 +42,9 @@ public sealed class WatchApiClient(IHttpClientFactory factory, AuthState auth)
             var result = await response.Content.ReadFromJsonAsync<ApiResponse<WatchProgressDto>>();
             return result?.Data;
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogWarning(ex, "Failed to get watch progress for movieId: {MovieId}", movieId);
             return null;
         }
     }
@@ -58,8 +63,9 @@ public sealed class WatchApiClient(IHttpClientFactory factory, AuthState auth)
             using var response = await client.SendAsync(request);
             return response.IsSuccessStatusCode;
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogWarning(ex, "Failed to save watch progress for movieId: {MovieId}", requestDto.MovieId);
             return false;
         }
     }
@@ -72,8 +78,9 @@ public sealed class WatchApiClient(IHttpClientFactory factory, AuthState auth)
             using var response = await client.PostAsync($"api/movies/{movieId}/view", null);
             return response.IsSuccessStatusCode;
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogWarning(ex, "Failed to increment view count for movieId: {MovieId}", movieId);
             return false;
         }
     }
@@ -91,8 +98,9 @@ public sealed class WatchApiClient(IHttpClientFactory factory, AuthState auth)
             var result = await response.Content.ReadFromJsonAsync<ApiResponse<UserSettingsDto>>();
             return result?.Data;
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogWarning(ex, "Failed to get settings for user");
             return null;
         }
     }
@@ -133,6 +141,7 @@ public sealed class WatchApiClient(IHttpClientFactory factory, AuthState auth)
         }
         catch (Exception ex)
         {
+            logger?.LogWarning(ex, "Failed to sign stream for episodeId: {EpisodeId}", episodeId);
             return ApiResponse<SignedStreamDto>.Fail(ex.Message);
         }
     }

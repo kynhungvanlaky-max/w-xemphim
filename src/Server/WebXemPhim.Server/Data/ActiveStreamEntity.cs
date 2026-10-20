@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace WebXemPhim.Server.Data;
 
@@ -27,6 +28,8 @@ public sealed class ActiveStreamEntity
     [MaxLength(256)]
     public string? DeviceInfo { get; set; }
 
+    /// <summary>Alias of <see cref="DeviceInfo"/> kept for API compatibility. Not a stored column.</summary>
+    [NotMapped]
     public string? DeviceName
     {
         get => DeviceInfo;
@@ -37,6 +40,8 @@ public sealed class ActiveStreamEntity
 
     public DateTime LastHeartbeatUtc { get; set; }
 
+    /// <summary>Alias of <see cref="LastHeartbeatUtc"/> kept for API compatibility. Not a stored column.</summary>
+    [NotMapped]
     public DateTime LastHeartbeatAtUtc
     {
         get => LastHeartbeatUtc;

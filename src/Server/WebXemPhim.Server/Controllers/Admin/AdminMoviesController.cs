@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 using Microsoft.EntityFrameworkCore;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Shared.Enums;
+using WebXemPhim.Shared.Utils;
 using WebXemPhim.Shared.Models;
 using WebXemPhim.Shared.Requests;
 using WebXemPhim.Shared.Responses;
@@ -13,9 +15,19 @@ public sealed class AdminMoviesController(
     IDbContextFactory<AppDbContext> contextFactory,
     TimeProvider timeProvider,
     IWebHostEnvironment? env = null,
-    IHttpClientFactory? httpClientFactory = null)
+    IHttpClientFactory? httpClientFactory = null,
+    ILogger<AdminMoviesController>? logger = null,
+    IOutputCacheStore? outputCacheStore = null)
     : AdminBaseController(contextFactory, timeProvider, env, httpClientFactory)
 {
+    private async Task InvalidateOutputCacheAsync()
+    {
+        if (outputCacheStore is not null)
+        {
+            await outputCacheStore.EvictByTagAsync("movies", default);
+            await outputCacheStore.EvictByTagAsync("genres", default);
+        }
+    }
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PagedResult<MovieDetailDto>>>> GetMovies(
         [FromQuery] string? q = null,
@@ -118,8 +130,8 @@ public sealed class AdminMoviesController(
             OriginalTitle = string.IsNullOrWhiteSpace(request.OriginalTitle) ? request.Title.Trim() : request.OriginalTitle.Trim(),
             Slug = uniqueSlug,
             Overview = string.IsNullOrWhiteSpace(request.Overview) ? "Chưa có nội dung tóm tắt." : request.Overview.Trim(),
-            PosterUrl = string.IsNullOrWhiteSpace(request.PosterUrl) ? "/images/movies/movie-1-poster.jpg" : request.PosterUrl.Trim(),
-            BackdropUrl = string.IsNullOrWhiteSpace(request.BackdropUrl) ? "/images/movies/movie-1-backdrop.jpg" : request.BackdropUrl.Trim(),
+            PosterUrl = string.IsNullOrWhiteSpace(request.PosterUrl) ? "/images/movies/movie-1-poster.webp" : request.PosterUrl.Trim(),
+            BackdropUrl = string.IsNullOrWhiteSpace(request.BackdropUrl) ? "/images/movies/movie-1-backdrop.webp" : request.BackdropUrl.Trim(),
             TrailerUrl = request.TrailerUrl,
             Rating = request.Rating > 0 ? request.Rating : 8.0,
             VoteCount = request.VoteCount > 0 ? request.VoteCount : 50,
@@ -162,6 +174,8 @@ public sealed class AdminMoviesController(
                 }
             }
         }
+
+        movie.SearchText = MovieSearchTextBuilder.Build(movie.Title, movie.OriginalTitle, movie.Director, movie.CastMembers.Select(c => c.Name), movie.Overview);
 
         var defaultEp = new EpisodeEntity
         {
@@ -206,7 +220,8 @@ public sealed class AdminMoviesController(
 
         if (context.Database.IsSqlite())
         {
-            try { await DatabaseSchemaHelper.IndexSingleMovieAsync(context, movie.Id); } catch { /* ignore */ }
+            try { await DatabaseSchemaHelper.IndexSingleMovieAsync(context, movie.Id); }
+            catch (Exception ex) { logger?.LogWarning(ex, "Lỗi tái tạo chỉ mục tìm kiếm cho phim {MovieId}.", movie.Id); }
         }
 
         var created = await context.Movies
@@ -215,6 +230,7 @@ public sealed class AdminMoviesController(
             .Include(m => m.Episodes)
             .FirstAsync(m => m.Id == movie.Id);
 
+        await InvalidateOutputCacheAsync();
         return Ok(ApiResponse<MovieDetailDto>.Ok(MapMovieDetail(created), "Thêm phim mới thành công."));
     }
 
@@ -268,6 +284,8 @@ public sealed class AdminMoviesController(
         movie.IsFeatured = request.IsFeatured;
         movie.TotalEpisodes = request.TotalEpisodes;
         movie.CurrentEpisode = request.CurrentEpisode;
+
+        movie.SearchText = MovieSearchTextBuilder.Build(movie.Title, movie.OriginalTitle, movie.Director, request.CastNames.Count > 0 ? request.CastNames : movie.CastMembers.Select(c => c.Name), movie.Overview);
 
         context.MovieGenres.RemoveRange(movie.MovieGenres);
         foreach (var gid in request.GenreIds.Distinct())
@@ -328,7 +346,8 @@ public sealed class AdminMoviesController(
 
         if (context.Database.IsSqlite())
         {
-            try { await DatabaseSchemaHelper.IndexSingleMovieAsync(context, movie.Id); } catch { /* ignore */ }
+            try { await DatabaseSchemaHelper.IndexSingleMovieAsync(context, movie.Id); }
+            catch (Exception ex) { logger?.LogWarning(ex, "Lỗi tái tạo chỉ mục tìm kiếm cho phim {MovieId}.", movie.Id); }
         }
 
         var updated = await context.Movies
@@ -337,6 +356,7 @@ public sealed class AdminMoviesController(
             .Include(m => m.Episodes)
             .FirstAsync(m => m.Id == movie.Id);
 
+        await InvalidateOutputCacheAsync();
         return Ok(ApiResponse<MovieDetailDto>.Ok(MapMovieDetail(updated), "Cập nhật phim thành công."));
     }
 
@@ -372,6 +392,7 @@ public sealed class AdminMoviesController(
             if (tx != null) await tx.DisposeAsync();
         }
 
+        await InvalidateOutputCacheAsync();
         return Ok(ApiResponse<bool>.Ok(true, "Đã xóa phim thành công."));
     }
 
@@ -472,6 +493,7 @@ public sealed class AdminMoviesController(
             if (tx != null) await tx.DisposeAsync();
         }
 
+        await InvalidateOutputCacheAsync();
         return Ok(ApiResponse<int>.Ok(count, $"Đã hoàn tất thao tác '{request.Action}' trên {count} phim."));
     }
 
@@ -485,6 +507,7 @@ public sealed class AdminMoviesController(
         movie.IsTrending = !movie.IsTrending;
         await context.SaveChangesAsync();
         await LogAuditAsync(context, "TOGGLE_TRENDING", "Movie", id.ToString(), $"Chuyển Thịnh hành thành {movie.IsTrending} cho phim '{movie.Title}'.");
+        await InvalidateOutputCacheAsync();
         return Ok(ApiResponse<bool>.Ok(movie.IsTrending, $"Đã đổi trạng thái Thịnh hành thành: {(movie.IsTrending ? "Bật" : "Tắt")}."));
     }
 
@@ -498,6 +521,7 @@ public sealed class AdminMoviesController(
         movie.IsFeatured = !movie.IsFeatured;
         await context.SaveChangesAsync();
         await LogAuditAsync(context, "TOGGLE_FEATURED", "Movie", id.ToString(), $"Chuyển Nổi bật thành {movie.IsFeatured} cho phim '{movie.Title}'.");
+        await InvalidateOutputCacheAsync();
         return Ok(ApiResponse<bool>.Ok(movie.IsFeatured, $"Đã đổi trạng thái Nổi bật thành: {(movie.IsFeatured ? "Bật" : "Tắt")}."));
     }
 
@@ -555,6 +579,8 @@ public sealed class AdminMoviesController(
             cloned.CastMembers.Add(new CastMemberEntity { Position = cm.Position, Name = cm.Name });
         }
 
+        cloned.SearchText = MovieSearchTextBuilder.Build(cloned.Title, cloned.OriginalTitle, cloned.Director, cloned.CastMembers.Select(c => c.Name), cloned.Overview);
+
         if (request.CopyEpisodes)
         {
             foreach (var ep in source.Episodes)
@@ -608,7 +634,8 @@ public sealed class AdminMoviesController(
 
         if (context.Database.IsSqlite())
         {
-            try { await DatabaseSchemaHelper.IndexSingleMovieAsync(context, cloned.Id); } catch { /* ignore */ }
+            try { await DatabaseSchemaHelper.IndexSingleMovieAsync(context, cloned.Id); }
+            catch (Exception ex) { logger?.LogWarning(ex, "Lỗi tái tạo chỉ mục tìm kiếm cho phim đã nhân bản {MovieId}.", cloned.Id); }
         }
 
         var created = await context.Movies
@@ -617,6 +644,7 @@ public sealed class AdminMoviesController(
             .Include(m => m.Episodes)
             .FirstAsync(m => m.Id == cloned.Id);
 
+        await InvalidateOutputCacheAsync();
         return Ok(ApiResponse<MovieDetailDto>.Ok(MapMovieDetail(created), "Nhân bản phim thành công."));
     }
 }

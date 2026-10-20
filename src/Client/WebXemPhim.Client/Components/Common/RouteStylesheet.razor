@@ -1,0 +1,35 @@
+@using Microsoft.AspNetCore.Components.Web
+@*
+    Injects route/component specific stylesheets into the document head.
+    Keeping these files out of App.razor means a visitor only downloads the CSS
+    that the page they are on actually needs.
+*@
+
+<HeadContent>
+    @foreach (var href in ResolveAll())
+    {
+        <link rel="stylesheet" href="@href" />
+    }
+</HeadContent>
+
+@code {
+    /// <summary>Static asset paths relative to wwwroot, e.g. "css/home-expanded.css".</summary>
+    [Parameter] public string[]? Files { get; set; }
+
+    private string[] ResolveAll()
+    {
+        if (Files is null || Files.Length == 0) return [];
+
+        return Files.Select(file => file switch
+        {
+            "css/home-expanded.css" => @Assets["css/home-expanded.css"],
+            "css/discovery-filters.css" => @Assets["css/discovery-filters.css"],
+            "css/genres-page.css" => @Assets["css/genres-page.css"],
+            "css/account-overview.css" => @Assets["css/account-overview.css"],
+            "css/profile-settings.css" => @Assets["css/profile-settings.css"],
+            "css/library-membership.css" => @Assets["css/library-membership.css"],
+            "css/watch-workspace.css" => @Assets["css/watch-workspace.css"],
+            _ => "/" + file.TrimStart('/')
+        }).ToArray();
+    }
+}

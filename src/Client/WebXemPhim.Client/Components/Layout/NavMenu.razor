@@ -200,7 +200,7 @@
 
         @if (!Auth.IsInitialized)
         {
-            <span class="nav-auth-loading" role="status">Đang xác thực</span>
+            <div class="nav-auth-skeleton skeleton" aria-label="Đang tải tài khoản"></div>
         }
         else if (!Auth.IsAuthenticated)
         {
@@ -359,6 +359,7 @@
                     }
                     <a href="/" class="@GetNavLinkClass("/")" @onclick="CloseMobileMenu"><CinemaIcon Name="CinemaIconName.Home" Size="19" /><span><strong>Trang chủ</strong><small>Điểm đến nổi bật hôm nay</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
                     <a href="/explore" class="@GetNavLinkClass("/explore")" @onclick="CloseMobileMenu"><CinemaIcon Name="CinemaIconName.Compass" Size="19" /><span><strong>Khám phá</strong><small>Tìm phim theo sở thích</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
+                    <a href="/genres" class="@GetNavLinkClass("/genres")" @onclick="CloseMobileMenu"><CinemaIcon Name="CinemaIconName.Film" Size="19" /><span><strong>Thể loại</strong><small>Khám phá chủ đề điện ảnh</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
                     <a href="/explore?type=2" class="@GetNavLinkClass("/explore?type=2")" @onclick="CloseMobileMenu"><CinemaIcon Name="CinemaIconName.List" Size="19" /><span><strong>Phim bộ</strong><small>Theo dõi câu chuyện dài tập</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
                     <a href="/explore?type=3" class="@GetNavLinkClass("/explore?type=3")" @onclick="CloseMobileMenu"><CinemaIcon Name="CinemaIconName.Sparkles" Size="19" /><span><strong>Anime</strong><small>Hoạt hình và thế giới kỳ ảo</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>
                     <a href="/watchlist" class="@GetNavLinkClass("/watchlist")" @onclick="CloseMobileMenu"><CinemaIcon Name="CinemaIconName.Bookmark" Size="19" /><span><strong>Tủ phim</strong><small>Danh sách bạn đã lưu</small></span><CinemaIcon Name="CinemaIconName.ChevronRight" Size="16" /></a>

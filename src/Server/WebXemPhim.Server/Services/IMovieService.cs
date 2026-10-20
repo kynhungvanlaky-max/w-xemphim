@@ -16,4 +16,6 @@ public interface IMovieService
     Task<PagedResult<MovieDto>> FilterMoviesAsync(MovieFilterRequest request);
     Task<List<MovieDto>> GetSimilarMoviesAsync(int movieId, int count = 6);
     Task<List<MovieDto>> SearchMoviesAsync(string keyword, int limit = 20);
+    Task<bool> IncrementViewCountAsync(int movieId, string? clientIp = null);
+    Task<HomeAggregateDto> GetHomeAggregateAsync();
 }

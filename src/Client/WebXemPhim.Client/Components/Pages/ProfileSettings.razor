@@ -6,6 +6,8 @@
 
 <PageTitle>Cài đặt hồ sơ - CinemaFlow</PageTitle>
 
+<RouteStylesheet Files="@ProfileSettingsStyles" />
+
 <AccountWorkspace ActiveSection="profile" ShowHeader="false">
     <div class="settings-cinema-hero">
         <div class="settings-hero-overlay"></div>
@@ -298,6 +300,8 @@
 </AccountWorkspace>
 
 @code {
+    private static readonly string[] ProfileSettingsStyles = ["css/profile-settings.css"];
+
     private string quality = "4K khi có thể";
     private string language = "vi";
     private bool autoplay = true;

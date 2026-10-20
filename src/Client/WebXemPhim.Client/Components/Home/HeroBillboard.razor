@@ -15,6 +15,10 @@
             <div class="hero-backdrop-slide @(isActive ? "active" : "")" aria-hidden="@(!isActive)">
                 <img src="@m.BackdropUrl"
                      alt="@m.Title"
+                     width="1672"
+                     height="941"
+                     loading="@(isActive ? "eager" : "lazy")"
+                     fetchpriority="@(isActive ? "high" : "auto")"
                      class="hero-backdrop-img @(isActive ? "drifting" : "")" />
             </div>
         }

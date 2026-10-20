@@ -12,7 +12,8 @@ public sealed class AdminOverviewController(
     IDbContextFactory<AppDbContext> contextFactory,
     TimeProvider timeProvider,
     IWebHostEnvironment? env = null,
-    IHttpClientFactory? httpClientFactory = null)
+    IHttpClientFactory? httpClientFactory = null,
+    ILogger<AdminOverviewController>? logger = null)
     : AdminBaseController(contextFactory, timeProvider, env, httpClientFactory)
 {
     [HttpGet("stats")]
@@ -143,7 +144,10 @@ public sealed class AdminOverviewController(
                 dbSizeBytes = new System.IO.FileInfo(dbPath).Length;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Không thể đọc kích thước tập tin cơ sở dữ liệu webxemphim.db.");
+        }
 
         var memMb = Math.Round(GC.GetTotalMemory(false) / (1024.0 * 1024.0), 2);
         string uptimeStr = "0h 0m";
@@ -153,7 +157,10 @@ public sealed class AdminOverviewController(
             var diff = DateTime.Now - startTime;
             uptimeStr = $"{(int)diff.TotalHours}h {diff.Minutes}m";
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Không thể xác định thời gian uptime của tiến trình máy chủ.");
+        }
 
         var dto = new SystemHealthDto
         {

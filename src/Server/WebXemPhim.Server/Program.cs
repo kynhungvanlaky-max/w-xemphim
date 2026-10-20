@@ -1,6 +1,9 @@
+using System.IO.Compression;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.OutputCaching;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Server.Hubs;
@@ -19,8 +22,31 @@ builder.Services.AddSiteDataProtection(builder.Configuration, "WebXemPhim.Server
 builder.Services.AddControllers(options => options.Filters.Add(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(64 * 1024)));
 builder.Services.AddSignalR();
 builder.Services.AddProblemDetails();
+builder.Services.AddHealthChecks();
 builder.Services.AddApiRateLimits(builder.Configuration);
 builder.Services.AddOpenApi();
+builder.Services.AddMemoryCache();
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(["application/json", "application/problem+json"]);
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(options =>
+{
+    options.Level = CompressionLevel.Fastest;
+});
+builder.Services.Configure<GzipCompressionProviderOptions>(options =>
+{
+    options.Level = CompressionLevel.Fastest;
+});
+builder.Services.AddOutputCache(options =>
+{
+    options.AddPolicy("MoviesCatalogCache", b => b.Expire(TimeSpan.FromSeconds(60)).Tag("movies"));
+    options.AddPolicy("GenresCatalogCache", b => b.Expire(TimeSpan.FromSeconds(120)).Tag("genres"));
+    options.AddPolicy("FilterOptionsCache", b => b.Expire(TimeSpan.FromSeconds(120)).Tag("movies").Tag("genres"));
+});
 if (!builder.Environment.IsEnvironment("Testing"))
 {
     builder.Services.AddApplicationDatabase(builder.Configuration);
@@ -67,14 +93,46 @@ if (!app.Environment.IsEnvironment("Testing"))
 {
     var factory = app.Services.GetRequiredService<IDbContextFactory<AppDbContext>>();
     await using var db = await factory.CreateDbContextAsync();
+    var schemaStartedAt = DateTime.UtcNow;
     await db.Database.EnsureCreatedAsync();
     await DatabaseSchemaHelper.EnsureTablesCreatedAsync(db);
+
     // Revoke historical plaintext/predictable tokens; never migrate them into valid sessions.
-    var legacyAccess = await db.AccessTokens.Where(item => !item.Token.StartsWith("sha256:")).ToListAsync();
-    var legacyResets = await db.PasswordResetTokens.Where(item => !item.Token.StartsWith("sha256:")).ToListAsync();
-    db.AccessTokens.RemoveRange(legacyAccess);
-    db.PasswordResetTokens.RemoveRange(legacyResets);
-    await db.SaveChangesAsync();
+    // This is a one-shot cleanup: the flag prevents a full table scan on every restart.
+    const string legacyTokenCleanupFlag = "legacy-plaintext-tokens-revoked";
+    var legacyCleanupDone = await db.AppMaintenanceFlags.AnyAsync(item => item.Flag == legacyTokenCleanupFlag);
+    if (!legacyCleanupDone)
+    {
+        var legacyAccess = await db.AccessTokens.Where(item => !item.Token.StartsWith("sha256:")).ToListAsync();
+        var legacyResets = await db.PasswordResetTokens.Where(item => !item.Token.StartsWith("sha256:")).ToListAsync();
+        db.AccessTokens.RemoveRange(legacyAccess);
+        db.PasswordResetTokens.RemoveRange(legacyResets);
+        await db.SaveChangesAsync();
+        db.AppMaintenanceFlags.Add(new AppMaintenanceFlagEntity { Flag = legacyTokenCleanupFlag, CompletedAtUtc = DateTime.UtcNow });
+        await db.SaveChangesAsync();
+        app.Logger.LogInformation(
+            "Revoked {AccessCount} legacy access tokens and {ResetCount} legacy password reset tokens.",
+            legacyAccess.Count,
+            legacyResets.Count);
+    }
+
+    app.Logger.LogInformation(
+        "Database schema verified in {ElapsedMs} ms.",
+        (DateTime.UtcNow - schemaStartedAt).TotalMilliseconds);
+
+    // Move legacy seeded artwork URLs to the WebP variants shipped with the client.
+    const string legacyImageUrlFlag = "movie-image-urls-migrated-to-webp";
+    var imageMigrationDone = await db.AppMaintenanceFlags.AnyAsync(item => item.Flag == legacyImageUrlFlag);
+    if (!imageMigrationDone)
+    {
+        var migrated = await DatabaseSchemaHelper.MigrateLegacyMovieImageUrlsAsync(db);
+        db.AppMaintenanceFlags.Add(new AppMaintenanceFlagEntity { Flag = legacyImageUrlFlag, CompletedAtUtc = DateTime.UtcNow });
+        await db.SaveChangesAsync();
+        if (migrated > 0)
+        {
+            app.Logger.LogInformation("Migrated {Count} movie artwork references to WebP.", migrated);
+        }
+    }
 }
 
 // Configure the HTTP request pipeline.
@@ -108,16 +166,19 @@ if (configuredProxies is { Length: > 0 })
     }
 }
 app.UseForwardedHeaders(forwardedHeadersOptions);
+app.UseResponseCompression();
 
 app.UseSiteSecurity(client: false, app.Environment.IsDevelopment(), app.Configuration);
 app.UseExceptionHandler();
 if (app.Environment.IsProduction()) { app.UseHsts(); app.UseHttpsRedirection(); app.RequireHttpsTransport(); }
 app.UseRouting();
 app.UseCors("ClientOrigins");
+app.UseOutputCache();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 
+app.MapHealthChecks("/health");
 app.MapControllers();
 app.MapHub<CinemaHub>("/hubs/cinema");
 
@@ -131,11 +192,15 @@ if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Databas
             await using var context = await factory.CreateDbContextAsync();
             var timeProvider = app.Services.GetRequiredService<TimeProvider>();
             await DatabaseSeeder.SeedAsync(context, timeProvider);
+            if (context.Database.IsSqlite())
+            {
+                await DatabaseSchemaHelper.SyncMoviesFtsAsync(context);
+            }
         }
     }
     catch (Exception ex)
     {
-        app.Logger.LogWarning(ex, "Could not automatically seed database. Ensure MySQL server is running or run database/mysql/002_seed_data.sql manually.");
+        app.Logger.LogWarning(ex, "Could not automatically seed database. Ensure database server is running or run seed scripts manually.");
     }
 }
 

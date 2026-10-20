@@ -24,6 +24,7 @@ public sealed class MovieEntity
     public bool IsTrending { get; set; }
     public bool IsFeatured { get; set; }
     public string Director { get; set; } = string.Empty;
+    public string SearchText { get; set; } = string.Empty;
     public int TotalEpisodes { get; set; }
     public int CurrentEpisode { get; set; }
     public List<MovieGenreEntity> MovieGenres { get; set; } = [];

@@ -1,6 +1,8 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Shared.Enums;
 using WebXemPhim.Shared.Models;
@@ -10,16 +12,22 @@ using WebXemPhim.Shared.Utils;
 
 namespace WebXemPhim.Server.Services;
 
-public sealed class DatabaseMovieService(IDbContextFactory<AppDbContext> contextFactory) : IMovieService
+public sealed class DatabaseMovieService(
+    IDbContextFactory<AppDbContext> contextFactory,
+    IMemoryCache? cache = null) : IMovieService
 {
+    private static readonly IMemoryCache s_fallbackCache = new MemoryCache(new MemoryCacheOptions());
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> s_ipLocks = new();
+    private static readonly ConcurrentDictionary<int, SemaphoreSlim> s_movieLocks = new();
+    private readonly IMemoryCache _cache = cache ?? s_fallbackCache;
     public async Task<MovieFilterOptionsDto> GetFilterOptionsAsync()
     {
         await using var context = await contextFactory.CreateDbContextAsync();
         return new MovieFilterOptionsDto
         {
-            Genres = await context.Movies.SelectMany(x => x.MovieGenres.Select(g => g.Genre.Name)).Distinct().OrderBy(x => x).ToListAsync(),
-            Countries = await context.Movies.Select(x => x.Country).Where(x => x != "").Distinct().OrderBy(x => x).ToListAsync(),
-            Years = await context.Movies.Select(x => x.ReleaseYear).Distinct().OrderByDescending(x => x).ToListAsync()
+            Genres = await context.Genres.AsNoTracking().Select(g => g.Name).Distinct().OrderBy(x => x).ToListAsync(),
+            Countries = await context.Movies.AsNoTracking().Select(x => x.Country).Where(x => x != "").Distinct().OrderBy(x => x).ToListAsync(),
+            Years = await context.Movies.AsNoTracking().Select(x => x.ReleaseYear).Distinct().OrderByDescending(x => x).ToListAsync()
         };
     }
     public async Task<MovieDetailDto?> GetMovieByIdAsync(int id)
@@ -36,8 +44,8 @@ public sealed class DatabaseMovieService(IDbContextFactory<AppDbContext> context
     public async Task<MovieDetailDto?> GetMovieBySlugAsync(string slug)
     {
         await using var context = await contextFactory.CreateDbContextAsync();
-        var normalized = slug.ToLower();
-        var detail = MapDetail(await DetailQuery(context).SingleOrDefaultAsync(movie => movie.Slug.ToLower() == normalized));
+        var normalized = slug.ToLowerInvariant();
+        var detail = MapDetail(await DetailQuery(context).SingleOrDefaultAsync(movie => movie.Slug == normalized));
         if (detail is not null)
         {
             detail.SimilarMovies = await GetSimilarMoviesAsync(detail.Id, 6);
@@ -79,6 +87,64 @@ public sealed class DatabaseMovieService(IDbContextFactory<AppDbContext> context
         var movies = await SummaryQuery(context).OrderByDescending(movie => movie.ReleaseYear)
             .ThenByDescending(movie => movie.Id).Take(count).ToListAsync();
         return movies.Select(MapSummary).ToList();
+    }
+
+    public async Task<HomeAggregateDto> GetHomeAggregateAsync()
+    {
+        await using var context = await contextFactory.CreateDbContextAsync();
+
+        var featuredEntity = await SummaryQuery(context)
+            .OrderByDescending(item => item.IsFeatured)
+            .ThenBy(item => item.Id)
+            .FirstOrDefaultAsync();
+        var featured = featuredEntity is null ? null : MapSummary(featuredEntity);
+
+        var trendingEntities = await SummaryQuery(context)
+            .Where(movie => movie.IsTrending)
+            .OrderByDescending(movie => movie.Rating)
+            .ThenByDescending(movie => movie.ViewCount)
+            .Take(10)
+            .ToListAsync();
+        var trending = trendingEntities.Select(MapSummary).ToList();
+
+        var latestEntities = await SummaryQuery(context)
+            .OrderByDescending(movie => movie.ReleaseYear)
+            .ThenByDescending(movie => movie.Id)
+            .Take(12)
+            .ToListAsync();
+        var latest = latestEntities.Select(MapSummary).ToList();
+
+        var seriesEntities = await SummaryQuery(context)
+            .Where(movie => movie.Type == MovieType.Series || movie.Type == MovieType.Anime)
+            .OrderByDescending(movie => movie.Rating)
+            .Take(10)
+            .ToListAsync();
+        var topSeries = seriesEntities.Select(MapSummary).ToList();
+
+        var heroList = new List<MovieDto>();
+        var heroIds = new HashSet<int>();
+        if (featured is not null)
+        {
+            heroList.Add(featured);
+            heroIds.Add(featured.Id);
+        }
+        foreach (var m in trending)
+        {
+            if (heroList.Count >= 5) break;
+            if (heroIds.Add(m.Id))
+            {
+                heroList.Add(m);
+            }
+        }
+
+        return new HomeAggregateDto
+        {
+            Featured = featured,
+            Trending = trending,
+            Latest = latest,
+            TopSeries = topSeries,
+            HeroMovies = heroList
+        };
     }
 
     public async Task<PagedResult<MovieDto>> FilterMoviesAsync(MovieFilterRequest request)
@@ -172,11 +238,26 @@ public sealed class DatabaseMovieService(IDbContextFactory<AppDbContext> context
                 }
                 else
                 {
-                    query = query.Where(movie =>
-                        movie.Title.ToLower().Contains(rawKeyword) ||
-                        movie.OriginalTitle.ToLower().Contains(rawKeyword) ||
-                        movie.Director.ToLower().Contains(rawKeyword) ||
-                        movie.CastMembers.Any(member => member.Name.ToLower().Contains(rawKeyword)));
+                    // Prefer the pre-normalized, persistent SearchText column. This keeps
+                    // MySQL/relational providers aligned with the SQLite FTS + Vietnamese
+                    // normalization behaviour and avoids per-row client-side evaluation.
+                    var hasSearchText = await context.Movies.AsNoTracking()
+                        .AnyAsync(m => m.SearchText != null && m.SearchText != string.Empty);
+                    if (hasSearchText)
+                    {
+                        query = query.Where(movie =>
+                            movie.SearchText != null &&
+                            movie.SearchText.Contains(normKeyword));
+                    }
+                    else
+                    {
+                        // Backward-compatible fallback for un-migrated/old databases.
+                        query = query.Where(movie =>
+                            movie.Title.ToLower().Contains(rawKeyword) ||
+                            movie.OriginalTitle.ToLower().Contains(rawKeyword) ||
+                            movie.Director.ToLower().Contains(rawKeyword) ||
+                            movie.CastMembers.Any(member => member.Name.ToLower().Contains(rawKeyword)));
+                    }
                 }
             }
         }
@@ -188,14 +269,14 @@ public sealed class DatabaseMovieService(IDbContextFactory<AppDbContext> context
         // then compare their exact stored values inside the database query.
         if (genres.Length > 0)
         {
-            var available = await context.Movies.SelectMany(movie => movie.MovieGenres.Select(item => new { item.Genre.Name, item.Genre.Slug })).Distinct().ToListAsync();
+            var available = await context.Genres.AsNoTracking().Select(g => new { g.Name, g.Slug }).ToListAsync();
             var matching = available.Where(g => genres.Contains(g.Name.ToLowerInvariant()) || genres.Contains(g.Slug.ToLowerInvariant()))
                                     .Select(g => g.Name).ToArray();
             query = query.Where(movie => movie.MovieGenres.Any(item => matching.Contains(item.Genre.Name)));
         }
         if (countries.Length > 0)
         {
-            var available = await context.Movies.Select(movie => movie.Country).Distinct().ToListAsync();
+            var available = await context.Movies.AsNoTracking().Select(movie => movie.Country).Where(c => c != "").Distinct().ToListAsync();
             var matching = available.Where(name => countries.Contains(name.ToLowerInvariant())).ToArray();
             query = query.Where(movie => matching.Contains(movie.Country));
         }
@@ -204,16 +285,26 @@ public sealed class DatabaseMovieService(IDbContextFactory<AppDbContext> context
 
         var page = request.Page <= 0 ? 1 : request.Page;
         var pageSize = request.PageSize <= 0 ? 18 : request.PageSize;
-        var totalItems = await query.CountAsync();
 
+        int totalItems;
         if (request.SortBy.Equals("relevance", StringComparison.OrdinalIgnoreCase) && ftsMatchingIds != null && ftsMatchingIds.Count > 0)
         {
-            var allMatchedIds = await query.Select(m => m.Id).ToListAsync();
-            var orderedMatchedIds = ftsMatchingIds.Where(id => allMatchedIds.Contains(id)).ToList();
-            var pagedIds = orderedMatchedIds.Skip((page - 1) * pageSize).Take(pageSize).ToList();
-            var pageMovies = await query.Include(movie => movie.MovieGenres).ThenInclude(item => item.Genre)
-                .Where(m => pagedIds.Contains(m.Id)).ToListAsync();
-            var sortedMovies = pageMovies.OrderBy(m => orderedMatchedIds.IndexOf(m.Id)).ToList();
+            var allMatchedIdList = await query.Select(m => m.Id).ToListAsync();
+            var allMatchedIdSet = allMatchedIdList.ToHashSet();
+            totalItems = allMatchedIdSet.Count;
+
+            var pagedIds = ftsMatchingIds
+                .Where(allMatchedIdSet.Contains)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+
+            var pageMovies = await SummaryQuery(context)
+                .Where(m => pagedIds.Contains(m.Id))
+                .ToListAsync();
+
+            var rankMap = pagedIds.Select((id, index) => (id, index)).ToDictionary(x => x.id, x => x.index);
+            var sortedMovies = pageMovies.OrderBy(m => rankMap.GetValueOrDefault(m.Id)).ToList();
 
             return new PagedResult<MovieDto>
             {
@@ -223,6 +314,8 @@ public sealed class DatabaseMovieService(IDbContextFactory<AppDbContext> context
                 PageSize = pageSize
             };
         }
+
+        totalItems = await query.CountAsync();
 
         query = request.SortBy.ToLowerInvariant() switch
         {
@@ -345,14 +438,75 @@ public sealed class DatabaseMovieService(IDbContextFactory<AppDbContext> context
         };
     }
 
-    public async Task<bool> IncrementViewCountAsync(int movieId)
+    public async Task<bool> IncrementViewCountAsync(int movieId, string? clientIp = null)
+    {
+        var cacheKey = !string.IsNullOrWhiteSpace(clientIp) ? $"view_cooldown:{movieId}:{clientIp}" : null;
+        if (cacheKey != null)
+        {
+            if (_cache.TryGetValue(cacheKey, out _))
+            {
+                return true;
+            }
+
+            var ipLock = s_ipLocks.GetOrAdd(cacheKey, _ => new SemaphoreSlim(1, 1));
+            await ipLock.WaitAsync();
+            try
+            {
+                if (_cache.TryGetValue(cacheKey, out _))
+                {
+                    return true;
+                }
+
+                var updated = await ExecuteIncrementAsync(movieId);
+                if (updated)
+                {
+                    _cache.Set(cacheKey, true, new MemoryCacheEntryOptions
+                    {
+                        SlidingExpiration = TimeSpan.FromMinutes(10)
+                    });
+                    return true;
+                }
+
+                return false;
+            }
+            finally
+            {
+                ipLock.Release();
+                if (ipLock.CurrentCount > 0)
+                {
+                    s_ipLocks.TryRemove(new KeyValuePair<string, SemaphoreSlim>(cacheKey, ipLock));
+                }
+            }
+        }
+
+        return await ExecuteIncrementAsync(movieId);
+    }
+
+    private async Task<bool> ExecuteIncrementAsync(int movieId)
     {
         await using var context = await contextFactory.CreateDbContextAsync();
-        var movie = await context.Movies.FindAsync(movieId);
-        if (movie is null) return false;
-        movie.ViewCount++;
-        await context.SaveChangesAsync();
-        return true;
+        if (context.Database.IsRelational())
+        {
+            var affected = await context.Movies
+                .Where(m => m.Id == movieId)
+                .ExecuteUpdateAsync(s => s.SetProperty(m => m.ViewCount, m => m.ViewCount + 1));
+            return affected > 0;
+        }
+
+        var movieLock = s_movieLocks.GetOrAdd(movieId, _ => new SemaphoreSlim(1, 1));
+        await movieLock.WaitAsync();
+        try
+        {
+            var movie = await context.Movies.FindAsync(movieId);
+            if (movie is null) return false;
+            movie.ViewCount++;
+            var affected = await context.SaveChangesAsync();
+            return affected > 0;
+        }
+        finally
+        {
+            movieLock.Release();
+        }
     }
 
     public async Task<List<MovieDto>> SearchMoviesAsync(string keyword, int limit = 20)

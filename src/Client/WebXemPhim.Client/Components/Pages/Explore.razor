@@ -5,8 +5,11 @@
 @using WebXemPhim.Client.Components.Common
 @inject IMovieApiClient ApiClient
 @inject NavigationManager Nav
+@inject ILogger<Explore> Logger
 
 <PageTitle>Khám phá kho phim - CinemaFlow</PageTitle>
+<RouteStylesheet Files="@ExploreStyles" />
+
 
 <div class="explore-catalog-page">
     <header class="explore-header-row">
@@ -129,6 +132,8 @@
 </div>
 
 @code {
+    private static readonly string[] ExploreStyles = ["css/discovery-filters.css"];
+
     [SupplyParameterFromQuery(Name = "keyword")] public string? KeywordParam { get; set; }
     [SupplyParameterFromQuery(Name = "type")] public int? TypeParam { get; set; }
     [SupplyParameterFromQuery(Name = "genre")] public string? GenreParam { get; set; }
@@ -176,7 +181,7 @@
         optionsLoading = true;
         optionsError = false;
         try { options = await ApiClient.GetFilterOptionsAsync(); }
-        catch { optionsError = true; }
+        catch (Exception ex) { Logger.LogWarning(ex, "Không thể tải danh sách bộ lọc."); optionsError = true; }
         finally { optionsLoading = false; }
     }
 
@@ -216,7 +221,7 @@
             if (version != requestVersion) return;
             results = response;
         }
-        catch { if (version == requestVersion) loadError = true; }
+        catch (Exception ex) { if (version == requestVersion) { Logger.LogWarning(ex, "Lỗi khi lọc phim tại trang {Page}.", targetPage); loadError = true; } }
         finally { if (version == requestVersion) loading = false; }
     }
 

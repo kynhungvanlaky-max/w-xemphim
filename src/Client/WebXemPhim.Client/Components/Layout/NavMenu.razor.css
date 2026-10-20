@@ -674,3 +674,32 @@
         height: 32px !important;
     }
 }
+
+/* Cinema-grade Auth Skeleton Shimmer (Replaces bare 'Đang xác thực' text) */
+.nav-auth-skeleton {
+    width: 136px;
+    height: 36px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
+    animation: navPulse 1.8s ease-in-out infinite;
+}
+
+:global([data-theme="light"]) .nav-auth-skeleton {
+    background: rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+@keyframes navPulse {
+    0%, 100% { opacity: 0.45; }
+    50% { opacity: 0.85; }
+}
+
+@media (max-width: 768px) {
+    .nav-auth-skeleton {
+        width: 80px;
+        height: 32px;
+        border-radius: 6px;
+    }
+}

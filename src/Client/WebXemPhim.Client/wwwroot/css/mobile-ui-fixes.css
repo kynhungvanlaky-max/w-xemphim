@@ -417,7 +417,7 @@
     }
 
     body[data-theme="light"] .site-main .settings-cinema-hero {
-        background: linear-gradient(90deg, rgb(255 255 255 / 98%), rgb(255 255 255 / 88%)), url('/images/generated/redesign-2026/settings-cinema-banner.jpg') center 38% / cover no-repeat !important;
+        background: linear-gradient(90deg, rgb(255 255 255 / 98%), rgb(255 255 255 / 88%)), url('/images/generated/redesign-2026/settings-cinema-banner.webp') center 38% / cover no-repeat !important;
     }
 
     body[data-theme="light"] .site-main .settings-hero-sub,

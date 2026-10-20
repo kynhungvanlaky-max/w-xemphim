@@ -37,7 +37,7 @@ body .site-main .account-overview-hero {
     padding: 3rem clamp(1.25rem, 3.5vw, 4rem) 2rem;
     display: grid; grid-template-columns: minmax(0, 1fr) auto;
     align-content: end; align-items: center; gap: 2rem 1.5rem;
-    background: #0b0d10 url('/images/generated/redesign-2026/cinemaflow-watch-rain-night.png') 65% 48% / cover no-repeat;
+    background: #0b0d10 url('/images/generated/redesign-2026/cinemaflow-watch-rain-night.webp') 65% 48% / cover no-repeat;
 }
 body .site-main .account-overview-shade { position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgb(8 9 11 / 78%), rgb(8 9 11 / 24%)), linear-gradient(0deg, #08090b, transparent 95%); }
 body .site-main .account-overview-heading { grid-column: 1 / -1; }
@@ -63,7 +63,7 @@ body .site-main .account-overview-metrics > a > span { display: grid; gap: .25re
 body .site-main .account-overview-metrics strong { font-size: 1.6rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
 body .site-main .account-overview-metrics small { color: #aeb2ba; font-size: .78rem; line-height: 1.4; }
 body .site-main .account-membership-grid { margin-top: 2rem; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 1.5rem; }
-body .site-main .account-membership-feature { position: relative; isolation: isolate; min-height: 360px; padding: 2rem; display: grid; grid-template-columns: 1fr; align-content: start; gap: 1rem; border: 1px solid #443626; border-radius: 10px; background: #14110f url('/images/generated/redesign-2026/account-membership-ticket.png') center / cover no-repeat; }
+body .site-main .account-membership-feature { position: relative; isolation: isolate; min-height: 360px; padding: 2rem; display: grid; grid-template-columns: 1fr; align-content: start; gap: 1rem; border: 1px solid #443626; border-radius: 10px; background: #14110f url('/images/generated/redesign-2026/account-membership-ticket.webp') center / cover no-repeat; }
 body .site-main .account-membership-feature::before { content: ''; position: absolute; inset: 0; border-radius: inherit; z-index: -1; background: linear-gradient(90deg, rgb(12 12 13 / 95%) 5%, rgb(12 12 13 / 70%) 55%, rgb(12 12 13 / 10%)); }
 body .site-main .account-membership-symbol { color: var(--amber); }
 body .site-main .account-membership-main > span { color: #c0b49f; font-size: .75rem; }
@@ -127,7 +127,7 @@ body .site-main .account-overview-empty small { color: var(--account-muted); fon
 body .site-main .account-overview-empty > a { margin-left: auto; color: #e8a2a9; text-decoration: none; font-size: .8rem; }
 body .site-main .account-load-alert { margin-top: 1rem; padding: .9rem; display: flex; align-items: center; flex-wrap: wrap; gap: .7rem; border: 1px solid #55462d; border-radius: 8px; color: #e0c795; background: #211c15; font-size: .85rem; }
 body .site-main .account-load-alert button { min-height: 36px; margin-left: auto; border: 0; color: #f0d09b; background: transparent; font: inherit; cursor: pointer; }
-body .site-main .account-overview-guest { min-height: 650px; margin-inline: calc(clamp(1.25rem, 3.5vw, 4rem) * -1); padding: clamp(2rem, 5vw, 5rem); display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: end; gap: 3rem; background: linear-gradient(90deg, rgb(7 8 10 / 90%), rgb(7 8 10 / 40%)), url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.png') center / cover; }
+body .site-main .account-overview-guest { min-height: 650px; margin-inline: calc(clamp(1.25rem, 3.5vw, 4rem) * -1); padding: clamp(2rem, 5vw, 5rem); display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: end; gap: 3rem; background: linear-gradient(90deg, rgb(7 8 10 / 90%), rgb(7 8 10 / 40%)), url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.webp') center / cover; }
 body .site-main .account-guest-copy h1 { margin: .75rem 0 1rem; font-size: clamp(2.5rem, 4.5vw, 4rem); line-height: 1.2; letter-spacing: -.04em; }
 body .site-main .account-guest-copy > p { max-width: 46ch; color: #c0c2c7; font-size: .95rem; line-height: 1.75; }
 body .site-main .account-guest-actions { margin-top: 1.5rem; display: flex; align-items: center; flex-wrap: wrap; gap: 1.25rem; }

@@ -386,7 +386,7 @@ body .site-main .explore-header-row::after {
     width: 58%;
     height: 330px;
     opacity: .48;
-    background: linear-gradient(90deg, var(--bg), transparent 45%), url('/images/generated/redesign-2026/cinemaflow-watch-rain-night.png') center/cover;
+    background: linear-gradient(90deg, var(--bg), transparent 45%), url('/images/generated/redesign-2026/cinemaflow-watch-rain-night.webp') center/cover;
     mask-image: linear-gradient(#000, transparent 95%);
 }
 body .site-main .explore-title-block,
@@ -701,7 +701,7 @@ body .site-main .account-profile-hero {
     gap: 1.6rem;
     align-items: center;
     border-bottom: 1px solid var(--line);
-    background: linear-gradient(90deg, #0c0e11 0%, rgb(12 14 17 / 70%) 52%, rgb(8 9 11 / 42%)), url('/images/generated/redesign-2026/cinemaflow-watch-rain-night.png') right 37%/58% auto no-repeat;
+    background: linear-gradient(90deg, #0c0e11 0%, rgb(12 14 17 / 70%) 52%, rgb(8 9 11 / 42%)), url('/images/generated/redesign-2026/cinemaflow-watch-rain-night.webp') right 37%/58% auto no-repeat;
 }
 body .site-main .account-avatar-wrap { position: relative; width: 126px; height: 126px; }
 body .site-main .account-avatar-wrap img { width: 100%; height: 100%; object-fit: cover; border: 2px solid var(--amber); border-radius: 50%; }
@@ -744,7 +744,7 @@ body .site-main .device-row i { width: 7px; height: 7px; border-radius: 50%; bac
 body .site-main .auth-shell { min-height: calc(100dvh - 72px); grid-template-columns: minmax(0, 1.08fr) minmax(440px, .92fr); }
 body .site-main .auth-intro {
     min-height: 650px;
-    background: linear-gradient(0deg, rgb(5 6 7 / 97%), rgb(5 6 7 / 22%)), url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.png') center/cover;
+    background: linear-gradient(0deg, rgb(5 6 7 / 97%), rgb(5 6 7 / 22%)), url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.webp') center/cover;
 }
 body .site-main .auth-intro::after { background: linear-gradient(90deg, transparent, rgb(8 9 11 / 46%)); }
 body .site-main .auth-intro h1 { font-family: var(--font-display); font-size: clamp(2.2rem, 4vw, 3.2rem); line-height: 1.22; letter-spacing: -0.015em; }
@@ -756,12 +756,12 @@ body .site-main .form-field input,
 body .site-main .form-field select { border-radius: var(--radius-control); background: #0a0c0f; }
 body .site-main .library-masthead {
     min-height: 330px;
-    background: linear-gradient(90deg, rgb(7 8 10 / 97%), rgb(7 8 10 / 34%)), url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.png') center/cover;
+    background: linear-gradient(90deg, rgb(7 8 10 / 97%), rgb(7 8 10 / 34%)), url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.webp') center/cover;
 }
 body .site-main .library-masthead h1,
 body .site-main .editorial-page-head h1 { font-family: var(--font-display); font-size: clamp(2.2rem, 4vw, 3.2rem); line-height: 1.22; letter-spacing: -0.015em; }
 body .site-main .watchlist-header::before,
-body .site-main .account-header::before { background-image: url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.png'); }
+body .site-main .account-header::before { background-image: url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.webp'); }
 body .site-main .watchlist-stats-bar,
 body .site-main .stat-pill { border-radius: var(--radius-control); }
 body .site-main .watchlist-item-card { border-radius: var(--radius-card); background: transparent; border: 0; }
@@ -829,7 +829,7 @@ body .site-main .notice-row,
 body .site-main .history-row { border-radius: var(--radius-control); }
 
 /* VIP */
-body .site-main .vip-hero { background: linear-gradient(90deg, rgb(8 9 11 / 96%), rgb(8 9 11 / 30%)), url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.png') center/cover; }
+body .site-main .vip-hero { background: linear-gradient(90deg, rgb(8 9 11 / 96%), rgb(8 9 11 / 30%)), url('/images/generated/redesign-2026/cinemaflow-hero-rice-field.webp') center/cover; }
 body .site-main .vip-hero h1 { font-family: var(--font-display); font-size: clamp(2rem, 3.8vw, 3rem); line-height: 1.22; letter-spacing: -0.015em; }
 body .site-main .vip-plan-card { border-radius: var(--radius-card); }
 

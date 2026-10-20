@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WebXemPhim.Server.Data;
@@ -11,20 +12,30 @@ namespace WebXemPhim.Server.Controllers;
 [Route("api/[controller]")]
 public class EpisodesController(
     IDbContextFactory<AppDbContext> contextFactory,
-    IStreamUrlSigner? urlSigner = null) : ControllerBase
+    IStreamUrlSigner? urlSigner = null,
+    IMemoryCache? cache = null) : ControllerBase
 {
     private readonly IStreamUrlSigner _urlSigner = urlSigner ?? new StreamUrlSigner();
     [HttpGet("movie/{movieId:int}")]
-    public async Task<ActionResult<ApiResponse<List<EpisodeDto>>>> GetEpisodesByMovieId(int movieId)
+    public async Task<ActionResult<ApiResponse<List<EpisodeDto>>>> GetEpisodesByMovieId(
+        int movieId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50)
     {
         await using var db = await contextFactory.CreateDbContextAsync();
         var movieExists = await db.Movies.AnyAsync(m => m.Id == movieId);
         if (!movieExists)
             return NotFound(ApiResponse<List<EpisodeDto>>.Fail($"Không tìm thấy phim với ID: {movieId}"));
 
-        var episodes = await db.Episodes
+        var query = db.Episodes
             .Where(e => e.MovieId == movieId)
-            .OrderBy(e => e.EpisodeNumber)
+            .OrderBy(e => e.EpisodeNumber);
+
+        var pagedQuery = (page > 0 && pageSize > 0)
+            ? query.Skip((page - 1) * pageSize).Take(pageSize)
+            : query;
+
+        var episodes = await pagedQuery
             .Include(e => e.Streams)
             .Select(e => new EpisodeDto
             {
@@ -98,11 +109,20 @@ public class EpisodesController(
         var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (Guid.TryParse(userIdClaim, out var userId))
         {
-            var user = await db.Users.FindAsync(userId);
-            if (user is not null && user.Membership != WebXemPhim.Shared.Enums.MembershipTier.Free && (!user.VipExpiresAtUtc.HasValue || user.VipExpiresAtUtc.Value > DateTime.UtcNow))
+            var cacheKey = $"vip_status_{userId}";
+            if (cache is not null && cache.TryGetValue(cacheKey, out bool cachedVip))
             {
-                return true;
+                return cachedVip;
             }
+
+            var user = await db.Users.FindAsync(userId);
+            var isVip = user is not null && user.Membership != WebXemPhim.Shared.Enums.MembershipTier.Free && (!user.VipExpiresAtUtc.HasValue || user.VipExpiresAtUtc.Value > DateTime.UtcNow);
+            
+            if (cache is not null)
+            {
+                cache.Set(cacheKey, isVip, TimeSpan.FromMinutes(5));
+            }
+            return isVip;
         }
         else if (User.FindFirst("membership")?.Value is { } m && !m.Equals("Free", StringComparison.OrdinalIgnoreCase))
         {

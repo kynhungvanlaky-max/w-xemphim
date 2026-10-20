@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using WebXemPhim.Shared.Models;
 
 namespace WebXemPhim.Server.Security;
@@ -33,19 +34,43 @@ public interface IStreamUrlSigner
 
 public sealed class StreamUrlSigner : IStreamUrlSigner
 {
-    private const string DefaultSigningKey = "CinemaFlow_Secure_Stream_HMAC_Secret_Key_2026_AtLeast32Bytes!";
+    public const string DefaultSigningKey = "CinemaFlow_Secure_Stream_HMAC_Secret_Key_2026_AtLeast32Bytes!";
     private const int DefaultTtlMinutes = 120;
 
     private readonly byte[] _keyBytes;
     private readonly int _ttlMinutes;
     private readonly TimeProvider _timeProvider;
+    private readonly IHostEnvironment? _environment;
 
-    public StreamUrlSigner(IConfiguration? configuration = null, TimeProvider? timeProvider = null)
+    public StreamUrlSigner(
+        IConfiguration? configuration = null,
+        TimeProvider? timeProvider = null,
+        IHostEnvironment? environment = null)
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _environment = environment;
 
-        var key = configuration?["Security:StreamSigningKey"];
-        if (string.IsNullOrWhiteSpace(key))
+        var rawKey = !string.IsNullOrWhiteSpace(configuration?["Security:StreamSigningKey"])
+            ? configuration["Security:StreamSigningKey"]
+            : configuration?["STREAM_SIGNING_KEY"];
+        var key = rawKey?.Trim();
+
+        if (_environment?.IsProduction() == true)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                throw new InvalidOperationException("Stream signing key (Security:StreamSigningKey) is not configured in Production.");
+            }
+            if (string.Equals(key, DefaultSigningKey, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Production stream signing key cannot be the default placeholder key.");
+            }
+            if (key.Length < 32)
+            {
+                throw new InvalidOperationException("Production stream signing key must be at least 32 characters long.");
+            }
+        }
+        else if (string.IsNullOrWhiteSpace(key))
         {
             key = DefaultSigningKey;
         }

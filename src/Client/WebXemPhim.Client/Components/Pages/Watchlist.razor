@@ -2,9 +2,11 @@
 @inject IMovieApiClient ApiClient
 @inject AuthState Auth
 @inject WatchlistState WatchlistSvc
+@inject ILogger<Watchlist> Logger
 @implements IDisposable
 
 <PageTitle>Tủ phim - CinemaFlow</PageTitle>
+<RouteStylesheet Files="@WatchlistStyles" />
 <main class="personal-library">
     <header class="library-heading">
         <h1>Tủ phim của bạn</h1><p>Những câu chuyện bạn muốn giữ lại.</p>
@@ -34,14 +36,14 @@
     else if (!Auth.IsAuthenticated)
     {
         <section class="library-welcome">
-            <img src="/images/generated/redesign-2026/library-theater.png" alt="Rạp chiếu với ghế đỏ và ánh máy chiếu ấm" width="1672" height="941" />
+            <img src="/images/generated/redesign-2026/library-theater.webp" alt="Rạp chiếu với ghế đỏ và ánh máy chiếu ấm" width="1672" height="941" loading="lazy" />
             <div><h2>Giữ lại một bộ phim hay.</h2><p>Đăng nhập để bắt đầu thư viện của bạn.</p><div class="library-cta-row"><a class="button primary" href="@LoginPath">Đăng nhập</a><a class="button secondary" href="@RegisterPath">Đăng ký</a></div></div>
         </section>
     }
     else if (items.Count == 0)
     {
         <section class="library-welcome">
-            <img src="/images/generated/redesign-2026/library-theater.png" alt="Một rạp chiếu đang chờ câu chuyện tiếp theo" width="1672" height="941" />
+            <img src="/images/generated/redesign-2026/library-theater.webp" alt="Một rạp chiếu đang chờ câu chuyện tiếp theo" width="1672" height="941" loading="lazy" />
             <div><h2>Bắt đầu bộ sưu tập của bạn.</h2><p>Nhấn lưu ở trang phim để tìm lại tác phẩm yêu thích tại đây.</p><a class="button primary" href="/explore">Khám phá phim</a></div>
         </section>
     }
@@ -129,6 +131,8 @@
 </main>
 
 @code {
+    private static readonly string[] WatchlistStyles = ["css/library-membership.css"];
+
     private List<WatchlistItemDto> items = [];
     private bool isLoading = true;
     private int? removing;
@@ -158,7 +162,7 @@
         if (!Auth.IsInitialized) return;
         loadError = null;
         try { items = Auth.IsAuthenticated ? await ApiClient.GetWatchlistAsync() : []; }
-        catch (Exception) { loadError="Kiểm tra kết nối và thử lại. Phim đã lưu của bạn vẫn được giữ nguyên."; }
+        catch (Exception ex) { Logger.LogWarning(ex, "Không thể tải danh sách phim đã lưu."); loadError = "Kiểm tra kết nối và thử lại. Phim đã lưu của bạn vẫn được giữ nguyên."; }
         isLoading = false; StateHasChanged();
     }
     private async Task RemoveItem(int id)

@@ -100,4 +100,42 @@
             lastScrollY = 0;
         }
     };
+
+    window.ensureCinemaPlayerLoaded = async function () {
+        if (window.CinemaPlayer && window.Hls) {
+            return;
+        }
+
+        function loadScript(src) {
+            return new Promise(function (resolve, reject) {
+                const existing = document.querySelector('script[src="' + src + '"]');
+                if (existing) {
+                    if (existing.getAttribute('data-loaded') === 'true') {
+                        return resolve();
+                    }
+                    existing.addEventListener('load', function () { resolve(); }, { once: true });
+                    existing.addEventListener('error', function (e) { reject(e); }, { once: true });
+                    return;
+                }
+                const script = document.createElement('script');
+                script.src = src;
+                script.async = false;
+                script.onload = function () {
+                    script.setAttribute('data-loaded', 'true');
+                    resolve();
+                };
+                script.onerror = function (e) {
+                    reject(e);
+                };
+                document.body.appendChild(script);
+            });
+        }
+
+        if (!window.Hls) {
+            await loadScript('js/hls.min.js');
+        }
+        if (!window.CinemaPlayer) {
+            await loadScript('js/cinema-player.js');
+        }
+    };
 })();

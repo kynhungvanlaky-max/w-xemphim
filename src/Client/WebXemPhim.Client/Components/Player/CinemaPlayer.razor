@@ -414,6 +414,7 @@
         {
             try
             {
+                await JS.InvokeVoidAsync("ensureCinemaPlayerLoaded");
                 dotNetRef = DotNetObjectReference.Create(this);
                 await JS.InvokeVoidAsync("CinemaPlayer.init", containerRef, videoRef, dotNetRef);
                 isJsInitialized = true;
