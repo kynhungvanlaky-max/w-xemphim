@@ -13,6 +13,48 @@ public static class WebSecurityExtensions
 {
     public const string NonceKey = "CinemaFlow.CspNonce";
 
+    /// <summary>
+    /// Applies safe local-development defaults for settings that are intentionally **not**
+    /// committed to git (<c>appsettings.Development.json</c>). This keeps a fresh clone usable
+    /// while making sure no secret is ever part of the repository.
+    /// </summary>
+    public static void ApplyDevelopmentDefaults(IConfiguration config, IWebHostEnvironment environment, bool client)
+    {
+        if (!environment.IsDevelopment()) return;
+
+        if (client)
+        {
+            if (string.IsNullOrWhiteSpace(config["ApiBaseUrl"]))
+            {
+                config["ApiBaseUrl"] = "http://localhost:5085";
+            }
+
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(config.GetConnectionString("Default")))
+        {
+            config["ConnectionStrings:Default"] = "Data Source=webxemphim.db";
+        }
+
+        if (string.IsNullOrWhiteSpace(config["Database:Provider"]))
+        {
+            config["Database:Provider"] = "Sqlite";
+        }
+
+        if (string.IsNullOrWhiteSpace(config["Database:SeedDemoData"]))
+        {
+            config["Database:SeedDemoData"] = "true";
+        }
+
+        var allowedOrigins = config.GetSection("Security:AllowedOrigins").Get<string[]>();
+        if (allowedOrigins is null || allowedOrigins.Length == 0)
+        {
+            config["Security:AllowedOrigins:0"] = "http://localhost:5229";
+            config["Security:AllowedOrigins:1"] = "http://127.0.0.1:5229";
+        }
+    }
+
     public static void ValidateProduction(IConfiguration config, IWebHostEnvironment environment, bool client)
     {
         if (!environment.IsProduction()) return;

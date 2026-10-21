@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Server.Security;
 using WebXemPhim.Shared.Enums;
@@ -17,7 +18,13 @@ public enum AuthFailure
     InvalidCredentials,
     UserNotFound,
     InvalidResetToken,
-    WeakPassword
+    WeakPassword,
+    /// <summary>
+    /// The request could not be completed because of a transient infrastructure problem
+    /// (for example an optimistic concurrency conflict on the security row). The credentials
+    /// were never rejected - the caller should retry instead of showing "wrong password".
+    /// </summary>
+    TemporarilyUnavailable
 }
 
 public record AuthResult(AuthDto? Data, AuthFailure Failure = AuthFailure.None);
@@ -47,9 +54,11 @@ public interface IAuthService
 public sealed class AuthService(
     IDbContextFactory<AppDbContext> contextFactory,
     TimeProvider timeProvider,
-    IDataProtectionProvider dataProtectionProvider) : IAuthService
+    IDataProtectionProvider dataProtectionProvider,
+    ILogger<AuthService>? logger = null) : IAuthService
 {
     private readonly IDataProtector mfaProtector = dataProtectionProvider.CreateProtector("CinemaFlow.MfaSecret.v1");
+    private readonly ILogger<AuthService>? _logger = logger;
 
     public AuthService(IDbContextFactory<AppDbContext> contextFactory, TimeProvider timeProvider)
         : this(contextFactory, timeProvider, new EphemeralDataProtectionProvider()) { }
@@ -100,12 +109,28 @@ public sealed class AuthService(
     public async Task<AuthResult> LoginAsync(LoginRequest request)
     {
         // Optimistic concurrency keeps parallel failed attempts from overwriting each other.
-        for (var attempt = 0; attempt < 3; attempt++)
+        // A concurrency conflict is an infrastructure problem, never a wrong password, so the
+        // caller receives a retryable failure instead of InvalidCredentials.
+        const int maxAttempts = 3;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            try { return await TryLoginAsync(request); }
-            catch (DbUpdateConcurrencyException) { }
+            try
+            {
+                return await TryLoginAsync(request);
+            }
+            catch (DbUpdateConcurrencyException ex) when (attempt < maxAttempts)
+            {
+                _logger?.LogWarning(ex, "Login attempt {Attempt} hit a concurrency conflict, retrying.", attempt);
+                await Task.Delay(TimeSpan.FromMilliseconds(25 * attempt));
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                _logger?.LogError(ex, "Login could not be completed after {Attempts} attempts because of a concurrency conflict.", maxAttempts);
+                return new AuthResult(null, AuthFailure.TemporarilyUnavailable);
+            }
         }
-        return new AuthResult(null, AuthFailure.InvalidCredentials);
+
+        return new AuthResult(null, AuthFailure.TemporarilyUnavailable);
     }
 
     private async Task<AuthResult> TryLoginAsync(LoginRequest request)

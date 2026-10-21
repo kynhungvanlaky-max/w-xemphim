@@ -696,7 +696,10 @@
                 }
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException ex)
+        {
+            Logger.LogDebug(ex, "Heartbeat loop for session {SessionId} was cancelled.", sessionId);
+        }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Lỗi vòng lặp heartbeat phiên phát phim {SessionId}.", sessionId);

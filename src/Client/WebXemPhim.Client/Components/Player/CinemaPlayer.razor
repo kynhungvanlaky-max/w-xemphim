@@ -1,6 +1,7 @@
 @using WebXemPhim.Shared.Models
 @using WebXemPhim.Client.Components.Icons
 @inject IJSRuntime JS
+@inject ILogger<CinemaPlayer> Logger
 @implements IAsyncDisposable
 
 <div class="player-container" @ref="containerRef" tabindex="0">
@@ -376,9 +377,10 @@
         {
             await JS.InvokeVoidAsync("CinemaPlayer.setQualityLevel", containerRef, levelIndex);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Ignored on SSR/disconnected
+            // Ignored on SSR/disconnected, but a real failure must stay traceable.
+            Logger.LogDebug(ex, "Quality level could not be applied in the browser.");
         }
     }
 
@@ -499,9 +501,18 @@
         {
             await JS.InvokeVoidAsync("CinemaPlayer.pause", videoRef);
         }
-        catch (JSDisconnectedException) { }
-        catch (InvalidOperationException) { }
-        catch (JSException) { }
+        catch (JSDisconnectedException)
+        {
+            // The circuit is gone: nothing to pause any more.
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.LogDebug(ex, "Player pause skipped because the element is not available any more.");
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Player pause failed inside the browser.");
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -515,9 +526,18 @@
         if (JS is not null)
         {
             try { await JS.InvokeVoidAsync("CinemaPlayer.dispose", containerRef); }
-            catch (JSDisconnectedException) { }
-            catch (InvalidOperationException) { }
-            catch (JSException) { }
+            catch (JSDisconnectedException)
+            {
+                // The circuit is already gone: the browser cleans the player up on its own.
+            }
+            catch (InvalidOperationException ex)
+            {
+                Logger.LogDebug(ex, "Player dispose skipped because the element is not available any more.");
+            }
+            catch (JSException ex)
+            {
+                Logger.LogWarning(ex, "Player dispose failed inside the browser.");
+            }
         }
 
         dotNetRef?.Dispose();
@@ -546,8 +566,16 @@
     public async Task<MediaCursor> GetCursorAsync()
     {
         try { return await JS.InvokeAsync<MediaCursor>("CinemaPlayer.cursor", videoRef); }
-        catch (JSException) { return new(); }
-        catch (InvalidOperationException) { return new(); }
+        catch (JSException ex)
+        {
+            Logger.LogDebug(ex, "Media cursor is not available in the browser.");
+            return new();
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.LogDebug(ex, "Media cursor skipped because the video element is not available.");
+            return new();
+        }
     }
 
     public void OpenDrawer() => isDrawerOpen = true;

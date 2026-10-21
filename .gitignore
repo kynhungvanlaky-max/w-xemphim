@@ -10,6 +10,9 @@
 .env.*
 !.env.example
 **/appsettings.Local.json
+# Local development settings may contain real secrets: never commit them.
+**/appsettings.Development.json
+!**/appsettings.Development.example.json
 **/keys/
 **/*.pfx
 **/*.pem

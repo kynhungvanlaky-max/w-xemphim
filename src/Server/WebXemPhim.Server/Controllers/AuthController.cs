@@ -39,6 +39,13 @@ public class AuthController(
     public async Task<ActionResult<ApiResponse<AuthDto>>> Login(LoginRequest request)
     {
         var result = await authService.LoginAsync(request);
+        if (result.Failure == AuthFailure.TemporarilyUnavailable)
+        {
+            await Audit(null, "login.unavailable", false, $"Email: {request.Email.Trim()}");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                ApiResponse<AuthDto>.Fail("Dịch vụ đăng nhập đang bận. Vui lòng thử lại sau ít phút."));
+        }
+
         if (result.Data is null)
         {
             await Audit(null, "login.failed", false, $"Email: {request.Email.Trim()}");

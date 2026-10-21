@@ -169,12 +169,26 @@ Cách sửa:
 
 ---
 
-## Việc còn lại (không làm được an toàn trong đợt này)
+## Xử lý báo cáo kiểm tra bảo mật (vòng 2)
+
+| # | Vấn đề | Cách xử lý | Trạng thái |
+|---|---|---|---|
+| 1 (Cao) | Secret nằm trong git (`appsettings.Development.json`) | `git rm --cached` cả 2 file + `.gitignore` chặn; thêm `appsettings.Development.example.json` (giá trị rỗng); `ApplyDevelopmentDefaults` cấp cấu hình dev mặc định an toàn khi thiếu file; hướng dẫn **rotate key** trong `.env.example` | ✅ |
+| 2 (TB) | Đăng nhập báo sai mật khẩu khi tranh chấp dữ liệu | Thêm `AuthFailure.TemporarilyUnavailable` → HTTP **503** kèm log cảnh báo; retry 3 lần có delay tăng dần; test mô phỏng concurrency conflict | ✅ |
+| 3 (Thấp) | `catch` nuốt lỗi ở player/session store | Ghi log `LogDebug`/`LogWarning` kèm ngữ cảnh ở `CinemaPlayer.razor`, `Watch.razor`, `AuthSessionStore.cs` | ✅ |
+| 4 (Thấp) | SQL thô | Giữ nguyên (chuỗi tĩnh) + thêm test chặn `ExecuteSqlRawAsync($"...")` và test chặn dữ liệu người dùng trong `DatabaseSchemaHelper` | ✅ |
+| 5 (Cấu hình) | `AllowedHosts`/`AllowedOrigins`/proxy khi deploy | Cảnh báo rõ ràng lúc khởi động Production; thêm `Security:KnownProxyNetworks` (CIDR) cho reverse proxy ngoài dải mặc định | ✅ |
+
+### Lưu ý về việc rotate key
+Các khoá dev từng nằm trong lịch sử git. Nếu **chưa từng** dùng ở môi trường thật thì không cần làm gì thêm
+(Production đã từ chối khởi động với đúng các giá trị placeholder này). Nếu đã dùng ở môi trường thật thì
+phải sinh khoá mới (48 byte ngẫu nhiên base64) và cập nhật đồng thời trong PayOS/VNPay dashboard.
+
+---
 
 | Hạng mục | Vì sao | Hướng xử lý đề xuất |
 |---|---|---|
-| Static SSR / streaming rendering | Script streaming bị CSP nonce chặn, .NET 10 chưa có API gắn nonce | Chọn (a) self-host script streaming hoặc (b) bỏ prerender cho trang tĩnh, sau đó mới mở Static SSR |
-| Minify CSS | Không có minifier an toàn trong toolchain, rủi ro hỏng style | Dùng `WebOptimizer`/`NUglify` ở bước build + kiểm thử snapshot CSS |
+| Static SSR / streaming rendering | Script streaming bị CSP nonce chặn, .NET 10 chưa có API gắn nonce | Chọn (a) self-host script streaming hoặc (b) bỏ prerender cho trang tĩnh, sau đó mới mở Static SSR || Minify CSS | Không có minifier an toàn trong toolchain, rủi ro hỏng style | Dùng `WebOptimizer`/`NUglify` ở bước build + kiểm thử snapshot CSS |
 | Gộp `light-theme.css` (336KB) vào CSS variables | Refactor lớn, rủi ro sai màu Light/Dark | Làm dần theo từng nhóm component, mỗi nhóm có test chụp màn hình |
 | Rate limit per-user thay vì per-IP | Cần đổi kiến trúc gọi API của trình duyệt | Khi nào scale nhiều server, chuyển public API sang gọi trực tiếp từ browser |
 | MySQL FULLTEXT index | Cần MySQL thật để kiểm thử | Testcontainers trong CI trước khi bật trong production |

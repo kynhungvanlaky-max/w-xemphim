@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.ResponseCompression;
 using WebXemPhim.Shared.Security;
 
 var builder = WebApplication.CreateBuilder(args);
+WebSecurityExtensions.ApplyDevelopmentDefaults(builder.Configuration, builder.Environment, client: true);
 WebSecurityExtensions.ValidateProduction(builder.Configuration, builder.Environment, client: true);
 builder.WebHost.ConfigureKestrel(options => { options.AddServerHeader = false; options.Limits.MaxRequestBodySize = 64 * 1024; });
 builder.Logging.ClearProviders();

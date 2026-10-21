@@ -12,6 +12,7 @@ using WebXemPhim.Server.Services;
 using WebXemPhim.Shared.Security;
 
 var builder = WebApplication.CreateBuilder(args);
+WebSecurityExtensions.ApplyDevelopmentDefaults(builder.Configuration, builder.Environment, client: false);
 WebSecurityExtensions.ValidateProduction(builder.Configuration, builder.Environment, client: false);
 builder.WebHost.ConfigureKestrel(options => { options.AddServerHeader = false; options.Limits.MaxRequestBodySize = 64 * 1024; });
 builder.Logging.ClearProviders();
@@ -120,6 +121,33 @@ if (!app.Environment.IsEnvironment("Testing"))
         "Database schema verified in {ElapsedMs} ms.",
         (DateTime.UtcNow - schemaStartedAt).TotalMilliseconds);
 
+    // Deployment sanity checks: a mis-configured reverse proxy silently breaks the client IP
+    // resolution (and therefore the rate limiting), so make it visible at startup.
+    if (app.Environment.IsProduction())
+    {
+        var allowedHosts = app.Configuration["AllowedHosts"] ?? string.Empty;
+        if (allowedHosts.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .All(host => host is "localhost" or "127.0.0.1" or "[::1]"))
+        {
+            app.Logger.LogWarning(
+                "AllowedHosts still contains only local addresses ({AllowedHosts}). Every request from a real host will be rejected. Set AllowedHosts to the public host names before going live.",
+                allowedHosts);
+        }
+
+        var origins = app.Configuration.GetSection("Security:AllowedOrigins").Get<string[]>() ?? [];
+        if (origins.Length == 0)
+        {
+            app.Logger.LogWarning(
+                "Security:AllowedOrigins is empty. Browser calls to the REST API from another origin will be blocked by CORS. Configure the public client origins before going live.");
+        }
+
+        if (app.Configuration.GetSection("Security:KnownProxies").Get<string[]>() is not { Length: > 0 })
+        {
+            app.Logger.LogWarning(
+                "Security:KnownProxies is empty. Only loopback and private networks are trusted for X-Forwarded-For, so the client IP (and the rate limit bucket) may be wrong when the reverse proxy sits outside those ranges.");
+        }
+    }
+
     // Move legacy seeded artwork URLs to the WebP variants shipped with the client.
     const string legacyImageUrlFlag = "movie-image-urls-migrated-to-webp";
     var imageMigrationDone = await db.AppMaintenanceFlags.AnyAsync(item => item.Flag == legacyImageUrlFlag);
@@ -176,6 +204,27 @@ if (configuredProxies is { Length: > 0 })
         {
             forwardedHeadersOptions.KnownProxies.Add(ip);
             ApiRateLimits.AddTrustedProxy(proxy);
+        }
+    }
+}
+
+// Additional trusted proxy networks (CIDR) for deployments where the reverse proxy does not
+// live in the default private ranges, e.g. "Security:KnownProxyNetworks": ["10.20.0.0/16"].
+var configuredProxyNetworks = app.Configuration.GetSection("Security:KnownProxyNetworks").Get<string[]>();
+if (configuredProxyNetworks is { Length: > 0 })
+{
+    foreach (var network in configuredProxyNetworks)
+    {
+        var parts = network.Split('/', StringSplitOptions.TrimEntries);
+        if (parts.Length == 2 &&
+            System.Net.IPAddress.TryParse(parts[0], out var address) &&
+            int.TryParse(parts[1], out var prefixLength))
+        {
+            forwardedHeadersOptions.KnownIPNetworks.Add(new System.Net.IPNetwork(address, prefixLength));
+        }
+        else
+        {
+            app.Logger.LogWarning("Ignoring invalid Security:KnownProxyNetworks entry '{Network}'.", network);
         }
     }
 }
