@@ -18,6 +18,7 @@
 | Phase 5 | Static SSR / streaming rendering | ⚠️ **Hoàn tất 1 phần** (xem ghi chú) |
 | Phase 6 | Minor polish (VIP cache, FTS cast, mã chết, `catch {}`) | ✅ Hoàn tất |
 | Ngoài lề | **`PersistentComponentState` sai cách dùng → WebSocket bị đóng, trang mất interactivity** | ✅ Đã sửa |
+| Ngoài lề | **Mojibake (UTF-8 đọc như Windows-1252) trong seed data → "Má»™t thÃ¡ng" ở mọi trang** | ✅ Đã sửa |
 
 ---
 
@@ -147,6 +148,24 @@ bổ theo IP thật.
 17. Không còn ảnh `.jpg` trong thư mục images.
 18. Mọi tham chiếu ảnh trong razor/css đều tồn tại.
 19. RouteStylesheet render link stylesheet.
+
+---
+
+---
+
+## Fix lỗi encoding (mojibake) – phát hiện thêm khi kiểm tra thực tế
+
+Một số nội dung seed (gói VIP, mô tả phim, thể loại, thông báo) đã được ghi vào DB/C# bằng **UTF-8
+đọc như Windows-1252** ⇒ hiển thị thành `Má»™t thÃ¡ng`, `Linh hoáº¡t, dá»… báº¯t Ä‘áº§u…`.
+
+Cách sửa:
+- `MojibakeRepair` (Shared): nhận diện + đảo ngược mã hoá sai (CP1252 → UTF-8), chỉ sửa khi kết quả
+  chắc chắn hợp lệ (không sinh ký tự thay thế, số dấu hiệu mojibake giảm).
+- Sửa 34 string literal trong `DatabaseSeeder.cs` + 4 comment CSS.
+- Thêm task bảo trì **1 lần** khi khởi động (`mojibake-text-repaired`) để sửa dữ liệu **đã lưu** trong
+  DB production: vip_plans, genres, notifications, reviews, movies (+cast) và tính lại `SearchText`.
+- Kiểm chứng: log server báo `Repaired 26 text records`; API trả về đúng "Một tháng",
+  "Linh hoạt, dễ bắt đầu - 30 ngày trải nghiệm xem phim không giới hạn"; quét 6 trang → 0 ký tự hỏng.
 
 ---
 
