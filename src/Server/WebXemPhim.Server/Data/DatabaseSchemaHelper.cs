@@ -308,6 +308,92 @@ END;", cancellationToken);
     }
 
     /// <summary>
+    /// Repairs text that was stored with the wrong code page (UTF-8 bytes decoded as
+    /// Windows-1252). Some seeded/demo content was written that way, which made titles such as
+    /// "Mắt tháng" render as "Má»™t thÃ¡ng" on every page.
+    /// </summary>
+    public static async Task<int> RepairMojibakeTextAsync(AppDbContext db, CancellationToken cancellationToken = default)
+    {
+        var changed = 0;
+
+        var plans = await db.VipPlans.ToListAsync(cancellationToken);
+        foreach (var plan in plans)
+        {
+            var name = MojibakeRepair.Repair(plan.Name);
+            var description = MojibakeRepair.Repair(plan.Description);
+            if (!string.Equals(name, plan.Name, StringComparison.Ordinal)) { plan.Name = name ?? plan.Name; changed++; }
+            if (!string.Equals(description, plan.Description, StringComparison.Ordinal)) { plan.Description = description ?? plan.Description; changed++; }
+        }
+
+        var genres = await db.Genres.ToListAsync(cancellationToken);
+        foreach (var genre in genres)
+        {
+            var name = MojibakeRepair.Repair(genre.Name);
+            if (!string.Equals(name, genre.Name, StringComparison.Ordinal)) { genre.Name = name ?? genre.Name; changed++; }
+        }
+
+        var notifications = await db.Notifications.ToListAsync(cancellationToken);
+        foreach (var notification in notifications)
+        {
+            var title = MojibakeRepair.Repair(notification.Title);
+            var copy = MojibakeRepair.Repair(notification.Copy);
+            if (!string.Equals(title, notification.Title, StringComparison.Ordinal)) { notification.Title = title ?? notification.Title; changed++; }
+            if (!string.Equals(copy, notification.Copy, StringComparison.Ordinal)) { notification.Copy = copy ?? notification.Copy; changed++; }
+        }
+
+        var reviews = await db.Reviews.ToListAsync(cancellationToken);
+        foreach (var review in reviews)
+        {
+            var comment = MojibakeRepair.Repair(review.Comment);
+            var reply = MojibakeRepair.Repair(review.AdminReply);
+            if (!string.Equals(comment, review.Comment, StringComparison.Ordinal)) { review.Comment = comment ?? review.Comment; changed++; }
+            if (!string.Equals(reply, review.AdminReply, StringComparison.Ordinal)) { review.AdminReply = reply; changed++; }
+        }
+
+        var movies = await db.Movies.Include(movie => movie.CastMembers).ToListAsync(cancellationToken);
+        foreach (var movie in movies)
+        {
+            var title = MojibakeRepair.Repair(movie.Title);
+            var originalTitle = MojibakeRepair.Repair(movie.OriginalTitle);
+            var overview = MojibakeRepair.Repair(movie.Overview);
+            var director = MojibakeRepair.Repair(movie.Director);
+            var country = MojibakeRepair.Repair(movie.Country);
+            var movieChanged = false;
+
+            if (!string.Equals(title, movie.Title, StringComparison.Ordinal)) { movie.Title = title ?? movie.Title; movieChanged = true; }
+            if (!string.Equals(originalTitle, movie.OriginalTitle, StringComparison.Ordinal)) { movie.OriginalTitle = originalTitle ?? movie.OriginalTitle; movieChanged = true; }
+            if (!string.Equals(overview, movie.Overview, StringComparison.Ordinal)) { movie.Overview = overview ?? movie.Overview; movieChanged = true; }
+            if (!string.Equals(director, movie.Director, StringComparison.Ordinal)) { movie.Director = director ?? movie.Director; movieChanged = true; }
+            if (!string.Equals(country, movie.Country, StringComparison.Ordinal)) { movie.Country = country ?? movie.Country; movieChanged = true; }
+
+            foreach (var member in movie.CastMembers)
+            {
+                var name = MojibakeRepair.Repair(member.Name);
+                if (!string.Equals(name, member.Name, StringComparison.Ordinal)) { member.Name = name ?? member.Name; movieChanged = true; }
+            }
+
+            if (movieChanged)
+            {
+                changed++;
+                // The normalized search text is derived from the (now repaired) movie fields.
+                movie.SearchText = MovieSearchTextBuilder.Build(
+                    movie.Title,
+                    movie.OriginalTitle,
+                    movie.Director,
+                    movie.CastMembers.Select(c => c.Name),
+                    movie.Overview);
+            }
+        }
+
+        if (changed > 0)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        return changed;
+    }
+
+    /// <summary>
     /// Rewrites legacy seeded movie artwork URLs (<c>/images/movies/movie-N-poster.jpg</c>) to the
     /// WebP variants that are shipped with the client. Only the deterministic seeded pattern is
     /// touched, so custom artwork uploaded by an administrator is never modified.

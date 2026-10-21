@@ -463,6 +463,102 @@ public sealed class RemainingAuditFixTests
         Assert.Empty(broken);
     }
 
+    // ------------------------------------------------------------- encoding
+
+    [Fact]
+    public void MojibakeRepair_FixesDoubleEncodedVietnameseText()
+    {
+        Assert.Equal("Một tháng", MojibakeRepair.Repair(MojibakeRepair.ToMojibake("Một tháng")));
+        Assert.Equal(
+            "Linh hoạt, dễ bắt đầu - 30 ngày trải nghiệm xem phim không giới hạn",
+            MojibakeRepair.Repair(MojibakeRepair.ToMojibake("Linh hoạt, dễ bắt đầu - 30 ngày trải nghiệm xem phim không giới hạn")));
+        Assert.Equal("Kỵ Sĩ Bóng Đêm", MojibakeRepair.Repair(MojibakeRepair.ToMojibake("Kỵ Sĩ Bóng Đêm")));
+        Assert.Equal("Xứ Cát: Phần Ba", MojibakeRepair.Repair(MojibakeRepair.ToMojibake("Xứ Cát: Phần Ba")));
+    }
+
+    [Fact]
+    public void MojibakeRepair_LeavesHealthyTextUntouched()
+    {
+        const string healthy = "Xứ Cát: Phần Ba - Đấng Tiên Tri";
+        Assert.False(MojibakeRepair.LooksMojibake(healthy));
+        Assert.Equal(healthy, MojibakeRepair.Repair(healthy));
+        Assert.Null(MojibakeRepair.Repair(null));
+    }
+
+    [Fact]
+    public void MojibakeRepair_KeepsTextThatCannotBeDecodedSafely()
+    {
+        // A valid string that merely contains latin-1 characters must not be touched.
+        const string mixed = "Phim hay – phim đẹp";
+        Assert.Equal(mixed, MojibakeRepair.Repair(mixed));
+    }
+
+    [Fact]
+    public async Task RepairMojibakeTextAsync_FixesStoredSeedContent()
+    {
+        var (connection, context, _) = await CreateSqliteContextAsync();
+        await using var _ = connection;
+        await using var __ = context;
+
+        context.VipPlans.Add(new VipPlanEntity
+        {
+            Id = "vip-30",
+            Name = MojibakeRepair.ToMojibake("Một tháng"),
+            Description = MojibakeRepair.ToMojibake("Linh hoạt, dễ bắt đầu - 30 ngày trải nghiệm xem phim không giới hạn"),
+            PriceVnd = 79000m,
+            DurationDays = 30,
+            IsActive = true
+        });
+        context.Movies.Add(new MovieEntity
+        {
+            Title = MojibakeRepair.ToMojibake("Một tháng"),
+            OriginalTitle = "One Month",
+            Slug = "mot-thang",
+            Overview = MojibakeRepair.ToMojibake("Phim hài nhất."),
+            Director = MojibakeRepair.ToMojibake("Nguyễn Văn A"),
+            PosterUrl = "/images/movies/movie-1-poster.webp",
+            BackdropUrl = "/images/movies/movie-1-backdrop.webp"
+        });
+        await context.SaveChangesAsync();
+
+        var repaired = await DatabaseSchemaHelper.RepairMojibakeTextAsync(context);
+
+        Assert.True(repaired > 0);
+        var plan = await context.VipPlans.FirstAsync();
+        Assert.Equal("Một tháng", plan.Name);
+        Assert.Contains("30 ngày trải nghiệm", plan.Description);
+
+        var movie = await context.Movies.FirstAsync();
+        Assert.Equal("Một tháng", movie.Title);
+        Assert.Equal("Nguyễn Văn A", movie.Director);
+        Assert.Contains("mot thang", movie.SearchText);
+    }
+
+    [Fact]
+    public async Task RepairMojibakeTextAsync_IsSafeToRunOnHealthyData()
+    {
+        var (connection, context, _) = await CreateSqliteContextAsync();
+        await using var _ = connection;
+        await using var __ = context;
+
+        context.VipPlans.Add(new VipPlanEntity
+        {
+            Id = "vip-90",
+            Name = "Ba tháng",
+            Description = "Tiết kiệm hơn.",
+            PriceVnd = 199000m,
+            DurationDays = 90,
+            IsActive = true
+        });
+        await context.SaveChangesAsync();
+
+        var repaired = await DatabaseSchemaHelper.RepairMojibakeTextAsync(context);
+
+        Assert.Equal(0, repaired);
+        var plan = await context.VipPlans.FirstAsync();
+        Assert.Equal("Ba tháng", plan.Name);
+    }
+
     private static string FindSolutionRoot()
     {
         var dir = AppContext.BaseDirectory;

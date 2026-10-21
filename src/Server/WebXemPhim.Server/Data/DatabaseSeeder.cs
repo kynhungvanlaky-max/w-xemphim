@@ -1750,8 +1750,8 @@ public static class DatabaseSeeder
                 new VipPlanEntity
                 {
                     Id = "vip-30",
-                    Name = "Má»™t thÃ¡ng",
-                    Description = "Linh hoáº¡t, dá»… báº¯t Ä‘áº§u - 30 ngÃ y tráº£i nghiá»‡m xem phim khÃ´ng giá»›i háº¡n",
+                    Name = "Một tháng",
+                    Description = "Linh hoạt, dễ bắt đầu - 30 ngày trải nghiệm xem phim không giới hạn",
                     PriceVnd = 79000m,
                     DurationDays = 30,
                     IsActive = true,
@@ -1760,8 +1760,8 @@ public static class DatabaseSeeder
                 new VipPlanEntity
                 {
                     Id = "vip-90",
-                    Name = "Ba thÃ¡ng",
-                    Description = "Tiáº¿t kiá»‡m hÆ¡n, tráº£i nghiá»‡m dÃ i hÆ¡n - 90 ngÃ y xem phim cháº¥t lÆ°á»£ng cao",
+                    Name = "Ba tháng",
+                    Description = "Tiết kiệm hơn, trải nghiệm dài hơn - 90 ngày xem phim chất lượng cao",
                     PriceVnd = 199000m,
                     DurationDays = 90,
                     IsActive = true,
@@ -1770,8 +1770,8 @@ public static class DatabaseSeeder
                 new VipPlanEntity
                 {
                     Id = "vip-180",
-                    Name = "SÃ¡u thÃ¡ng",
-                    Description = "BÃ¡n cháº¡y nháº¥t cho ngÆ°á»i luyá»‡n phim - 180 ngÃ y Ä‘áº·c quyá»n VIP",
+                    Name = "Sáu tháng",
+                    Description = "Bán chạy nhất cho người luyện phim - 180 ngày đặc quyền VIP",
                     PriceVnd = 349000m,
                     DurationDays = 180,
                     IsActive = true,
@@ -1780,8 +1780,8 @@ public static class DatabaseSeeder
                 new VipPlanEntity
                 {
                     Id = "vip-365",
-                    Name = "Má»™t nÄƒm",
-                    Description = "Lá»±a chá»n tá»‘t nháº¥t cho ngÆ°á»i yÃªu phim - 365 ngÃ y Ä‘áº·c quyá»n tá»‘i thÆ°á»£ng",
+                    Name = "Một năm",
+                    Description = "Lựa chọn tốt nhất cho người yêu phim - 365 ngày đặc quyền tối thượng",
                     PriceVnd = 499000m,
                     DurationDays = 365,
                     IsActive = true,
@@ -1919,7 +1919,7 @@ public static class DatabaseSeeder
                     OrderCode = "CF20260101VIP365ADMIN",
                     UserId = adminUser.Id,
                     PlanId = "vip-365",
-                    PlanName = "VIP 365 ngÃ y",
+                    PlanName = "VIP 365 ngày",
                     Amount = 499000m,
                     Method = PaymentMethod.BankTransfer,
                     Status = PaymentStatus.Completed,
@@ -1933,7 +1933,7 @@ public static class DatabaseSeeder
                     OrderCode = "CF20260215VIP90NAM",
                     UserId = vipUser1.Id,
                     PlanId = "vip-90",
-                    PlanName = "VIP 90 ngÃ y",
+                    PlanName = "VIP 90 ngày",
                     Amount = 149000m,
                     Method = PaymentMethod.Momo,
                     Status = PaymentStatus.Completed,
@@ -1947,7 +1947,7 @@ public static class DatabaseSeeder
                     OrderCode = "CF20260301VIP30MEMBER",
                     UserId = vipUser2.Id,
                     PlanId = "vip-30",
-                    PlanName = "VIP 30 ngÃ y",
+                    PlanName = "VIP 30 ngày",
                     Amount = 59000m,
                     Method = PaymentMethod.Visa,
                     Status = PaymentStatus.Completed,
@@ -1961,13 +1961,13 @@ public static class DatabaseSeeder
                     OrderCode = "CF20260320VIP180PENDING",
                     UserId = vipUser1.Id,
                     PlanId = "vip-180",
-                    PlanName = "VIP 6 ThÃ¡ng",
+                    PlanName = "VIP 6 Tháng",
                     Amount = 349000m,
                     Method = PaymentMethod.BankTransfer,
                     Status = PaymentStatus.Pending,
                     CreatedAtUtc = now.AddHours(-2),
                     TransactionReference = "FT2609081239MB",
-                    Note = "Chuyá»ƒn khoáº£n VietQR chá» Ä‘á»‘i soÃ¡t sao kÃª ngÃ¢n hÃ ng"
+                    Note = "Chuyển khoản VietQR chờ đối soát sao kê ngân hàng"
                 },
                 new PaymentEntity
                 {
@@ -1975,12 +1975,12 @@ public static class DatabaseSeeder
                     OrderCode = "CF20260318VIP30FAILED",
                     UserId = vipUser2.Id,
                     PlanId = "vip-30",
-                    PlanName = "VIP 1 ThÃ¡ng",
+                    PlanName = "VIP 1 Tháng",
                     Amount = 79000m,
                     Method = PaymentMethod.Momo,
                     Status = PaymentStatus.Failed,
                     CreatedAtUtc = now.AddDays(-1),
-                    Note = "Tá»« chá»‘i duyá»‡t: Giao dá»‹ch MoMo bá»‹ há»§y hoáº·c quÃ¡ háº¡n thanh toÃ¡n"
+                    Note = "Từ chối duyệt: Giao dịch MoMo bị hủy hoặc quá hạn thanh toán"
                 }
             );
 
@@ -1992,7 +1992,7 @@ public static class DatabaseSeeder
                     MovieId = 1,
                     UserId = adminUser.Id,
                     Rating = 10,
-                    Comment = "Äá»‰nh cao Ä‘iá»‡n áº£nh khoa há»c viá»…n tÆ°á»Ÿng! Denis Villeneuve Ä‘Ã£ khÃ©p láº¡i thiÃªn anh hÃ¹ng ca Xá»© CÃ¡t báº±ng má»™t kiá»‡t tÃ¡c hoÃ n háº£o tá»« Ã¢m thanh, ká»¹ xáº£o Ä‘áº¿n chiá»u sÃ¢u tÆ° tÆ°á»Ÿng.",
+                    Comment = "Đỉnh cao điện ảnh khoa học viễn tưởng! Denis Villeneuve đã khép lại thiên anh hùng ca Xứ Cát bằng một kiệt tác hoàn hảo từ âm thanh, kỹ xảo đến chiều sâu tư tưởng.",
                     CreatedAtUtc = now.AddDays(-10),
                     UpdatedAtUtc = now.AddDays(-10)
                 },
@@ -2002,7 +2002,7 @@ public static class DatabaseSeeder
                     MovieId = 1,
                     UserId = vipUser1.Id,
                     Rating = 9,
-                    Comment = "Cáº£nh Ä‘áº¡i chiáº¿n cÃ¡t sa máº¡c quÃ¡ choÃ¡ng ngá»£p. Ã‚m nháº¡c cá»§a Hans Zimmer rung chuyá»ƒn cáº£ phÃ²ng chiáº¿u, xá»©ng Ä‘Ã¡ng xem báº£n 4K HDR.",
+                    Comment = "Cảnh đại chiến cát sa mạc quá choáng ngợp. Âm nhạc của Hans Zimmer rung chuyển cả phòng chiếu, xứng đáng xem bản 4K HDR.",
                     CreatedAtUtc = now.AddDays(-8),
                     UpdatedAtUtc = now.AddDays(-8)
                 },
@@ -2012,7 +2012,7 @@ public static class DatabaseSeeder
                     MovieId = 1,
                     UserId = regularUser1.Id,
                     Rating = 9,
-                    Comment = "Diá»…n xuáº¥t cá»§a TimothÃ©e Chalamet vÃ  Zendaya ngÃ y cÃ ng chÃ­n muá»“i. Má»™t cÃ¡i káº¿t Ä‘áº§y Ã¡m áº£nh.",
+                    Comment = "Diễn xuất của Timothée Chalamet và Zendaya ngày càng chín muồi. Một cái kết đầy ám ảnh.",
                     CreatedAtUtc = now.AddDays(-5),
                     UpdatedAtUtc = now.AddDays(-5)
                 },
@@ -2022,7 +2022,7 @@ public static class DatabaseSeeder
                     MovieId = 2,
                     UserId = vipUser1.Id,
                     Rating = 10,
-                    Comment = "Cillian Murphy xá»©ng Ä‘Ã¡ng 10/10 vá»›i Ã¡nh máº¯t Ä‘áº§y dáº±n váº·t. Äoáº¡n thá»­ nghiá»‡m Trinity khiáº¿n cáº£ phÃ²ng nÃ­n thá»Ÿ.",
+                    Comment = "Cillian Murphy xứng đáng 10/10 với ánh mắt đầy dằn vặt. Đoạn thử nghiệm Trinity khiến cả phòng nín thở.",
                     CreatedAtUtc = now.AddDays(-12),
                     UpdatedAtUtc = now.AddDays(-12)
                 },
@@ -2032,7 +2032,7 @@ public static class DatabaseSeeder
                     MovieId = 2,
                     UserId = regularUser2.Id,
                     Rating = 9,
-                    Comment = "Nolan tiáº¿p tá»¥c chá»©ng minh kháº£ nÄƒng ká»ƒ chuyá»‡n phi tuyáº¿n tÃ­nh báº­c tháº§y. Thoáº¡i vÃ  Ã¢m nháº¡c phá»‘i há»£p khÃ´ng má»™t váº¿t gá»£n.",
+                    Comment = "Nolan tiếp tục chứng minh khả năng kể chuyện phi tuyến tính bậc thầy. Thoại và âm nhạc phối hợp không một vết gợn.",
                     CreatedAtUtc = now.AddDays(-9),
                     UpdatedAtUtc = now.AddDays(-9)
                 },
@@ -2042,7 +2042,7 @@ public static class DatabaseSeeder
                     MovieId = 3,
                     UserId = regularUser1.Id,
                     Rating = 10,
-                    Comment = "MÃ¹a 2 vÆ°á»£t ngoÃ i má»i ká»³ vá»ng! Pháº§n hoáº¡t há»a cá»§a Fortiche Ä‘áº¹p nhÆ° tranh váº½, Ã¢m nháº¡c quÃ¡ cáº£m xÃºc.",
+                    Comment = "Mùa 2 vượt ngoài mọi kỳ vọng! Phần hoạt họa của Fortiche đẹp như tranh vẽ, âm nhạc quá cảm xúc.",
                     CreatedAtUtc = now.AddDays(-4),
                     UpdatedAtUtc = now.AddDays(-4)
                 },
@@ -2052,7 +2052,7 @@ public static class DatabaseSeeder
                     MovieId = 3,
                     UserId = vipUser2.Id,
                     Rating = 9,
-                    Comment = "Má»‘i quan há»‡ giá»¯a Vi vÃ  Jinx Ä‘au lÃ²ng Ä‘áº¿n ngháº¹n thá»Ÿ. Phim hoáº¡t hÃ¬nh xuáº¥t sáº¯c nháº¥t tháº­p ká»·.",
+                    Comment = "Mối quan hệ giữa Vi và Jinx đau lòng đến nghẹn thở. Phim hoạt hình xuất sắc nhất thập kỷ.",
                     CreatedAtUtc = now.AddDays(-2),
                     UpdatedAtUtc = now.AddDays(-2)
                 },
@@ -2062,7 +2062,7 @@ public static class DatabaseSeeder
                     MovieId = 4,
                     UserId = adminUser.Id,
                     Rating = 10,
-                    Comment = "Heath Ledger vá»›i vai Joker lÃ  huyá»n thoáº¡i sá»‘ng mÃ£i trong lá»‹ch sá»­ Ä‘iá»‡n áº£nh tháº¿ giá»›i.",
+                    Comment = "Heath Ledger với vai Joker là huyền thoại sống mãi trong lịch sử điện ảnh thế giới.",
                     CreatedAtUtc = now.AddDays(-20),
                     UpdatedAtUtc = now.AddDays(-20)
                 },
@@ -2072,7 +2072,7 @@ public static class DatabaseSeeder
                     MovieId = 5,
                     UserId = regularUser2.Id,
                     Rating = 9,
-                    Comment = "Pháº§n 2 hÃ nh Ä‘á»™ng mÃ£n nhÃ£n, Ä‘á»™i quÃ¢n bÃ³ng Ä‘Ãªm trá»—i dáº­y ngáº§u Ä‘Ã©t! Äá»“ há»a cá»§a A-1 Pictures ráº¥t mÆ°á»£t.",
+                    Comment = "Phần 2 hành động mãn nhãn, đội quân bóng đêm trỗi dậy ngầu đét! Đồ họa của A-1 Pictures rất mượt.",
                     CreatedAtUtc = now.AddDays(-3),
                     UpdatedAtUtc = now.AddDays(-3)
                 },
@@ -2082,7 +2082,7 @@ public static class DatabaseSeeder
                     MovieId = 6,
                     UserId = vipUser1.Id,
                     Rating = 9,
-                    Comment = "TÃ¡i hiá»‡n vÄƒn hÃ³a vÃµ sÄ© Ä‘áº¡o vÃ  mÆ°u lÆ°á»£c chÃ­nh trá»‹ thá»i phong kiáº¿n Nháº­t Báº£n chuáº©n chá»‰ Ä‘áº¿n tá»«ng chi tiáº¿t nhá».",
+                    Comment = "Tái hiện văn hóa võ sĩ đạo và mưu lược chính trị thời phong kiến Nhật Bản chuẩn chỉ đến từng chi tiết nhỏ.",
                     CreatedAtUtc = now.AddDays(-15),
                     UpdatedAtUtc = now.AddDays(-15)
                 },
@@ -2092,7 +2092,7 @@ public static class DatabaseSeeder
                     MovieId = 11,
                     UserId = regularUser1.Id,
                     Rating = 10,
-                    Comment = "Ká»‹ch báº£n xuáº¥t sáº¯c khÃ´ng má»™t háº¡t sáº¡n. Pháº£n Ã¡nh chÃ¢n thá»±c sá»± phÃ¢n hÃ³a giÃ u nghÃ¨o sÃ¢u sáº¯c.",
+                    Comment = "Kịch bản xuất sắc không một hạt sạn. Phản ánh chân thực sự phân hóa giàu nghèo sâu sắc.",
                     CreatedAtUtc = now.AddDays(-25),
                     UpdatedAtUtc = now.AddDays(-25)
                 },
@@ -2102,7 +2102,7 @@ public static class DatabaseSeeder
                     MovieId = 13,
                     UserId = vipUser2.Id,
                     Rating = 8,
-                    Comment = "PhÆ°Æ¡ng Anh ÄÃ o diá»…n xuáº¥t ráº¥t cÃ³ há»“n, Ã¡nh máº¯t cháº¥t chá»©a ná»—i niá»m. GÃ³c quay vÃ  Ã¡nh sÃ¡ng tiáº¿n bá»™ rÃµ rá»‡t.",
+                    Comment = "Phương Anh Đào diễn xuất rất có hồn, ánh mắt chất chứa nỗi niềm. Góc quay và ánh sáng tiến bộ rõ rệt.",
                     CreatedAtUtc = now.AddDays(-6),
                     UpdatedAtUtc = now.AddDays(-6)
                 },
@@ -2112,7 +2112,7 @@ public static class DatabaseSeeder
                     MovieId = 13,
                     UserId = regularUser1.Id,
                     Rating = 9,
-                    Comment = "Má»™t bá»™ phim cháº¡m Ä‘áº¿n cáº£m xÃºc cá»§a nhiá»u ngÆ°á»i phá»¥ ná»¯ hiá»‡n Ä‘áº¡i. Nháº¡c phim cá»§a Phan Máº¡nh Quá»³nh ráº¥t hay.",
+                    Comment = "Một bộ phim chạm đến cảm xúc của nhiều người phụ nữ hiện đại. Nhạc phim của Phan Mạnh Quỳnh rất hay.",
                     CreatedAtUtc = now.AddDays(-4),
                     UpdatedAtUtc = now.AddDays(-4)
                 },
@@ -2122,7 +2122,7 @@ public static class DatabaseSeeder
                     MovieId = 14,
                     UserId = vipUser1.Id,
                     Rating = 9,
-                    Comment = "Láº¥y Ä‘i ráº¥t nhiá»u nÆ°á»›c máº¯t. Cáº£nh bÃ  Hai ngá»“i chá» cÃ¡c con nÆ¡i quÃª nhÃ  lÃ m ai xa quÃª cÅ©ng pháº£i quáº·n lÃ²ng.",
+                    Comment = "Lấy đi rất nhiều nước mắt. Cảnh bà Hai ngồi chờ các con nơi quê nhà làm ai xa quê cũng phải quặn lòng.",
                     CreatedAtUtc = now.AddDays(-7),
                     UpdatedAtUtc = now.AddDays(-7)
                 },
@@ -2132,7 +2132,7 @@ public static class DatabaseSeeder
                     MovieId = 17,
                     UserId = adminUser.Id,
                     Rating = 9,
-                    Comment = "KhÃ´ng khÃ­ kinh dá»‹ tÃ¢m linh rÃ¹ng rá»£n, lá»“ng ghÃ©p lá»‹ch sá»­ tinh táº¿. Choi Min-sik vÃ  Kim Go-eun phá»‘i há»£p Äƒn Ã½.",
+                    Comment = "Không khí kinh dị tâm linh rùng rợn, lồng ghép lịch sử tinh tế. Choi Min-sik và Kim Go-eun phối hợp ăn ý.",
                     CreatedAtUtc = now.AddDays(-11),
                     UpdatedAtUtc = now.AddDays(-11)
                 }
@@ -2142,7 +2142,7 @@ public static class DatabaseSeeder
             context.UserSettings.Add(new UserSettingsEntity
             {
                 UserId = adminUser.Id,
-                DefaultQuality = "4K khi cÃ³ thá»ƒ",
+                DefaultQuality = "4K khi có thể",
                 AutoplayNext = true,
                 NotifyNewEpisodes = true,
                 Language = "vi",
@@ -2155,8 +2155,8 @@ public static class DatabaseSeeder
                 {
                     Id = Guid.NewGuid(),
                     UserId = adminUser.Id,
-                    Title = "Táº­p má»›i Ä‘Ã£ lÃªn sÃ³ng",
-                    Copy = "Xá»© CÃ¡t: Pháº§n Ba vá»«a cáº­p nháº­t báº£n chiáº¿u ráº¡p Ä‘áº§y Ä‘á»§ 4K HDR.",
+                    Title = "Tập mới đã lên sóng",
+                    Copy = "Xứ Cát: Phần Ba vừa cập nhật bản chiếu rạp đầy đủ 4K HDR.",
                     Icon = "Play",
                     ActionUrl = "/watch/1",
                     Read = false,
@@ -2167,7 +2167,7 @@ public static class DatabaseSeeder
                     Id = Guid.NewGuid(),
                     UserId = adminUser.Id,
                     Title = "CinemaFlow VIP",
-                    Copy = "MÃ¡y chá»§ VIP 4K má»›i Ä‘Ã£ sáºµn sÃ ng cho tÃ i khoáº£n cá»§a báº¡n.",
+                    Copy = "Máy chủ VIP 4K mới đã sẵn sàng cho tài khoản của bạn.",
                     Icon = "Crown",
                     ActionUrl = "/vip",
                     Read = true,

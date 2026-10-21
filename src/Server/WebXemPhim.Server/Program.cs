@@ -133,6 +133,20 @@ if (!app.Environment.IsEnvironment("Testing"))
             app.Logger.LogInformation("Migrated {Count} movie artwork references to WebP.", migrated);
         }
     }
+
+    // Repair text that was stored with the wrong code page (mojibake) by older seeds.
+    const string mojibakeRepairFlag = "mojibake-text-repaired";
+    var mojibakeRepairDone = await db.AppMaintenanceFlags.AnyAsync(item => item.Flag == mojibakeRepairFlag);
+    if (!mojibakeRepairDone)
+    {
+        var repaired = await DatabaseSchemaHelper.RepairMojibakeTextAsync(db);
+        db.AppMaintenanceFlags.Add(new AppMaintenanceFlagEntity { Flag = mojibakeRepairFlag, CompletedAtUtc = DateTime.UtcNow });
+        await db.SaveChangesAsync();
+        if (repaired > 0)
+        {
+            app.Logger.LogInformation("Repaired {Count} text records that were stored with the wrong code page.", repaired);
+        }
+    }
 }
 
 // Configure the HTTP request pipeline.

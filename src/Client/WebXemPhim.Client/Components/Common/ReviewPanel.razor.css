@@ -55,7 +55,7 @@
     overflow: hidden;
 }
 
-/* --- Card 1: ÄÃ¡nh giÃ¡ cá»™ng Ä‘á»“ng --- */
+/* --- Card 1: Đánh giá cộng đồng --- */
 .review-score-hero {
     display: grid;
     grid-template-columns: 1fr 140px;
@@ -188,7 +188,7 @@
     border-radius: 1px;
 }
 
-/* --- Card 2: Cáº£m xÃºc khÃ¡n giáº£ --- */
+/* --- Card 2: Cảm xúc khán giả --- */
 .review-sentiment-panel {
     padding: clamp(1.2rem, 2vw, 1.55rem);
 }
@@ -259,7 +259,7 @@
     white-space: nowrap;
 }
 
-/* --- Card 3: Viáº¿t cáº£m nháº­n --- */
+/* --- Card 3: Viết cảm nhận --- */
 .review-action-panel {
     padding: clamp(1.2rem, 2vw, 1.55rem);
     display: flex;
@@ -1228,7 +1228,7 @@
 }
 
 /* ==========================================================================
-   5. REVIEW UX â€” tráº¡ng thÃ¡i táº£i, biá»ƒu Ä‘á»“ tháº­t, avatar chá»¯ cÃ¡i, menu cá»§a báº¡n
+   5. REVIEW UX — trạng thái tải, biểu đồ thật, avatar chữ cái, menu của bạn
    ========================================================================== */
 .reviews-skeleton {
     display: grid;
