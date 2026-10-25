@@ -100,17 +100,31 @@ jobs:
   deploy:
     name: Deploy to Production VPS
     needs: build-and-push
-    if: ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch') && secrets.SERVER_HOST != ''
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Check Deployment Secrets
+        id: check_secrets
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        run: |
+          if [ -z "$SERVER_HOST" ]; then
+            echo "is_configured=false" >> $GITHUB_OUTPUT
+            echo "::notice title=Deployment Skipped::SERVER_HOST secret is not configured yet. Skipping VPS deployment."
+          else
+            echo "is_configured=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Compute Lowercase Repository Name
+        if: steps.check_secrets.outputs.is_configured == 'true'
         id: repo
         run: echo "NAME=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
 
       - name: Copy Compose & Caddy Files to VPS
+        if: steps.check_secrets.outputs.is_configured == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -121,6 +135,7 @@ jobs:
           target: "~/cinemaflow"
 
       - name: Execute Remote Deployment via SSH
+        if: steps.check_secrets.outputs.is_configured == 'true'
         uses: appleboy/ssh-action@v1.2.0
         env:
           GHCR_USER: ${{ github.actor }}
