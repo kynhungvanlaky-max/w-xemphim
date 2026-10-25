@@ -92,6 +92,9 @@ public sealed class StreamSessionService : IStreamSessionService
 
                     await db.SaveChangesAsync(cancellationToken);
 
+                    var activeCount = await db.ActiveStreams
+                        .CountAsync(s => s.UserId == userId && s.IsActive && s.ExpiresAtUtc > now, cancellationToken);
+
                     return new StreamLeaseResultDto
                     {
                         Success = true,
@@ -100,7 +103,7 @@ public sealed class StreamSessionService : IStreamSessionService
                         ExpiresAtUtc = existingSession.ExpiresAtUtc,
                         HeartbeatIntervalSeconds = 30,
                         LeaseTtlSeconds = 60,
-                        ActiveStreamsCount = 1,
+                        ActiveStreamsCount = Math.Max(1, activeCount),
                         MaxAllowedStreams = maxAllowed,
                         EvictedPreviousSession = false
                     };
@@ -199,6 +202,9 @@ public sealed class StreamSessionService : IStreamSessionService
 
             await db.SaveChangesAsync(cancellationToken);
 
+            var activeStreamsCount = await db.ActiveStreams
+                .CountAsync(s => s.UserId == userId && s.IsActive && s.ExpiresAtUtc > now, cancellationToken);
+
             return new StreamLeaseResultDto
             {
                 Success = true,
@@ -207,7 +213,7 @@ public sealed class StreamSessionService : IStreamSessionService
                 ExpiresAtUtc = lease.ExpiresAtUtc,
                 HeartbeatIntervalSeconds = 30,
                 LeaseTtlSeconds = 60,
-                ActiveStreamsCount = 1,
+                ActiveStreamsCount = Math.Max(1, activeStreamsCount),
                 MaxAllowedStreams = maxAllowed,
                 EvictedPreviousSession = evictList.Count > 0,
                 EvictedSessionId = evictList.FirstOrDefault()?.SessionId
@@ -419,6 +425,39 @@ public sealed class StreamSessionService : IStreamSessionService
         return await GetActiveLeasesAsync(userId, cancellationToken);
     }
 
+    public async Task<ActiveStreamDto?> GetActiveLeaseAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId)) return null;
+
+        await using var db = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+
+        var stream = await db.ActiveStreams
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.SessionId == sessionId, cancellationToken);
+
+        if (stream is null || !stream.IsActive || stream.ExpiresAtUtc <= now)
+        {
+            return null;
+        }
+
+        return new ActiveStreamDto
+        {
+            Id = stream.Id,
+            UserId = stream.UserId,
+            MovieId = stream.MovieId,
+            EpisodeId = stream.EpisodeId,
+            SessionId = stream.SessionId,
+            ConnectionId = stream.ConnectionId,
+            DeviceInfo = stream.DeviceInfo,
+            IpAddress = stream.IpAddress,
+            StartedAtUtc = stream.StartedAtUtc,
+            LastHeartbeatUtc = stream.LastHeartbeatUtc,
+            ExpiresAtUtc = stream.ExpiresAtUtc,
+            IsActive = stream.IsActive
+        };
+    }
+
     public async Task<int> GetMaxConcurrentStreamsAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         await using var db = await _contextFactory.CreateDbContextAsync(cancellationToken);
@@ -426,14 +465,45 @@ public sealed class StreamSessionService : IStreamSessionService
         return await GetMaxConcurrentStreamsInternalAsync(db, userId, now, cancellationToken);
     }
 
-    private Task<int> GetMaxConcurrentStreamsInternalAsync(
+    private async Task<int> GetMaxConcurrentStreamsInternalAsync(
         AppDbContext db,
         Guid userId,
         DateTime now,
         CancellationToken cancellationToken)
     {
-        // Default max concurrent streams is 1
-        var defaultMax = _configuration?.GetValue<int>("StreamSecurity:DefaultMaxStreams", 1) ?? 1;
-        return Task.FromResult(defaultMax);
+        // Mặc định an toàn cho mọi cấu hình thiếu khóa: 1 phiên.
+        var defaultMax = Math.Max(1, _configuration?.GetValue<int?>("StreamSecurity:DefaultMaxStreams") ?? 1);
+        if (_configuration is null)
+        {
+            return defaultMax;
+        }
+
+        var isAdmin = await db.UserSecurity
+            .AsNoTracking()
+            .AnyAsync(item => item.UserId == userId && item.IsAdmin, cancellationToken);
+
+        if (isAdmin)
+        {
+            return ReadTierLimit("Admin") ?? defaultMax;
+        }
+
+        var membership = await db.Users
+            .AsNoTracking()
+            .Where(user => user.Id == userId)
+            .Select(user => (MembershipTier?)user.Membership)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (membership is null)
+        {
+            return defaultMax;
+        }
+
+        return ReadTierLimit(membership.Value.ToString()) ?? defaultMax;
+    }
+
+    private int? ReadTierLimit(string tierName)
+    {
+        var value = _configuration?.GetValue<int?>($"StreamSecurity:MaxConcurrentStreams:{tierName}");
+        return value is > 0 ? value : null;
     }
 }

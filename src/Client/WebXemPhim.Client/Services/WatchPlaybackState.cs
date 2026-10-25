@@ -32,7 +32,7 @@ public sealed class WatchPlaybackState
     public bool CanPlay(StreamSourceDto? source)
     {
         if (source is null) return false;
-        if (IsVipStream(source) && !IsVipUser) return false;
+        if (IsVipStream(source)) return IsVipUser;
         return IsPlayable(source.StreamUrl);
     }
 

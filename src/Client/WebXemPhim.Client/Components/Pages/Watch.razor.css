@@ -2,7 +2,22 @@
 .wv-breadcrumb { display:flex; gap:10px; align-items:center; margin-bottom:18px; font-size:12px; color:var(--wv-muted); min-width:0; }
 .wv-breadcrumb a { color:inherit; text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .wv-breadcrumb span { white-space:nowrap; }
-.wv-workspace { display:grid; grid-template-columns:minmax(0,2.8fr) minmax(290px,1fr); gap:20px; align-items:start; }
+/* Trang xem chia làm hai nửa theo chiều dọc, tỉ lệ 3:1:
+   - cột trái (3 phần): khung phát ở trên, thông tin phim + thảo luận ở dưới
+   - cột phải (1 phần): danh sách tập + phim tương tự, dánh theo khi cuộn
+   Thứ tự DOM giữ nguyên (khung phát → danh sách tập → nội dung) nhưng vị trí hiển thị
+   do grid quyết định. */
+.wv-workspace {
+    display:grid;
+    grid-template-columns:minmax(0,3fr) minmax(280px,1fr);
+    grid-template-areas:"player rail" "content rail";
+    grid-template-rows:auto 1fr;
+    gap:20px;
+    align-items:start;
+}
+.wv-main { grid-area:player; }
+.wv-content { grid-area:content; min-width:0; }
+.wv-rail { grid-area:rail; }
 .wv-main { min-width:0; display:flex; flex-direction:column; }
 .wv-stage { min-width:0; position:relative; }
 .wv-stage.focused { z-index:42; }
@@ -178,7 +193,12 @@
 .wv-autonext input:checked + .wv-switch { background:var(--wv-accent); }
 .wv-autonext input:checked + .wv-switch::before { transform:translateX(18px); }
 .wv-autonext input:focus-visible + .wv-switch { outline:2px solid #f0808b; outline-offset:4px; }
-.wv-rail { background:#15171c; border:1px solid var(--wv-line); border-radius:12px; padding:16px 14px; min-width:0; }
+/* Cột phải chỉ là một cột chứa nhiều khối; mỗi khối (danh sách tập, phim tương tự) là một
+   thẻ riêng biệt, tách khỏi nhau bằng khoảng cách chứ không dồn chung một khung.
+   Cột không cuộn riêng: nội dung trôi cùng trang, chỉ khối danh sách tập có thanh cuộn riêng
+   bên trong vì danh sách tập có thể dài hàng chục mục. */
+.wv-rail { min-width:0; display:flex; flex-direction:column; gap:16px; }
+.wv-rail-block { background:#15171c; border:1px solid var(--wv-line); border-radius:12px; padding:16px 14px; min-width:0; }
 .wv-rail header { display:flex; align-items:center; gap:10px; justify-content:space-between; padding:0 4px; }
 .wv-rail-header-title { display:flex; align-items:center; gap:8px; min-width:0; }
 .wv-rail h2 { margin:0; font-size:17px; line-height:1.3; font-weight:700; white-space:nowrap; }
@@ -299,9 +319,9 @@
     .wv-episode { grid-template-columns:94px minmax(0,1fr); gap:10px; } 
 }
 @media(max-width:900px) { 
-    .wv-workspace { grid-template-columns:1fr; gap:28px; } 
-    .wv-heading { flex-direction:row; align-items:center; } 
-    .wv-rail { background:transparent; border:0; border-top:1px solid var(--wv-line); border-radius:0; padding:24px 0 0; } 
+    .wv-workspace { grid-template-columns:1fr; grid-template-areas:"player" "content" "rail"; grid-template-rows:auto auto auto; gap:28px; }
+    .wv-heading { flex-direction:row; align-items:center; }
+    .wv-rail { background:transparent; border:0; border-top:1px solid var(--wv-line); border-radius:0; padding:24px 0 0; }
     .wv-episodes, .wv-grid-episodes { max-height:380px; } 
     .wv-episode { grid-template-columns:140px minmax(0,1fr); } 
     .wv-rail h2 { font-size:22px; } 
@@ -495,3 +515,5 @@
     color: #64748b;
     border-color: #e2e8f0;
 }
+
+/* ============================================================

@@ -2,11 +2,11 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Npgsql;
 using WebXemPhim.Server.Controllers;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Server.Hubs;
@@ -20,8 +20,17 @@ using Xunit;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public sealed class ChallengerM3SecurityLifecycleTests
+public sealed class ChallengerM3SecurityLifecycleTests : IClassFixture<PostgresTestDatabaseFixture>
 {
+    private readonly PostgresTestDatabaseFixture _fixture;
+
+    public ChallengerM3SecurityLifecycleTests(PostgresTestDatabaseFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    private PostgresTestDatabase Database => _fixture.Database;
+
     private sealed class TestTimeProvider(DateTimeOffset initialUtcNow) : TimeProvider
     {
         private DateTimeOffset _utcNow = initialUtcNow;
@@ -29,12 +38,53 @@ public sealed class ChallengerM3SecurityLifecycleTests
         public void Advance(TimeSpan duration) => _utcNow = _utcNow.Add(duration);
     }
 
-    private static (TestDbContextFactory factory, DbContextOptions<AppDbContext> options) CreateContextFactory()
+    /// <summary>
+    /// Mở connection PostgreSQL thật, dọn sạch schema và trả về context + factory dùng chung
+    /// connection đó (thay thế hoàn toàn InMemory/SQLite in-memory).
+    /// </summary>
+    private async Task<(NpgsqlConnection Connection, AppDbContext Context, IDbContextFactory<AppDbContext> Factory)> CreatePostgresContextAsync()
     {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase($"challenger-m3-lifecycle-{Guid.NewGuid():N}")
-            .Options;
-        return (new TestDbContextFactory(options), options);
+        return await Database.CreateOpenContextAsync();
+    }
+
+    /// <summary>
+    /// PostgreSQL thật sự kiểm tra foreign key (active_streams -> movies -> episodes), nên các
+    /// fixture quan hệ phải có sẵn phim/tập được tham chiếu trước khi cấp lease.
+    /// </summary>
+    private static async Task SeedLeaseCatalogAsync(AppDbContext context, params int[] movieIds)
+    {
+        foreach (var movieId in movieIds)
+        {
+            if (await context.Movies.AnyAsync(movie => movie.Id == movieId)) continue;
+
+            context.Movies.Add(new MovieEntity
+            {
+                Id = movieId,
+                Title = $"Phim lease {movieId}",
+                Slug = $"phim-lease-{movieId}",
+                PosterUrl = "https://example.com/p.jpg",
+                BackdropUrl = "https://example.com/b.jpg",
+                Overview = "Phim dùng làm tham chiếu cho lease phát trực tiếp",
+                Type = MovieType.Movie
+            });
+        }
+
+        await context.SaveChangesAsync();
+
+        if (!await context.Episodes.AnyAsync(episode => episode.Id == 1))
+        {
+            context.Episodes.Add(new EpisodeEntity
+            {
+                Id = 1,
+                MovieId = movieIds[0],
+                EpisodeNumber = 1,
+                Title = "Tập 1",
+                DurationMinutes = 45,
+                ThumbnailUrl = "https://example.com/t.jpg",
+                Overview = "Tập đầu tiên dùng cho lease"
+            });
+            await context.SaveChangesAsync();
+        }
     }
 
     private static async Task<UserEntity> SeedUserAsync(AppDbContext context, string email, MembershipTier tier = MembershipTier.Vip)
@@ -94,7 +144,11 @@ public sealed class ChallengerM3SecurityLifecycleTests
     [Fact]
     public async Task Challenge2_EvictedLease_CannotBeRevived_ByHeartbeat()
     {
-        var (factory, options) = CreateContextFactory();
+        var postgres = await CreatePostgresContextAsync();
+        await using var connection = postgres.Connection;
+        await using var context = postgres.Context;
+        var factory = postgres.Factory;
+
         var initialTime = DateTimeOffset.UtcNow;
         var timeProvider = new TestTimeProvider(initialTime);
 
@@ -105,10 +159,11 @@ public sealed class ChallengerM3SecurityLifecycleTests
         hubClientsMock.Setup(c => c.Client(It.IsAny<string>())).Returns(Mock.Of<ISingleClientProxy>());
 
         Guid userId;
-        await using (var db = new AppDbContext(options))
+        await using (var db = await factory.CreateDbContextAsync())
         {
             var user = await SeedUserAsync(db, "evict-revive@cinema.test");
             userId = user.Id;
+            await SeedLeaseCatalogAsync(db, 10, 20);
         }
 
         var service = new StreamSessionService(factory, hubContextMock.Object, timeProvider);
@@ -126,7 +181,7 @@ public sealed class ChallengerM3SecurityLifecycleTests
         Assert.Equal("sess-device-1", lease2.EvictedSessionId);
 
         // Verify Device 1 is inactive in DB
-        await using (var db = new AppDbContext(options))
+        await using (var db = await factory.CreateDbContextAsync())
         {
             var entity1 = await db.ActiveStreams.SingleAsync(s => s.SessionId == "sess-device-1");
             Assert.False(entity1.IsActive);
@@ -141,7 +196,7 @@ public sealed class ChallengerM3SecurityLifecycleTests
         Assert.False(hb2);
 
         // Verify Device 1 remains inactive and was NOT revived
-        await using (var db = new AppDbContext(options))
+        await using (var db = await factory.CreateDbContextAsync())
         {
             var entity1 = await db.ActiveStreams.SingleAsync(s => s.SessionId == "sess-device-1");
             Assert.False(entity1.IsActive);
@@ -153,16 +208,21 @@ public sealed class ChallengerM3SecurityLifecycleTests
     [Fact]
     public async Task Challenge2_ExpiredLease_CannotBeRevived_ByHeartbeat()
     {
-        var (factory, options) = CreateContextFactory();
+        var postgres = await CreatePostgresContextAsync();
+        await using var connection = postgres.Connection;
+        await using var context = postgres.Context;
+        var factory = postgres.Factory;
+
         var initialTime = DateTimeOffset.UtcNow;
         var timeProvider = new TestTimeProvider(initialTime);
 
         var hubContextMock = new Mock<IHubContext<CinemaHub>>();
         Guid userId;
-        await using (var db = new AppDbContext(options))
+        await using (var db = await factory.CreateDbContextAsync())
         {
             var user = await SeedUserAsync(db, "expired-revive@cinema.test");
             userId = user.Id;
+            await SeedLeaseCatalogAsync(db, 10);
         }
 
         var service = new StreamSessionService(factory, hubContextMock.Object, timeProvider);
@@ -180,7 +240,7 @@ public sealed class ChallengerM3SecurityLifecycleTests
         Assert.False(revivedRecord);
 
         // Verify lease is marked inactive in DB
-        await using (var db = new AppDbContext(options))
+        await using (var db = await factory.CreateDbContextAsync())
         {
             var entity = await db.ActiveStreams.SingleAsync(s => s.SessionId == "sess-expired-hb");
             Assert.False(entity.IsActive);
@@ -190,15 +250,20 @@ public sealed class ChallengerM3SecurityLifecycleTests
     [Fact]
     public async Task Challenge3_CrossUser_Heartbeat_And_Release_Tampering_Rejected()
     {
-        var (factory, options) = CreateContextFactory();
+        var postgres = await CreatePostgresContextAsync();
+        await using var connection = postgres.Connection;
+        await using var context = postgres.Context;
+        var factory = postgres.Factory;
+
         var timeProvider = new TestTimeProvider(DateTimeOffset.UtcNow);
         var hubContextMock = new Mock<IHubContext<CinemaHub>>();
 
         Guid userAlice, userBob;
-        await using (var db = new AppDbContext(options))
+        await using (var db = await factory.CreateDbContextAsync())
         {
             userAlice = (await SeedUserAsync(db, "alice@cinema.test")).Id;
             userBob = (await SeedUserAsync(db, "bob@cinema.test")).Id;
+            await SeedLeaseCatalogAsync(db, 1);
         }
 
         var service = new StreamSessionService(factory, hubContextMock.Object, timeProvider);
@@ -214,7 +279,7 @@ public sealed class ChallengerM3SecurityLifecycleTests
         Assert.False(bobRelease);
 
         // Alice's session must still be active and intact
-        await using (var db = new AppDbContext(options))
+        await using (var db = await factory.CreateDbContextAsync())
         {
             var entity = await db.ActiveStreams.SingleAsync(s => s.SessionId == "sess-alice");
             Assert.True(entity.IsActive);
@@ -225,16 +290,21 @@ public sealed class ChallengerM3SecurityLifecycleTests
     [Fact]
     public async Task Challenge4_StaleLeases_PrunedCleanly_And_SlotsFreed()
     {
-        var (factory, options) = CreateContextFactory();
+        var postgres = await CreatePostgresContextAsync();
+        await using var connection = postgres.Connection;
+        await using var context = postgres.Context;
+        var factory = postgres.Factory;
+
         var initialTime = DateTimeOffset.UtcNow;
         var timeProvider = new TestTimeProvider(initialTime);
         var hubContextMock = new Mock<IHubContext<CinemaHub>>();
 
         Guid user1, user2;
-        await using (var db = new AppDbContext(options))
+        await using (var db = await factory.CreateDbContextAsync())
         {
             user1 = (await SeedUserAsync(db, "prune1@cinema.test")).Id;
             user2 = (await SeedUserAsync(db, "prune2@cinema.test")).Id;
+            await SeedLeaseCatalogAsync(db, 1, 2);
         }
 
         var service = new StreamSessionService(factory, hubContextMock.Object, timeProvider);
@@ -260,30 +330,19 @@ public sealed class ChallengerM3SecurityLifecycleTests
     }
 
     [Fact]
-    public async Task Challenge5_ForeignKey_CascadeDelete_OnUserDeletion_SqliteRelational()
+    public async Task Challenge5_ForeignKey_CascadeDelete_OnUserDeletion_PostgreSqlRelational()
     {
-        // Use real SQLite in-memory with foreign keys enabled
-        using var connection = new SqliteConnection("DataSource=:memory:");
-        await connection.OpenAsync();
-
-        // Enable foreign key enforcement in SQLite
-        using (var cmd = connection.CreateCommand())
-        {
-            cmd.CommandText = "PRAGMA foreign_keys = ON;";
-            await cmd.ExecuteNonQueryAsync();
-        }
-
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connection)
-            .Options;
+        // Use real PostgreSQL: foreign keys are enforced by the engine by default
+        var postgres = await CreatePostgresContextAsync();
+        await using var connection = postgres.Connection;
+        await using var context = postgres.Context;
+        var factory = postgres.Factory;
 
         var userId = Guid.NewGuid();
         var movieId = 100;
 
-        await using (var db = new AppDbContext(options))
+        await using (var db = await factory.CreateDbContextAsync())
         {
-            await db.Database.EnsureCreatedAsync();
-
             var movie = new MovieEntity
             {
                 Id = movieId,
@@ -323,14 +382,14 @@ public sealed class ChallengerM3SecurityLifecycleTests
         }
 
         // Verify active stream exists
-        await using (var db = new AppDbContext(options))
+        await using (var db = await factory.CreateDbContextAsync())
         {
             var count = await db.ActiveStreams.CountAsync(s => s.UserId == userId);
             Assert.Equal(1, count);
         }
 
         // Delete user directly via SQL or EF Core
-        await using (var db = new AppDbContext(options))
+        await using (var db = await factory.CreateDbContextAsync())
         {
             var user = await db.Users.FindAsync(userId);
             Assert.NotNull(user);
@@ -338,8 +397,8 @@ public sealed class ChallengerM3SecurityLifecycleTests
             await db.SaveChangesAsync();
         }
 
-        // Verify ActiveStream was CASCADE DELETED by SQLite relational engine
-        await using (var db = new AppDbContext(options))
+        // Verify ActiveStream was CASCADE DELETED by the PostgreSQL relational engine
+        await using (var db = await factory.CreateDbContextAsync())
         {
             var remainingStreams = await db.ActiveStreams.Where(s => s.UserId == userId).ToListAsync();
             Assert.Empty(remainingStreams);
@@ -349,8 +408,12 @@ public sealed class ChallengerM3SecurityLifecycleTests
     [Fact]
     public async Task Challenge6_UserLogout_MustRevokeAllActiveStreamLeases()
     {
-        // Setup in-memory DB and test environment
-        var (factory, options) = CreateContextFactory();
+        // Setup PostgreSQL database and test environment
+        var postgres = await CreatePostgresContextAsync();
+        await using var connection = postgres.Connection;
+        await using var context = postgres.Context;
+        var factory = postgres.Factory;
+
         var timeProvider = new TestTimeProvider(DateTimeOffset.UtcNow);
 
         var hubContextMock = new Mock<IHubContext<CinemaHub>>();
@@ -361,7 +424,7 @@ public sealed class ChallengerM3SecurityLifecycleTests
 
         Guid userId;
         string bearerToken = "valid-test-access-token";
-        await using (var db = new AppDbContext(options))
+        await using (var db = await factory.CreateDbContextAsync())
         {
             var user = await SeedUserAsync(db, "logout-stream@cinema.test");
             userId = user.Id;
@@ -374,6 +437,7 @@ public sealed class ChallengerM3SecurityLifecycleTests
                 ExpiresAtUtc = DateTime.UtcNow.AddHours(2)
             });
             await db.SaveChangesAsync();
+            await SeedLeaseCatalogAsync(db, 1);
         }
 
         var streamService = new StreamSessionService(factory, hubContextMock.Object, timeProvider);

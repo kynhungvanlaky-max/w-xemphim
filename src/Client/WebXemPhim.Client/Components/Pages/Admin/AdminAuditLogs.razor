@@ -10,7 +10,7 @@
 @inject IJSRuntime JS
 @implements IDisposable
 
-<PageTitle>Nhật ký hệ thống (Audit Trail) - CinemaFlow Cockpit</PageTitle>
+<CinemaPageTitle>Nhật ký hệ thống (Audit Trail) - CinemaFlow Cockpit</CinemaPageTitle>
 
 <!-- Topbar -->
 <header class="admin-topbar">
@@ -36,17 +36,21 @@
     <div class="topbar-actions">
         <div class="topbar-search-pill">
             <CinemaIcon Name="CinemaIconName.Search" Size="16" Class="search-icon" />
-            <input type="text" placeholder="Tìm theo quản trị viên, hành động, ID..." @bind="searchQuery" @bind:event="oninput" @onkeydown="HandleSearchKeyDown" />
+            <input type="text"
+                   placeholder="Tìm theo quản trị viên, hành động, ID..."
+                   value="@searchQuery"
+                   @oninput="OnSearchInput"
+                   @onkeydown="HandleSearchKeyDown" />
             @if (!string.IsNullOrWhiteSpace(searchQuery))
             {
-                <button type="button" class="search-clear-btn" @onclick="ClearSearch" title="Xóa tìm kiếm">×</button>
+                <button type="button" class="search-clear-btn" @onclick="ClearSearch" title="Xóa tìm kiếm" aria-label="Xóa tìm kiếm">&times;</button>
             }
         </div>
 
         <!-- Auto Refresh Sentinel Selector -->
         <div class="audit-auto-refresh-selector">
             <CinemaIcon Name="CinemaIconName.Clock" Size="14" />
-            <span class="refresh-selector-label">Tự làm mới:</span>
+            <span>Tự làm mới:</span>
             <select class="audit-refresh-select" value="@autoRefreshIntervalSeconds" @onchange="OnAutoRefreshChanged">
                 <option value="0">Tắt</option>
                 <option value="5">Mỗi 5 giây</option>
@@ -60,12 +64,12 @@
             <span>Làm mới</span>
         </button>
 
-        <button type="button" class="action-btn secondary" @onclick="ExportLogsJsonAsync" title="Xuất dữ liệu JSON">
+        <button type="button" class="action-btn secondary" @onclick="ExportLogsJsonAsync" title="Xuất dữ liệu JSON của trang đang xem">
             <CinemaIcon Name="CinemaIconName.Bookmark" Size="16" />
             <span>Xuất JSON</span>
         </button>
 
-        <button type="button" class="action-btn secondary" @onclick="ExportLogsCsvAsync" title="Xuất file CSV">
+        <button type="button" class="action-btn secondary" @onclick="ExportLogsCsvAsync" title="Xuất file CSV của trang đang xem">
             <CinemaIcon Name="CinemaIconName.Bookmark" Size="16" />
             <span>Xuất CSV</span>
         </button>
@@ -89,44 +93,49 @@
 <!-- Streamlined Cockpit Telemetry & Mini-Distribution Ribbon (Compact Executive Grade) -->
 <section class="audit-streamlined-bar">
     <div class="audit-telemetry-chips">
-        <div class="audit-metric-chip @(string.IsNullOrEmpty(selectedRiskLevel) ? "active" : "")" @onclick='() => FilterByRiskLevel(null)' title="Xem toàn bộ sự kiện">
+        <div class="audit-metric-chip @(string.IsNullOrEmpty(selectedRiskLevel) ? "active" : "")" @onclick='() => FilterByRiskLevel(null)' title="Tổng số bản ghi nhật ký khớp từ khóa và loại đối tượng đang lọc">
             <CinemaIcon Name="CinemaIconName.Shield" Size="13" />
-            <span>Tổng:</span>
-            <strong class="font-mono-num">@logs.Count</strong>
+            <span>Tổng khớp bộ lọc:</span>
+            <strong class="font-mono-num">@totalItems</strong>
         </div>
-        <div class="audit-metric-chip create @(selectedRiskLevel == "create" ? "active" : "")" @onclick='() => FilterByRiskLevel("create")' title="Lọc các thao tác Tạo mới (+ADD)">
+        <div class="audit-metric-chip static" title="Số bản ghi đang tải ở trang hiện tại">
+            <CinemaIcon Name="CinemaIconName.List" Size="13" />
+            <span>Đang tải:</span>
+            <strong class="font-mono-num">@pageItems.Count</strong>
+        </div>
+        <div class="audit-metric-chip create @(selectedRiskLevel == "create" ? "active" : "")" @onclick='() => FilterByRiskLevel("create")' title="Lọc các thao tác Tạo mới (+ADD) trong @pageItems.Count bản ghi đang tải">
             <CinemaIcon Name="CinemaIconName.Plus" Size="13" />
             <span>Tạo mới:</span>
-            <strong class="font-mono-num">@logs.Count(l => IsCreateAction(l.Action))</strong>
+            <strong class="font-mono-num">@CountActions(AuditActionCategory.Create)</strong>
         </div>
-        <div class="audit-metric-chip update @(selectedRiskLevel == "update" ? "active" : "")" @onclick='() => FilterByRiskLevel("update")' title="Lọc các thao tác Cập nhật / Sửa">
+        <div class="audit-metric-chip update @(selectedRiskLevel == "update" ? "active" : "")" @onclick='() => FilterByRiskLevel("update")' title="Lọc các thao tác Cập nhật / Sửa trong @pageItems.Count bản ghi đang tải">
             <CinemaIcon Name="CinemaIconName.Refresh" Size="13" />
             <span>Sửa:</span>
-            <strong class="font-mono-num">@logs.Count(l => IsUpdateAction(l.Action))</strong>
+            <strong class="font-mono-num">@CountActions(AuditActionCategory.Update)</strong>
         </div>
-        <div class="audit-metric-chip danger @(selectedRiskLevel == "danger" ? "active" : "")" @onclick='() => FilterByRiskLevel("danger")' title="Lọc các thao tác Rủi ro cao (Xóa / Khóa)">
+        <div class="audit-metric-chip danger @(selectedRiskLevel == "danger" ? "active" : "")" @onclick='() => FilterByRiskLevel("danger")' title="Lọc các thao tác Rủi ro cao (Xóa / Khóa) trong @pageItems.Count bản ghi đang tải">
             <CinemaIcon Name="CinemaIconName.Trash" Size="13" />
             <span>Rủi ro:</span>
-            <strong class="font-mono-num">@logs.Count(l => IsDangerAction(l.Action))</strong>
+            <strong class="font-mono-num">@CountActions(AuditActionCategory.Danger)</strong>
         </div>
-        <div class="audit-metric-chip batch @(selectedRiskLevel == "batch" ? "active" : "")" @onclick='() => FilterByRiskLevel("bulk")' title="Lọc các thao tác Hàng loạt & Đo kiểm">
+        <div class="audit-metric-chip batch @(selectedRiskLevel == "other" ? "active" : "")" @onclick='() => FilterByRiskLevel("other")' title="Lọc các thao tác còn lại (duyệt, đo kiểm, hàng loạt...) trong @pageItems.Count bản ghi đang tải">
             <CinemaIcon Name="CinemaIconName.Play" Size="13" />
             <span>Khác:</span>
-            <strong class="font-mono-num">@logs.Count(l => IsBulkOrProbeAction(l.Action))</strong>
+            <strong class="font-mono-num">@CountActions(AuditActionCategory.Other)</strong>
         </div>
     </div>
 
-    @if (logs.Any())
+    @if (pageItems.Any())
     {
-        <div class="audit-mini-distribution" title="Phân bổ: Tạo mới @(GetActionPercent(IsCreateAction))% | Sửa @(GetActionPercent(IsUpdateAction))% | Xóa @(GetActionPercent(IsDangerAction))% | Khác @(GetActionPercent(IsBulkOrProbeAction))%">
+        <div class="audit-mini-distribution" title="Phân bổ trong @pageItems.Count bản ghi đang tải: Tạo mới @GetActionPercent(AuditActionCategory.Create)% | Sửa @GetActionPercent(AuditActionCategory.Update)% | Rủi ro @GetActionPercent(AuditActionCategory.Danger)% | Khác @GetActionPercent(AuditActionCategory.Other)%">
             <div class="audit-mini-track">
-                <div class="track-seg create" style="width: @(GetActionPercent(IsCreateAction))%;"></div>
-                <div class="track-seg update" style="width: @(GetActionPercent(IsUpdateAction))%;"></div>
-                <div class="track-seg delete" style="width: @(GetActionPercent(IsDangerAction))%;"></div>
-                <div class="track-seg bulk" style="width: @(GetActionPercent(IsBulkOrProbeAction))%;"></div>
+                <div class="track-seg create" style="width: @(GetActionPercent(AuditActionCategory.Create))%;"></div>
+                <div class="track-seg update" style="width: @(GetActionPercent(AuditActionCategory.Update))%;"></div>
+                <div class="track-seg delete" style="width: @(GetActionPercent(AuditActionCategory.Danger))%;"></div>
+                <div class="track-seg bulk" style="width: @(GetActionPercent(AuditActionCategory.Other))%;"></div>
             </div>
             <span class="audit-mini-legend font-mono-num">
-                +@(GetActionPercent(IsCreateAction))% / ~@(GetActionPercent(IsUpdateAction))% / -@(GetActionPercent(IsDangerAction))%
+                +@(GetActionPercent(AuditActionCategory.Create))% / ~@(GetActionPercent(AuditActionCategory.Update))% / -@(GetActionPercent(AuditActionCategory.Danger))%
             </span>
         </div>
     }
@@ -152,59 +161,126 @@
                 </div>
             </div>
 
-            <div class="filter-count-chip">
-                <span>Hiển thị: <strong>@filteredLogs.Count</strong> / @logs.Count bản ghi</span>
+            <div class="filter-suite-tools">
+                <div class="filter-count-chip">
+                    <span>Trang @currentPage: hiển thị <strong>@visibleLogs.Count</strong> / @pageItems.Count bản ghi đang tải &middot; tổng hệ thống <strong>@totalItems</strong></span>
+                </div>
+
+                <div class="filter-settings-anchor">
+                    <button type="button"
+                            class="btn-filter-util @(showFilterSettings ? "is-active" : "")"
+                            aria-haspopup="true"
+                            aria-expanded="@(showFilterSettings ? "true" : "false")"
+                            title="Chọn bộ lọc muốn hiển thị"
+                            @onclick="ToggleFilterSettings">
+                        <CinemaIcon Name="CinemaIconName.Settings" Size="13" />
+                        <span>Bộ lọc</span>
+                        @if (hiddenFilters.Count > 0 && hiddenFilters.Count < FilterOptions.Length)
+                        {
+                            <span class="filter-util-badge" title="@($"{hiddenFilters.Count} bộ lọc đang ẩn")">@hiddenFilters.Count</span>
+                        }
+                    </button>
+
+                    @if (showFilterSettings)
+                    {
+                        <div class="filter-settings-backdrop" @onclick="CloseFilterSettings"></div>
+                        <div class="filter-settings-panel" role="group" aria-label="Tùy chỉnh bộ lọc hiển thị" @onkeydown="OnFilterSettingsKeyDown">
+                            <div class="filter-settings-head">
+                                <strong>Hiển thị bộ lọc</strong>
+                                <button type="button" class="btn-filter-util-reset" disabled="@(hiddenFilters.Count == 0)" @onclick="ShowAllFiltersAsync">
+                                    Hiện tất cả
+                                </button>
+                            </div>
+                            <p class="filter-settings-hint">Bỏ tick để ẩn bộ lọc không dùng. Giá trị đang chọn của bộ lọc bị ẩn sẽ được xóa để danh sách không bị lọc ngầm.</p>
+                            <div class="filter-settings-list">
+                                @foreach (var option in FilterOptions)
+                                {
+                                    <label class="filter-settings-item">
+                                        <input type="checkbox"
+                                               checked="@(!hiddenFilters.Contains(option.Key))"
+                                               @onclick="() => SetFilterVisibility(option.Key, hiddenFilters.Contains(option.Key))" />
+                                        <span>@option.Label</span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <button type="button"
+                        class="btn-filter-util"
+                        title="@(filtersCollapsed ? "Mở rộng khối bộ lọc" : "Thu gọn khối bộ lọc")"
+                        aria-expanded="@(filtersCollapsed ? "false" : "true")"
+                        @onclick="ToggleFilterCollapse">
+                    <CinemaIcon Name="@(filtersCollapsed ? CinemaIconName.ChevronRight : CinemaIconName.ChevronDown)" Size="13" />
+                    <span>@(filtersCollapsed ? "Mở rộng" : "Thu gọn")</span>
+                </button>
             </div>
         </div>
 
-        <!-- Filter Controls Grid -->
-        <div class="filter-controls-grid">
-            <div class="filter-control-item">
-                <label class="filter-label">Thực thể quản trị</label>
-                <select class="admin-select-picker" value="@(selectedEntityType ?? "")" @onchange="e => FilterByEntityType(string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value.ToString())">
-                    <option value="">Tất cả thực thể (@logs.Count)</option>
-                    <option value="Movie">🎬 Phim (@logs.Count(l => l.EntityType.Equals("Movie", StringComparison.OrdinalIgnoreCase)))</option>
-                    <option value="Episode">📺 Tập phim (@logs.Count(l => l.EntityType.Equals("Episode", StringComparison.OrdinalIgnoreCase)))</option>
-                    <option value="StreamSource">⚡ Nguồn Stream (@logs.Count(l => l.EntityType.Equals("StreamSource", StringComparison.OrdinalIgnoreCase)))</option>
-                    <option value="User">👤 Người dùng (@logs.Count(l => l.EntityType.Equals("User", StringComparison.OrdinalIgnoreCase)))</option>
-                    <option value="Payment">💳 Giao dịch VIP (@logs.Count(l => l.EntityType.Equals("Payment", StringComparison.OrdinalIgnoreCase)))</option>
-                    <option value="Review">⭐ Đánh giá (@logs.Count(l => l.EntityType.Equals("Review", StringComparison.OrdinalIgnoreCase)))</option>
-                </select>
-            </div>
+        <!-- Filter Controls Grid (từng ô có thể bật/tắt) -->
+        @if (!filtersCollapsed)
+        {
+            <div class="filter-controls-grid">
+                @if (hiddenFilters.Count == FilterOptions.Length)
+                {
+                    <p class="filter-all-hidden-note">
+                        Chưa bật ô lọc nào. Mở <strong>Bộ lọc</strong> và tick những ô bạn cần dùng.
+                    </p>
+                }
 
-            <div class="filter-control-item">
-                <label class="filter-label">Mức độ rủi ro</label>
-                <select class="admin-select-picker" value="@(selectedRiskLevel ?? "")" @onchange="e => FilterByRiskLevel(string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value.ToString())">
-                    <option value="">Tất cả mức độ</option>
-                    <option value="danger">⚠ Rủi ro cao (Xóa / Khóa)</option>
-                    <option value="create">+ Tạo mới &amp; Thêm</option>
-                    <option value="update">✎ Cập nhật &amp; Sửa</option>
-                    <option value="bulk">⚡ Hàng loạt &amp; Đo kiểm</option>
-                </select>
-            </div>
+                @if (!hiddenFilters.Contains("entity"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Thực thể quản trị</label>
+                        <select class="admin-select-picker" value="@(selectedEntityType ?? "")" @onchange="e => FilterByEntityType(string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value.ToString())">
+                            <option value="">Tất cả thực thể</option>
+                            <option value="Movie">🎬 Phim</option>
+                            <option value="Episode">📺 Tập phim</option>
+                            <option value="StreamSource">⚡ Nguồn Stream</option>
+                            <option value="User">👤 Người dùng</option>
+                            <option value="Payment">💳 Giao dịch VIP</option>
+                            <option value="Review">⭐ Đánh giá</option>
+                        </select>
+                    </div>
+                }
 
-            <div class="filter-control-item">
-                <label class="filter-label">Khung thời gian</label>
-                <select class="admin-select-picker" value="@timeHorizonFilter" @onchange="OnTimeHorizonChanged">
-                    <option value="all">Toàn bộ thời gian</option>
-                    <option value="24h">Trong 24 giờ qua</option>
-                    <option value="7d">Trong 7 ngày qua</option>
-                    <option value="30d">Trong 30 ngày qua</option>
-                </select>
-            </div>
+                @if (!hiddenFilters.Contains("risk"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Mức độ rủi ro</label>
+                        <select class="admin-select-picker" value="@(selectedRiskLevel ?? "")" @onchange="e => FilterByRiskLevel(string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value.ToString())">
+                            <option value="">Tất cả mức độ</option>
+                            <option value="danger">⚠ Rủi ro cao (Xóa / Khóa)</option>
+                            <option value="create">+ Tạo mới &amp; Thêm</option>
+                            <option value="update">✎ Cập nhật &amp; Sửa</option>
+                            <option value="other">⚡ Khác (duyệt, đo kiểm, hàng loạt)</option>
+                        </select>
+                    </div>
+                }
 
-            <div class="filter-control-item">
-                <label class="filter-label">Bản ghi hiển thị</label>
-                <select class="admin-select-picker" value="@takeLimit" @onchange="OnTakeLimitChanged">
-                    <option value="50">50 sự kiện gần nhất</option>
-                    <option value="100">100 sự kiện gần nhất</option>
-                    <option value="200">200 sự kiện gần nhất</option>
-                </select>
+                @if (!hiddenFilters.Contains("time"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Khung thời gian</label>
+                        <select class="admin-select-picker" value="@timeHorizonFilter" @onchange="OnTimeHorizonChanged">
+                            <option value="all">Toàn bộ thời gian</option>
+                            <option value="24h">Trong 24 giờ qua</option>
+                            <option value="7d">Trong 7 ngày qua</option>
+                            <option value="30d">Trong 30 ngày qua</option>
+                        </select>
+                    </div>
+                }
             </div>
-        </div>
+        }
+
+        <p class="audit-filter-scope-note">
+            &bull; Tìm kiếm &amp; <strong>Thực thể</strong> được máy chủ áp dụng (phân trang toàn hệ thống).
+            &bull; <strong>Mức độ rủi ro</strong> &amp; <strong>Khung thời gian</strong> được áp dụng cục bộ trên @pageItems.Count bản ghi của trang @currentPage (máy chủ chưa hỗ trợ hai bộ lọc này).
+        </p>
 
         <!-- Active Filter Strip & Clear All -->
-        @if (!string.IsNullOrEmpty(selectedEntityType) || !string.IsNullOrEmpty(selectedRiskLevel) || timeHorizonFilter != "all" || !string.IsNullOrEmpty(searchQuery))
+        @if (!string.IsNullOrEmpty(selectedEntityType) || !string.IsNullOrEmpty(selectedRiskLevel) || timeHorizonFilter != "all" || !string.IsNullOrEmpty(searchQuery) || isSearchPending)
         {
             <div class="filter-active-strip">
                 <span class="active-filter-title">Bộ lọc đang áp dụng:</span>
@@ -226,13 +302,20 @@
                 {
                     <span class="filter-pill-tag">
                         <span>Thời gian: @(timeHorizonFilter == "24h" ? "24h qua" : timeHorizonFilter == "7d" ? "7 ngày qua" : "30 ngày qua")</span>
-                        <button type="button" @onclick='() => { timeHorizonFilter = "all"; ApplyFilters(); }'>&times;</button>
+                        <button type="button" @onclick='() => { timeHorizonFilter = "all"; ApplyClientFilters(); }'>&times;</button>
                     </span>
                 }
-                @if (!string.IsNullOrEmpty(searchQuery))
+                @if (isSearchPending)
+                {
+                    <span class="filter-pill-tag pending" title="Từ khóa sẽ tự áp dụng sau 400ms, hoặc nhấn Enter để áp dụng ngay">
+                        <span>Đang tìm…</span>
+                        <button type="button" @onclick="ClearSearch">&times;</button>
+                    </span>
+                }
+                else if (!string.IsNullOrEmpty(appliedQuery))
                 {
                     <span class="filter-pill-tag">
-                        <span>Tìm kiếm: "@searchQuery"</span>
+                        <span>Tìm kiếm: "@appliedQuery"</span>
                         <button type="button" @onclick="ClearSearch">&times;</button>
                     </span>
                 }
@@ -254,146 +337,173 @@
             <div class="cockpit-skeleton-card" style="height: 52px;"></div>
         </div>
     }
-    else if (!filteredLogs.Any())
+    else if (!pageItems.Any())
     {
         <div class="empty-state audit-empty-state">
             <CinemaIcon Name="CinemaIconName.Shield" Size="48" Class="audit-empty-icon" />
             <h3 class="audit-empty-title">Không tìm thấy nhật ký tương ứng</h3>
             <p class="audit-empty-desc">
-                Chưa có thao tác nào phù hợp với bộ lọc hoặc từ khóa tìm kiếm "@searchQuery".
+                Không có bản ghi nào khớp với từ khóa tìm kiếm "@appliedQuery"
+                @if (!string.IsNullOrEmpty(selectedEntityType))
+                {
+                    <span> và thực thể @selectedEntityType</span>
+                }
+                .
             </p>
             <button type="button" class="action-btn secondary" @onclick="ResetFilters">Xóa toàn bộ bộ lọc</button>
         </div>
     }
-    else if (isTimelineView)
+    else if (!visibleLogs.Any())
     {
-        <!-- VISUAL TIMELINE VIEW -->
-        <div class="audit-timeline-container">
-            <div class="audit-timeline-axis"></div>
-
-            @foreach (var log in filteredLogs)
-            {
-                <div class="audit-timeline-item">
-                    <div class="audit-timeline-node @GetNodeCssClass(log.Action)">
-                        <span style="font-size: 0.65rem; font-weight: 800;">@GetActionSymbol(log.Action)</span>
-                    </div>
-
-                    <div class="audit-timeline-card">
-                        <div class="audit-timeline-card-header">
-                            <div class="audit-timeline-meta">
-                                <span class="audit-row-action @GetActionCssClass(log.Action)">
-                                    @log.Action
-                                </span>
-                                <span class="audit-timeline-actor">@log.AdminEmail</span>
-                                <span class="audit-timeline-entity-tag font-mono-num">
-                                    @log.EntityType #@log.EntityId
-                                </span>
-                            </div>
-                            <span class="audit-timeline-time">
-                                @GetRelativeTime(log.Timestamp) (@log.Timestamp.ToLocalTime().ToString("HH:mm:ss"))
-                            </span>
-                        </div>
-
-                        <div class="audit-timeline-summary">
-                            @log.Summary
-                        </div>
-
-                        <div class="audit-timeline-footer">
-                            <span class="monospace-num">ID: @log.Id.ToString().Substring(0, 8)</span>
-                            <div style="display: flex; gap: 0.5rem; align-items: center;">
-                                <span class="monospace-num" style="font-size: 0.72rem;">@log.Timestamp.ToLocalTime().ToString("yyyy-MM-dd")</span>
-                                @if (!string.IsNullOrEmpty(log.DetailsJson))
-                                {
-                                    <button type="button" class="action-btn secondary small" @onclick="() => OpenDetailsModal(log)" title="Xem payload chi tiết">
-                                        <CinemaIcon Name="CinemaIconName.Eye" Size="13" />
-                                        <span>Chi tiết JSON</span>
-                                    </button>
-                                }
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            }
+        <div class="empty-state audit-empty-state">
+            <CinemaIcon Name="CinemaIconName.Filter" Size="48" Class="audit-empty-icon" />
+            <h3 class="audit-empty-title">Bộ lọc cục bộ không khớp với dữ liệu trang này</h3>
+            <p class="audit-empty-desc">
+                Trong @pageItems.Count bản ghi đang tải ở trang @currentPage, không có bản ghi nào khớp với
+                mức độ rủi ro và khung thời gian đang chọn. Hãy chuyển sang trang khác hoặc nới lỏng bộ lọc.
+            </p>
+            <button type="button" class="action-btn secondary" @onclick="ResetFilters">Xóa toàn bộ bộ lọc</button>
         </div>
     }
     else
     {
-        <!-- DATA TABLE GRID VIEW -->
-        <div class="table-frame">
-            <table class="admin-movies-table">
-                <thead>
-                    <tr>
-                        <th style="width: 170px;">Thời gian (Local)</th>
-                        <th style="width: 190px;">Quản trị viên</th>
-                        <th style="width: 140px;">Thao tác</th>
-                        <th style="width: 140px;">Thực thể</th>
-                        <th>Tóm tắt hành động</th>
-                        <th style="width: 100px; text-align: right;">Chi tiết</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var log in filteredLogs)
-                    {
-                        <tr>
-                            <td>
-                                <div class="audit-time-main monospace-num">
-                                    @log.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
-                                </div>
-                                <div class="audit-time-rel">
-                                    @GetRelativeTime(log.Timestamp)
-                                </div>
-                            </td>
-                            <td>
-                                <div class="audit-actor-row">
-                                    <div class="user-avatar-initial">
-                                        @(string.IsNullOrEmpty(log.AdminEmail) ? "A" : log.AdminEmail[0].ToString().ToUpper())
-                                    </div>
-                                    <div class="audit-actor-name" title="@log.AdminEmail">
-                                        @log.AdminEmail
-                                    </div>
-                                </div>
-                            </td>
-                            <td>
-                                <span class="audit-row-action @GetActionCssClass(log.Action)">
-                                    @log.Action
-                                </span>
-                            </td>
-                            <td>
-                                <div class="audit-entity-group">
-                                    <span class="audit-entity-type">
-                                        @log.EntityType
+        if (isTimelineView)
+        {
+            <!-- VISUAL TIMELINE VIEW -->
+            <div class="audit-timeline-container">
+                <div class="audit-timeline-axis"></div>
+
+                @foreach (var log in visibleLogs)
+                {
+                    <div class="audit-timeline-item">
+                        <div class="audit-timeline-node @GetNodeCssClass(log.Action)">
+                            <span style="font-size: 0.65rem; font-weight: 800;">@GetActionSymbol(log.Action)</span>
+                        </div>
+
+                        <div class="audit-timeline-card">
+                            <div class="audit-timeline-card-header">
+                                <div class="audit-timeline-meta">
+                                    <span class="audit-row-action @GetActionCssClass(log.Action)">
+                                        @log.Action
                                     </span>
-                                    @if (!string.IsNullOrEmpty(log.EntityId))
+                                    <span class="audit-timeline-actor">@log.AdminEmail</span>
+                                    <span class="audit-timeline-entity-tag font-mono-num">
+                                        @log.EntityType #@log.EntityId
+                                    </span>
+                                </div>
+                                <span class="audit-timeline-time">
+                                    @GetRelativeTime(log.Timestamp) (@log.Timestamp.ToLocalTime().ToString("HH:mm:ss"))
+                                </span>
+                            </div>
+
+                            <div class="audit-timeline-summary">
+                                @log.Summary
+                            </div>
+
+                            <div class="audit-timeline-footer">
+                                <span class="font-mono-num">ID: @log.Id.ToString().Substring(0, 8)</span>
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <span class="font-mono-num" style="font-size: 0.72rem;">@log.Timestamp.ToLocalTime().ToString("yyyy-MM-dd")</span>
+                                    @if (!string.IsNullOrEmpty(log.DetailsJson))
                                     {
-                                        <span class="audit-entity-id monospace-num" title="@log.EntityId">
-                                            #@log.EntityId
-                                        </span>
+                                        <button type="button" class="action-btn secondary small" @onclick="() => OpenDetailsModal(log)" title="Xem payload chi tiết">
+                                            <CinemaIcon Name="CinemaIconName.Eye" Size="13" />
+                                            <span>Chi tiết JSON</span>
+                                        </button>
                                     }
                                 </div>
-                            </td>
-                            <td>
-                                <div class="audit-summary-text">
-                                    @log.Summary
-                                </div>
-                            </td>
-                            <td style="text-align: right;">
-                                @if (!string.IsNullOrEmpty(log.DetailsJson))
-                                {
-                                    <button type="button" class="action-btn secondary small" @onclick="() => OpenDetailsModal(log)" title="Xem payload chi tiết">
-                                        <CinemaIcon Name="CinemaIconName.Eye" Size="14" />
-                                        <span>JSON</span>
-                                    </button>
-                                }
-                                else
-                                {
-                                    <span class="audit-empty-dash">—</span>
-                                }
-                            </td>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <!-- DATA TABLE GRID VIEW -->
+            <div class="table-frame">
+                <table class="admin-movies-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 170px;">Thời gian (Local)</th>
+                            <th style="width: 190px;">Quản trị viên</th>
+                            <th style="width: 140px;">Thao tác</th>
+                            <th style="width: 140px;">Thực thể</th>
+                            <th>Tóm tắt hành động</th>
+                            <th style="width: 100px; text-align: right;">Chi tiết</th>
                         </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+                    </thead>
+                    <tbody>
+                        @foreach (var log in visibleLogs)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="audit-time-main font-mono-num">
+                                        @log.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                                    </div>
+                                    <div class="audit-time-rel">
+                                        @GetRelativeTime(log.Timestamp)
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="audit-actor-row">
+                                        <div class="user-avatar-initial">
+                                            @(string.IsNullOrEmpty(log.AdminEmail) ? "A" : log.AdminEmail[0].ToString().ToUpper())
+                                        </div>
+                                        <div class="audit-actor-name" title="@log.AdminEmail">
+                                            @log.AdminEmail
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="audit-row-action @GetActionCssClass(log.Action)">
+                                        @log.Action
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="audit-entity-group">
+                                        <span class="audit-entity-type">
+                                            @log.EntityType
+                                        </span>
+                                        @if (!string.IsNullOrEmpty(log.EntityId))
+                                        {
+                                            <span class="audit-entity-id font-mono-num" title="@log.EntityId">
+                                                #@log.EntityId
+                                            </span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="audit-summary-text">
+                                        @log.Summary
+                                    </div>
+                                </td>
+                                <td style="text-align: right;">
+                                    @if (!string.IsNullOrEmpty(log.DetailsJson))
+                                    {
+                                        <button type="button" class="action-btn secondary small" @onclick="() => OpenDetailsModal(log)" title="Xem payload chi tiết">
+                                            <CinemaIcon Name="CinemaIconName.Eye" Size="14" />
+                                            <span>JSON</span>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="audit-empty-dash">—</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <AdminPagination CurrentPage="@currentPage"
+                         PageSize="@pageSize"
+                         TotalItems="@totalItems"
+                         PageSizeOptions="@(new[] { 20, 50, 100, 200 })"
+                         OnPageChanged="HandlePageChanged"
+                         OnPageSizeChanged="HandlePageSizeChanged" />
     }
 </section>
 
@@ -412,7 +522,7 @@
                         <span class="audit-modal-subtitle">@activeLog.EntityType #@activeLog.EntityId</span>
                     </div>
                 </div>
-                <button type="button" class="drawer-close-btn" aria-label="Đóng chi tiết nhật ký" @onclick="CloseDetailsModal">×</button>
+                <button type="button" class="btn-close-modal" aria-label="Đóng chi tiết nhật ký" @onclick="CloseDetailsModal">&times;</button>
             </div>
 
             <div class="drawer-body" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
@@ -428,15 +538,15 @@
                         </div>
                         <div>
                             <span class="audit-modal-sublabel">Thời gian (Local):</span>
-                            <span class="audit-modal-subvalue monospace-num">@activeLog.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span>
+                            <span class="audit-modal-subvalue font-mono-num">@activeLog.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span>
                         </div>
                         <div>
                             <span class="audit-modal-sublabel">Mã đối tượng:</span>
-                            <span class="monospace-num" style="color: #3b82f6; font-weight: 600;">#@activeLog.EntityId</span>
+                            <span class="font-mono-num" style="color: var(--admin-accent-blue); font-weight: 600;">#@activeLog.EntityId</span>
                         </div>
                         <div>
                             <span class="audit-modal-sublabel">Thời gian tương đối:</span>
-                            <span style="color: #10b981; font-weight: 600;">@GetRelativeTime(activeLog.Timestamp)</span>
+                            <span style="color: var(--admin-accent-emerald); font-weight: 600;">@GetRelativeTime(activeLog.Timestamp)</span>
                         </div>
                     </div>
                 </div>
@@ -463,19 +573,48 @@
 }
 
 @code {
-    private List<AuditLogDto> logs = new();
-    private List<AuditLogDto> filteredLogs = new();
+    /// <summary>Bản ghi do máy chủ trả về cho trang hiện tại (đã phân trang server-side).</summary>
+    private List<AuditLogDto> pageItems = new();
+
+    /// <summary>Bản ghi hiển thị sau khi áp dụng các bộ lọc cục bộ (mức độ rủi ro / khung thời gian).</summary>
+    private List<AuditLogDto> visibleLogs = new();
+
+    /// <summary>Từ khóa đang gõ trong ô tìm kiếm.</summary>
     private string searchQuery = string.Empty;
+
+    /// <summary>Từ khóa đã được áp dụng lên máy chủ.</summary>
+    private string appliedQuery = string.Empty;
+
     private string? selectedEntityType = null;
     private string? selectedRiskLevel = null;
     private string timeHorizonFilter = "all";
-    private int takeLimit = 50;
+    private int currentPage = 1;
+    private int pageSize = 50;
+    private int totalItems = 0;
     private bool isLoading = true;
     private bool isTimelineView = false;
+    private bool hasLoadedLogs;
     private string? actionAlert;
     private string? actionError;
     private AuditLogDto? activeLog;
     private bool isCopied = false;
+
+    // Tùy chỉnh bộ lọc: ẩn/hiện từng ô lọc, lưu lại theo trình duyệt.
+    private const string FilterPrefsStorageKey = "cinemaflow_admin_audit_filter_prefs_v2";
+    private static readonly (string Key, string Label)[] FilterOptions =
+    [
+        ("entity", "Thực thể quản trị"),
+        ("risk", "Mức độ rủi ro"),
+        ("time", "Khung thời gian")
+    ];
+    // Mặc định ban đầu: chưa bật ô lọc nào (tick trống) — admin tự chọn ô cần dùng.
+    private readonly HashSet<string> hiddenFilters = [.. FilterOptions.Select(o => o.Key)];
+    private bool showFilterSettings;
+    private bool filtersCollapsed;
+
+    // Debounce 400ms cho ô tìm kiếm
+    private bool isSearchPending = false;
+    private CancellationTokenSource? searchDebounceCts;
 
     // Sentinel Auto-Refresh
     private int autoRefreshIntervalSeconds = 0;
@@ -485,23 +624,36 @@
     {
         Auth.OnChange += HandleAuthChanged;
 
+        // AuthState.InitializeAsync is idempotent: the admin layout may already be restoring
+        // the session. Awaiting it here prevents a deep link or hard refresh from bouncing a
+        // valid admin to /login before the session has been restored.
+        await Auth.InitializeAsync();
+        await LoadFilterPrefsAsync();
+        await EnsureAccessAndLoadAsync();
+    }
+
+    private async Task EnsureAccessAndLoadAsync()
+    {
+        // While the API is unreachable the layout shows its reconnect gate. Do not redirect
+        // and do not fetch: the session is still valid, we simply cannot verify it yet.
+        if (Auth.ApiUnavailable) return;
+
         if (!Auth.IsAuthenticated || !Auth.IsAdmin)
         {
             Nav.NavigateTo("/login?returnUrl=/admin/audit-logs");
             return;
         }
 
+        if (hasLoadedLogs) return;
+        hasLoadedLogs = true;
         await LoadAuditLogsAsync();
     }
 
     private void HandleAuthChanged()
     {
-        InvokeAsync(() =>
+        InvokeAsync(async () =>
         {
-            if (!Auth.IsAuthenticated || !Auth.IsAdmin)
-            {
-                Nav.NavigateTo("/login?returnUrl=/admin/audit-logs");
-            }
+            await EnsureAccessAndLoadAsync();
             StateHasChanged();
         });
     }
@@ -519,8 +671,15 @@
 
         try
         {
-            logs = await AdminApi.GetAuditLogsAsync(searchQuery, selectedEntityType, takeLimit);
-            ApplyFilters();
+            var result = await AdminApi.GetAuditLogsPagedAsync(
+                query: appliedQuery,
+                entityType: selectedEntityType,
+                page: currentPage,
+                pageSize: pageSize);
+
+            pageItems = result.Items ?? new List<AuditLogDto>();
+            totalItems = result.TotalItems;
+            ApplyClientFilters();
         }
         catch (Exception ex)
         {
@@ -528,6 +687,9 @@
             {
                 actionError = $"Không thể tải dữ liệu nhật ký hệ thống: {ex.Message}";
             }
+            pageItems = new List<AuditLogDto>();
+            visibleLogs = new List<AuditLogDto>();
+            totalItems = 0;
         }
         finally
         {
@@ -539,30 +701,27 @@
         }
     }
 
-    private void ApplyFilters()
+    /// <summary>
+    /// Áp dụng các bộ lọc chỉ máy chủ chưa hỗ trợ (mức độ rủi ro, khung thời gian) trên tập bản ghi của trang hiện tại.
+    /// </summary>
+    private void ApplyClientFilters()
     {
-        var result = logs.AsEnumerable();
+        IEnumerable<AuditLogDto> result = pageItems;
 
-        // 1. Filter by Entity Type
-        if (!string.IsNullOrWhiteSpace(selectedEntityType))
-        {
-            result = result.Where(l => l.EntityType.Equals(selectedEntityType, StringComparison.OrdinalIgnoreCase));
-        }
-
-        // 2. Filter by Risk Level
+        // 1. Filter by Risk Level
         if (!string.IsNullOrWhiteSpace(selectedRiskLevel))
         {
             result = selectedRiskLevel switch
             {
-                "danger" => result.Where(l => IsDangerAction(l.Action)),
-                "create" => result.Where(l => IsCreateAction(l.Action)),
-                "update" => result.Where(l => IsUpdateAction(l.Action)),
-                "bulk" => result.Where(l => IsBulkOrProbeAction(l.Action)),
+                "danger" => result.Where(l => ClassifyAction(l.Action) == AuditActionCategory.Danger),
+                "create" => result.Where(l => ClassifyAction(l.Action) == AuditActionCategory.Create),
+                "update" => result.Where(l => ClassifyAction(l.Action) == AuditActionCategory.Update),
+                "other" => result.Where(l => ClassifyAction(l.Action) == AuditActionCategory.Other),
                 _ => result
             };
         }
 
-        // 3. Filter by Time Horizon
+        // 2. Filter by Time Horizon
         if (timeHorizonFilter != "all")
         {
             var now = DateTimeOffset.UtcNow;
@@ -575,60 +734,144 @@
             };
         }
 
-        // 4. Filter by Search Query
-        if (!string.IsNullOrWhiteSpace(searchQuery))
+        visibleLogs = result.ToList();
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        searchQuery = e.Value?.ToString() ?? string.Empty;
+        isSearchPending = !string.Equals(searchQuery.Trim(), appliedQuery.Trim(), StringComparison.Ordinal);
+        ScheduleSearchApply();
+    }
+
+    /// <summary>Hủy lịch debounce cũ và hẹn lại 400ms để áp dụng từ khóa tìm kiếm.</summary>
+    private void ScheduleSearchApply()
+    {
+        var previous = searchDebounceCts;
+        searchDebounceCts = null;
+        if (previous is not null)
         {
-            var q = searchQuery.Trim().ToLowerInvariant();
-            result = result.Where(l =>
-                l.Summary.ToLowerInvariant().Contains(q) ||
-                l.AdminEmail.ToLowerInvariant().Contains(q) ||
-                l.Action.ToLowerInvariant().Contains(q) ||
-                l.EntityType.ToLowerInvariant().Contains(q) ||
-                l.EntityId.ToLowerInvariant().Contains(q));
+            try { previous.Cancel(); }
+            catch (ObjectDisposedException) { /* đã được giải phóng ở task cũ */ }
         }
 
-        filteredLogs = result.ToList();
+        var cts = new CancellationTokenSource();
+        searchDebounceCts = cts;
+        _ = RunSearchDebounceAsync(cts);
+    }
+
+    private async Task RunSearchDebounceAsync(CancellationTokenSource cts)
+    {
+        try
+        {
+            await Task.Delay(400, cts.Token);
+            if (cts.IsCancellationRequested) return;
+
+            await InvokeAsync(async () =>
+            {
+                if (cts.IsCancellationRequested) return;
+                await ApplySearchQueryAsync();
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Người dùng vừa gõ thêm => huỷ lần debounce trước.
+        }
+        finally
+        {
+            if (ReferenceEquals(searchDebounceCts, cts))
+            {
+                searchDebounceCts = null;
+            }
+            cts.Dispose();
+        }
+    }
+
+    private async Task ApplySearchQueryAsync()
+    {
+        isSearchPending = false;
+
+        if (string.Equals(appliedQuery, searchQuery, StringComparison.Ordinal))
+        {
+            StateHasChanged();
+            return;
+        }
+
+        appliedQuery = searchQuery;
+        currentPage = 1;
+        await LoadAuditLogsAsync();
     }
 
     private async Task HandleSearchKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter")
         {
+            var cts = searchDebounceCts;
+            searchDebounceCts = null;
+            if (cts is not null)
+            {
+                try { cts.Cancel(); }
+                catch (ObjectDisposedException) { }
+            }
+
+            appliedQuery = searchQuery;
+            isSearchPending = false;
+            currentPage = 1;
             await LoadAuditLogsAsync();
         }
     }
 
     private async Task ClearSearch()
     {
+        var cts = searchDebounceCts;
+        searchDebounceCts = null;
+        if (cts is not null)
+        {
+            try { cts.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
+
         searchQuery = string.Empty;
+        appliedQuery = string.Empty;
+        isSearchPending = false;
+        currentPage = 1;
         await LoadAuditLogsAsync();
     }
 
     private async Task FilterByEntityType(string? entityType)
     {
         selectedEntityType = entityType;
+        currentPage = 1;
         await LoadAuditLogsAsync();
     }
 
     private void FilterByRiskLevel(string? risk)
     {
         selectedRiskLevel = risk;
-        ApplyFilters();
+        ApplyClientFilters();
+        StateHasChanged();
     }
 
     private void OnTimeHorizonChanged(ChangeEventArgs e)
     {
         timeHorizonFilter = e.Value?.ToString() ?? "all";
-        ApplyFilters();
+        ApplyClientFilters();
+        StateHasChanged();
     }
 
-    private async Task OnTakeLimitChanged(ChangeEventArgs e)
+    private async Task HandlePageChanged(int page)
     {
-        if (int.TryParse(e.Value?.ToString(), out var limit))
-        {
-            takeLimit = limit;
-            await LoadAuditLogsAsync();
-        }
+        if (page == currentPage) return;
+        currentPage = page;
+        await LoadAuditLogsAsync();
+    }
+
+    private async Task HandlePageSizeChanged(int size)
+    {
+        if (size == pageSize) return;
+        pageSize = size;
+        currentPage = 1;
+        await LoadAuditLogsAsync();
     }
 
     private void OnAutoRefreshChanged(ChangeEventArgs e)
@@ -660,11 +903,124 @@
     private async Task ResetFilters()
     {
         searchQuery = string.Empty;
+        appliedQuery = string.Empty;
+        isSearchPending = false;
         selectedEntityType = null;
         selectedRiskLevel = null;
         timeHorizonFilter = "all";
+        currentPage = 1;
         await LoadAuditLogsAsync();
     }
+
+    // ---------- Tùy chỉnh bộ lọc ----------
+
+    private void ToggleFilterSettings()
+    {
+        showFilterSettings = !showFilterSettings;
+    }
+
+    private void CloseFilterSettings()
+    {
+        showFilterSettings = false;
+    }
+
+    private void OnFilterSettingsKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") showFilterSettings = false;
+    }
+
+    private async Task ToggleFilterCollapse()
+    {
+        filtersCollapsed = !filtersCollapsed;
+        await SaveFilterPrefsAsync();
+    }
+
+    /// <summary>Bật/tắt một ô lọc. Ẩn ô lọc sẽ xóa luôn giá trị đang chọn để tránh lọc ngầm.</summary>
+    private async Task SetFilterVisibility(string key, bool visible)
+    {
+        // Bỏ qua sự kiện phát sinh khi popover đã đóng.
+        if (!showFilterSettings) return;
+
+        if (visible) hiddenFilters.Remove(key);
+        else hiddenFilters.Add(key);
+
+        var cleared = !visible && ClearFilterValue(key);
+        await SaveFilterPrefsAsync();
+
+        if (cleared)
+        {
+            if (key == "entity") await FilterByEntityType(null);
+            else ApplyClientFilters();
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>Xóa giá trị của bộ lọc vừa bị ẩn. Trả về true nếu thực sự có thay đổi.</summary>
+    private bool ClearFilterValue(string key)
+    {
+        switch (key)
+        {
+            case "entity" when !string.IsNullOrEmpty(selectedEntityType):
+                selectedEntityType = null;
+                return true;
+            case "risk" when !string.IsNullOrEmpty(selectedRiskLevel):
+                selectedRiskLevel = null;
+                return true;
+            case "time" when timeHorizonFilter != "all":
+                timeHorizonFilter = "all";
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private async Task ShowAllFiltersAsync()
+    {
+        if (hiddenFilters.Count == 0) return;
+        hiddenFilters.Clear();
+        await SaveFilterPrefsAsync();
+    }
+
+    /// <summary>Đọc lại lựa chọn ẩn/hiện bộ lọc đã lưu trong localStorage của trình duyệt.</summary>
+    private async Task LoadFilterPrefsAsync()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("adminTools.getStoredJson", FilterPrefsStorageKey);
+            if (string.IsNullOrWhiteSpace(json)) return;
+
+            var prefs = System.Text.Json.JsonSerializer.Deserialize<AuditFilterPrefs>(json);
+            if (prefs is null) return;
+
+            hiddenFilters.Clear();
+            foreach (var key in prefs.Hidden.Where(k => FilterOptions.Any(o => o.Key == k)))
+            {
+                hiddenFilters.Add(key);
+            }
+            filtersCollapsed = prefs.Collapsed;
+        }
+        catch
+        {
+            // Tùy chọn hiển thị chỉ là tiện ích: localStorage bị chặn hoặc dữ liệu hỏng thì dùng mặc định.
+        }
+    }
+
+    private async Task SaveFilterPrefsAsync()
+    {
+        try
+        {
+            var prefs = new AuditFilterPrefs(hiddenFilters.ToList(), filtersCollapsed);
+            var json = System.Text.Json.JsonSerializer.Serialize(prefs);
+            await JS.InvokeVoidAsync("adminTools.setStoredJson", FilterPrefsStorageKey, json);
+        }
+        catch
+        {
+            // Không lưu được thì thôi, không chặn thao tác của admin.
+        }
+    }
+
+    private sealed record AuditFilterPrefs(List<string> Hidden, bool Collapsed);
 
     private void OpenDetailsModal(AuditLogDto log)
     {
@@ -698,13 +1054,17 @@
 
     private async Task ExportLogsJsonAsync()
     {
-        if (!filteredLogs.Any()) return;
+        if (!visibleLogs.Any())
+        {
+            actionError = "Không có bản ghi nào trên trang hiện tại để xuất JSON. Hãy xóa bớt bộ lọc hoặc chuyển trang.";
+            return;
+        }
         try
         {
-            var json = JsonSerializer.Serialize(filteredLogs, new JsonSerializerOptions { WriteIndented = true });
+            var json = JsonSerializer.Serialize(visibleLogs, new JsonSerializerOptions { WriteIndented = true });
             var fileName = $"cinemaflow_audit_logs_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json";
             await JS.InvokeVoidAsync("adminTools.downloadFile", fileName, "application/json", json);
-            actionAlert = $"Đã xuất {filteredLogs.Count} bản ghi nhật ký dạng JSON.";
+            actionAlert = $"Đã xuất {visibleLogs.Count} bản ghi nhật ký (trang {currentPage}) dạng JSON.";
         }
         catch (Exception ex)
         {
@@ -714,19 +1074,23 @@
 
     private async Task ExportLogsCsvAsync()
     {
-        if (!filteredLogs.Any()) return;
+        if (!visibleLogs.Any())
+        {
+            actionError = "Không có bản ghi nào trên trang hiện tại để xuất CSV. Hãy xóa bớt bộ lọc hoặc chuyển trang.";
+            return;
+        }
         try
         {
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("TimestampUtc,AdminEmail,Action,EntityType,EntityId,Summary");
-            foreach (var l in filteredLogs)
+            foreach (var l in visibleLogs)
             {
                 sb.AppendLine(CsvSecurity.FormatRow(
                     l.Timestamp.ToString("O"), l.AdminEmail, l.Action, l.EntityType, l.EntityId, l.Summary));
             }
             var fileName = $"cinemaflow_audit_logs_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv";
             await JS.InvokeVoidAsync("adminTools.downloadFile", fileName, "text/csv;charset=utf-8", sb.ToString());
-            actionAlert = $"Đã xuất {filteredLogs.Count} bản ghi nhật ký dạng CSV.";
+            actionAlert = $"Đã xuất {visibleLogs.Count} bản ghi nhật ký (trang {currentPage}) dạng CSV.";
         }
         catch (Exception ex)
         {
@@ -748,35 +1112,46 @@
         }
     }
 
-    private bool IsCreateAction(string action) =>
+    private enum AuditActionCategory { Other, Create, Update, Danger }
+
+    /// <summary>
+    /// Phân loại mỗi thao tác vào đúng một nhóm để các chip và thanh phân bổ
+    /// không đếm trùng (ví dụ UPDATE_ROLE trước đây vừa là "Sửa" vừa là "Rủi ro").
+    /// </summary>
+    private static AuditActionCategory ClassifyAction(string action)
+    {
+        if (IsDangerAction(action)) return AuditActionCategory.Danger;
+        if (IsCreateAction(action)) return AuditActionCategory.Create;
+        if (IsUpdateAction(action)) return AuditActionCategory.Update;
+        return AuditActionCategory.Other;
+    }
+
+    private int CountActions(AuditActionCategory category) =>
+        pageItems.Count(l => ClassifyAction(l.Action) == category);
+
+    private static bool IsCreateAction(string action) =>
         action.Contains("CREATE", StringComparison.OrdinalIgnoreCase) ||
         action.Contains("ADD", StringComparison.OrdinalIgnoreCase) ||
         action.Contains("GENERATE", StringComparison.OrdinalIgnoreCase) ||
         action.Contains("CLONE", StringComparison.OrdinalIgnoreCase);
 
-    private bool IsUpdateAction(string action) =>
+    private static bool IsUpdateAction(string action) =>
         action.Contains("UPDATE", StringComparison.OrdinalIgnoreCase) ||
         action.Contains("EDIT", StringComparison.OrdinalIgnoreCase) ||
         action.Contains("TOGGLE", StringComparison.OrdinalIgnoreCase) ||
         action.Contains("REPLY", StringComparison.OrdinalIgnoreCase);
 
-    private bool IsDangerAction(string action) =>
+    private static bool IsDangerAction(string action) =>
         action.Contains("DELETE", StringComparison.OrdinalIgnoreCase) ||
         action.Contains("LOCK", StringComparison.OrdinalIgnoreCase) ||
         action.Contains("BAN", StringComparison.OrdinalIgnoreCase) ||
         action.Contains("ROLE", StringComparison.OrdinalIgnoreCase);
 
-    private bool IsBulkOrProbeAction(string action) =>
-        action.Contains("BULK", StringComparison.OrdinalIgnoreCase) ||
-        action.Contains("BATCH", StringComparison.OrdinalIgnoreCase) ||
-        action.Contains("PROBE", StringComparison.OrdinalIgnoreCase) ||
-        action.Contains("APPROVE", StringComparison.OrdinalIgnoreCase);
-
-    private double GetActionPercent(Func<string, bool> predicate)
+    private double GetActionPercent(AuditActionCategory category)
     {
-        if (!logs.Any()) return 0;
-        var count = logs.Count(l => predicate(l.Action));
-        return Math.Round((double)count / logs.Count * 100.0, 1);
+        if (!pageItems.Any()) return 0;
+        var count = pageItems.Count(l => ClassifyAction(l.Action) == category);
+        return Math.Round((double)count / pageItems.Count * 100.0, 1);
     }
 
     private string GetActionCssClass(string action)
@@ -794,7 +1169,9 @@
         if (IsDangerAction(action)) return "danger";
         if (IsCreateAction(action)) return "success";
         if (action.Contains("PROBE", StringComparison.OrdinalIgnoreCase)) return "probe";
-        if (IsBulkOrProbeAction(action)) return "warning";
+        if (action.Contains("BULK", StringComparison.OrdinalIgnoreCase) ||
+            action.Contains("BATCH", StringComparison.OrdinalIgnoreCase) ||
+            action.Contains("APPROVE", StringComparison.OrdinalIgnoreCase)) return "warning";
         return "update";
     }
 
@@ -821,5 +1198,14 @@
     {
         Auth.OnChange -= HandleAuthChanged;
         refreshTimer?.Dispose();
+
+        var cts = searchDebounceCts;
+        searchDebounceCts = null;
+        if (cts is not null)
+        {
+            try { cts.Cancel(); }
+            catch (ObjectDisposedException) { }
+            cts.Dispose();
+        }
     }
 }

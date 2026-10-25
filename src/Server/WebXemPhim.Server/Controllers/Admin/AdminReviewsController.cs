@@ -19,7 +19,11 @@ public sealed class AdminReviewsController(
     public async Task<ActionResult<ApiResponse<PagedResult<AdminReviewDto>>>> GetReviews(
         [FromQuery] string? q = null,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20)
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? status = null,
+        [FromQuery] int? minRating = null,
+        [FromQuery] int? maxRating = null,
+        [FromQuery] string? sortBy = null)
     {
         await using var context = await ContextFactory.CreateDbContextAsync();
         var query = context.Reviews
@@ -32,13 +36,47 @@ public sealed class AdminReviewsController(
             var s = q.Trim().ToLower();
             query = query.Where(r => r.Comment.ToLower().Contains(s)
                                   || (r.Movie != null && r.Movie.Title.ToLower().Contains(s))
-                                  || (r.User != null && r.User.Email.ToLower().Contains(s)));
+                                  || (r.User != null && (r.User.Email.ToLower().Contains(s) || r.User.FullName.ToLower().Contains(s))));
         }
 
+        var statusFilter = status?.Trim().ToLower();
+        if (statusFilter == "reported")
+        {
+            query = query.Where(r => r.IsReported);
+        }
+        else if (statusFilter == "replied")
+        {
+            query = query.Where(r => r.AdminReply != null && r.AdminReply != string.Empty);
+        }
+        else if (statusFilter == "pending")
+        {
+            query = query.Where(r => r.AdminReply == null || r.AdminReply == string.Empty);
+        }
+
+        if (minRating.HasValue && minRating.Value > 0)
+        {
+            var min = minRating.Value;
+            query = query.Where(r => r.Rating >= min);
+        }
+
+        if (maxRating.HasValue && maxRating.Value > 0)
+        {
+            var max = maxRating.Value;
+            query = query.Where(r => r.Rating <= max);
+        }
+
+        query = (sortBy?.ToLowerInvariant()) switch
+        {
+            "rating_asc" => query.OrderBy(r => r.Rating),
+            "rating_desc" => query.OrderByDescending(r => r.Rating),
+            "oldest" => query.OrderBy(r => r.CreatedAtUtc),
+            _ => query.OrderByDescending(r => r.CreatedAtUtc)
+        };
+
         if (pageSize <= 0) pageSize = 20;
+        if (pageSize > 1000) pageSize = 1000;
         var totalItems = await query.CountAsync();
         var reviews = await query
-            .OrderByDescending(r => r.CreatedAtUtc)
             .Skip((Math.Max(page, 1) - 1) * pageSize)
             .Take(pageSize)
             .Select(r => new AdminReviewDto

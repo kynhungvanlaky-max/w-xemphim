@@ -181,11 +181,22 @@ public sealed class CinemaPlayerVisualTests
         var razorPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Client", "WebXemPhim.Client", "Components", "Player", "CinemaPlayer.razor");
         var razorContent = File.ReadAllText(razorPath);
 
+        // Watermark được vẽ trên canvas (không phải text trong DOM) nên việc gỡ bằng
+        // DevTools khó hơn nhiều: phải tìm đúng phần tử canvas và dừng cả vòng vẽ lại.
         Assert.Contains("cp-watermark", razorContent);
-        Assert.Contains("cp-watermark-text", razorContent);
+        Assert.Contains("cp-watermark-canvas", razorContent);
+        Assert.Contains("data-watermark", razorContent);
+        Assert.Contains("data-watermark-zone", razorContent);
         Assert.Contains("UserEmail", razorContent);
         Assert.Contains("PeriodicTimer", razorContent);
         Assert.Contains("wm-pos-", razorContent);
+
+        var jsPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Client", "WebXemPhim.Client", "wwwroot", "js", "cinema-player.js");
+        var jsContent = File.ReadAllText(jsPath);
+
+        Assert.Contains("setupWatermark", jsContent);
+        Assert.Contains("getContext('2d')", jsContent);
+        Assert.Contains("cp-watermark-canvas", jsContent);
 
         var cssPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Client", "WebXemPhim.Client", "Components", "Player", "CinemaPlayer.razor.css");
         var cssContent = File.ReadAllText(cssPath);

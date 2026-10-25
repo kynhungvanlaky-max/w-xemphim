@@ -116,7 +116,7 @@ public sealed class PaymentWebhookTests
             Status = "PAID",
             TransactionReference = "TXN-998877",
             Gateway = "PayOS",
-            Timestamp = 1735689600
+            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
         };
 
         request.Signature = verifier.ComputeSignature(request);

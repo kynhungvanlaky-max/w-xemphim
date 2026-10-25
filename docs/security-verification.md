@@ -1,11 +1,11 @@
 # Kết quả kiểm chứng bảo mật
 
-Ngày kiểm tra: 2026-09-19. Phạm vi là mã nguồn và môi trường local, không phải pentest hay chứng nhận production.
+Ngày kiểm tra: 2026-10-26. Phạm vi là mã nguồn và môi trường local, không phải pentest hay chứng nhận production.
 
 ## Kết quả
 
 - `dotnet build WebXemPhim.slnx`: thành công, 0 warning, 0 error.
-- `dotnet test WebXemPhim.slnx`: 388/388 PASS, 0 fail, 0 skip; bao gồm toàn bộ test cũ và các kiểm thử bảo mật mới.
+- `dotnet test WebXemPhim.slnx`: 1312/1312 PASS, 0 fail, 0 skip; bao gồm toàn bộ test cũ, kiểm thử PostgreSQL Full-Text Search, kiểm thử bảo mật luồng stream (signed URLs & playback cookies) và các kiểm thử bảo mật nâng cao.
 - Đã làm mới dữ liệu bằng `dotnet restore WebXemPhim.slnx --force-evaluate`, sau đó chạy `dotnet list WebXemPhim.slnx package --vulnerable --include-transitive --no-restore`: cả 4 project không báo dependency có lỗ hổng đã biết. Kết quả chỉ có ý nghĩa tại thời điểm kiểm tra.
 - Trình duyệt local: guest mở trực tiếp `/admin` bị chuyển tới đăng nhập; tài khoản VIP thường thử quay lại `/admin` bị chuyển về `/account`; cả hai trạng thái đều không render sidebar, KPI hay nội dung vận hành. Đăng xuất trở về trạng thái guest.
 - Trang quên mật khẩu khi chưa cấu hình SMTP hiển thị “Khôi phục mật khẩu chưa khả dụng. Vui lòng liên hệ hỗ trợ.”, không hiển thị token/link reset cho caller.
@@ -22,9 +22,10 @@ Ngày kiểm tra: 2026-09-19. Phạm vi là mã nguồn và môi trường local
 - URL quản trị không an toàn/dữ liệu quá dài bị từ chối; header no-store, nosniff, anti-clickjacking và CSP nonce được kiểm tra.
 - Client production từ chối khởi động khi thiếu cấu hình key bắt buộc; cấu hình demo, wildcard origin và key trong webroot bị từ chối.
 - MFA TOTP dùng cửa sổ thời gian chuẩn; secret trong DB không phải khóa thủ công dạng rõ, recovery code không lưu dạng rõ, đăng nhập chỉ cấp session sau lớp thứ hai. Session admin cũ chưa qua MFA mất role Admin sau khi tài khoản bật MFA.
+- Luồng phát phim (Stream Delivery) dùng chữ ký HMAC-SHA256 ngắn hạn kết hợp Playback Session Cookie (`HttpOnly`, `SameSite=Lax`), kiểm tra SSRF đối với upstream media và giới hạn số luồng phát đồng thời theo hạng thành viên.
 
 ## Giới hạn và bàn giao
 
-Chưa cấu hình hoặc kiểm thử TLS/reverse proxy/SMTP thật, webhook thanh toán thật, WAF, backup restore, multi-instance hay phân quyền signed media VIP. MFA TOTP đã triển khai và kiểm thử local; cần bảo vệ/backup Data Protection keys production. Không gửi email hay thu tiền thật trong quá trình kiểm tra. Hãy hoàn thành [checklist triển khai](security-deployment.md) trước khi public website.
+Chưa cấu hình hoặc kiểm thử TLS/reverse proxy/SMTP thật, webhook thanh toán thật trên cổng live, WAF, backup restore hay multi-instance. MFA TOTP và cơ chế ký luồng phát đã triển khai và kiểm thử local; cần bảo vệ/backup Data Protection keys và cấu hình `Security__StreamSigningKey` riêng trên production. Không gửi email hay thu tiền thật trong quá trình kiểm tra. Hãy hoàn thành [checklist triển khai](security-deployment.md) trước khi public website.
 
 Phiên đăng nhập dùng token plaintext cũ đã bị thu hồi. Người dùng đăng nhập lại; dữ liệu tài khoản/phim/thư viện/đánh giá được giữ.

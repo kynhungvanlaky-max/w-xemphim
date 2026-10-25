@@ -142,12 +142,60 @@ public sealed class FrontendAssetAndPerformanceTests
         Assert.Contains("@Assets[\"css/cinema-theme.css\"]", content);
         Assert.Contains("@Assets[\"css/redesign-2026.css\"]", content);
         Assert.Contains("@Assets[\"css/light-theme.css\"]", content);
+        Assert.Contains("@Assets[\"css/home-expanded.css\"]", content);
+        Assert.Contains("@Assets[\"css/account-overview.css\"]", content);
+        Assert.Contains("@Assets[\"css/watch-workspace.css\"]", content);
+        Assert.Contains("@Assets[\"css/genres-page.css\"]", content);
+        Assert.Contains("@Assets[\"css/discovery-filters.css\"]", content);
+    }
 
-        // Route specific stylesheets are no longer global: they are injected by RouteStylesheet
-        // so a visitor only downloads the CSS the current page needs.
-        Assert.DoesNotContain("@Assets[\"css/home-expanded.css\"]", content);
-        Assert.DoesNotContain("@Assets[\"css/account-overview.css\"]", content);
-        Assert.DoesNotContain("@Assets[\"css/watch-workspace.css\"]", content);
+    [Fact]
+    public void AppRazor_PublishesTheRouteStyleMapSoTheRouteSheetCanBePreloaded()
+    {
+        var appRazorPath = Path.Combine(GetSolutionRoot(), "src", "Client", "WebXemPhim.Client", "Components", "App.razor");
+        var content = File.ReadAllText(appRazorPath);
+
+        // The map is what lets the browser preload the stylesheet of the route a visitor is
+        // about to open. Without it the next page is painted before its route sheet is
+        // applied, which shows up as a completely unstyled page.
+        Assert.Contains("id=\"route-style-map\"", content);
+        Assert.Contains("@((MarkupString)RouteStyleMapJson)", content);
+        Assert.Contains("js/route-style-preload.js", content);
+    }
+
+    [Fact]
+    public void RouteStylePreloadScript_PreloadsTheSheetOfTheHoveredLink()
+    {
+        var jsPath = Path.Combine(GetSolutionRoot(), "src", "Client", "WebXemPhim.Client", "wwwroot", "js", "route-style-preload.js");
+        Assert.True(File.Exists(jsPath), $"route-style-preload.js not found at: {jsPath}");
+
+        var content = File.ReadAllText(jsPath);
+
+        // Intent based preloading, on hover and on keyboard focus.
+        Assert.Contains("mouseover", content);
+        Assert.Contains("focusin", content);
+        Assert.Contains("rel = 'preload'", content);
+        Assert.Contains("as = 'style'", content);
+    }
+
+    [Fact]
+    public void RouteStylesheetCatalog_MapsEveryRouteToItsStylesheet()
+    {
+        var catalog = typeof(WebXemPhim.Client.Services.RouteStylesheetCatalog);
+
+        Assert.Equal(new[] { "css/home-expanded.css" }, catalog.GetField("Home")!.GetValue(null) as string[]);
+        Assert.Equal(new[] { "css/genres-page.css" }, catalog.GetField("Genres")!.GetValue(null) as string[]);
+        Assert.Equal(new[] { "css/watch-workspace.css" }, catalog.GetField("Watch")!.GetValue(null) as string[]);
+
+        // The map is the contract with js/route-style-preload.js, so it must stay valid JSON.
+        var json = (string)catalog.GetMethod("ToJson")!.Invoke(null, new object[] { (Func<string, string>)(path => "/" + path) })!;
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+        var routes = document.RootElement.EnumerateArray().Select(entry => entry.GetProperty("route").GetString()).ToArray();
+
+        Assert.Contains("/", routes);
+        Assert.Contains("/genres", routes);
+        Assert.Contains("/explore", routes);
+        Assert.Contains("/watchlist", routes);
     }
 
     [Fact]

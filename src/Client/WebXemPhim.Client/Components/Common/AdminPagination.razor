@@ -1,49 +1,104 @@
 @namespace WebXemPhim.Client.Components.Common
 @using WebXemPhim.Client.Components.Icons
+@*
+    Pagination for the cockpit tables.
+
+    The list pages are now paginated on the server, so this component also exposes the page
+    size and lets the operator jump straight to a page instead of clicking through dozens of
+    pages one by one.
+*@
 
 @if (TotalItems > 0)
 {
     <div class="table-pagination-footer">
-        <span class="pagination-info">
-            Hiển thị <strong>@StartIndex</strong> - <strong>@EndIndex</strong> trên tổng số <strong>@TotalItems</strong> mục
+        <span class="pagination-info" aria-live="polite">
+            Hiển thị <strong>@StartIndex</strong>–<strong>@EndIndex</strong> trên tổng số <strong>@TotalItems</strong> mục
         </span>
 
-        @if (TotalPages > 1)
-        {
-            <div class="pagination-pages" role="navigation" aria-label="Phân trang">
-                <button type="button"
-                        class="page-nav-btn"
-                        disabled="@(CurrentPage <= 1)"
-                        title="Trang trước"
-                        @onclick="() => ChangePage(CurrentPage - 1)">
-                    <CinemaIcon Name="CinemaIconName.ChevronDown" Size="14" style="transform: rotate(90deg);" />
-                </button>
-
-                @foreach (var p in GetPageNumbers())
-                {
-                    if (p == -1)
+        <div class="pagination-tools">
+            @if (PageSizeOptions.Count > 0)
+            {
+                <label class="pagination-size-label" for="admin-page-size">Số mục / trang</label>
+                <select id="admin-page-size"
+                        class="admin-select-picker pagination-size-select"
+                        value="@PageSize"
+                        @onchange="ChangePageSize">
+                    @foreach (var size in PageSizeOptions)
                     {
-                        <span class="page-dots">…</span>
+                        <option value="@size">@size</option>
                     }
-                    else
-                    {
-                        <button type="button"
-                                class="page-num @(p == CurrentPage ? "active" : "")"
-                                @onclick="() => ChangePage(p)">
-                            @p
-                        </button>
-                    }
-                }
+                </select>
+            }
 
-                <button type="button"
-                        class="page-nav-btn"
-                        disabled="@(CurrentPage >= TotalPages)"
-                        title="Trang tiếp"
-                        @onclick="() => ChangePage(CurrentPage + 1)">
-                    <CinemaIcon Name="CinemaIconName.ChevronDown" Size="14" style="transform: rotate(-90deg);" />
-                </button>
-            </div>
-        }
+            @if (TotalPages > 1)
+            {
+                <div class="pagination-pages" role="navigation" aria-label="Phân trang">
+                    <button type="button"
+                            class="page-nav-btn"
+                            disabled="@(CurrentPage <= 1)"
+                            title="Trang đầu"
+                            aria-label="Trang đầu"
+                            @onclick="() => ChangePage(1)">
+                        <CinemaIcon Name="CinemaIconName.ChevronDown" Size="14" style="transform: rotate(90deg);" />
+                    </button>
+
+                    <button type="button"
+                            class="page-nav-btn"
+                            disabled="@(CurrentPage <= 1)"
+                            title="Trang trước"
+                            aria-label="Trang trước"
+                            @onclick="() => ChangePage(CurrentPage - 1)">
+                        <CinemaIcon Name="CinemaIconName.ChevronLeft" Size="14" />
+                    </button>
+
+                    @foreach (var p in GetPageNumbers())
+                    {
+                        if (p == -1)
+                        {
+                            <span class="page-dots" aria-hidden="true">…</span>
+                        }
+                        else
+                        {
+                            <button type="button"
+                                    class="page-num @(p == CurrentPage ? "active" : "")"
+                                    aria-current="@(p == CurrentPage ? "page" : null)"
+                                    aria-label="Trang @p"
+                                    @onclick="() => ChangePage(p)">
+                                @p
+                            </button>
+                        }
+                    }
+
+                    <button type="button"
+                            class="page-nav-btn"
+                            disabled="@(CurrentPage >= TotalPages)"
+                            title="Trang tiếp"
+                            aria-label="Trang tiếp"
+                            @onclick="() => ChangePage(CurrentPage + 1)">
+                        <CinemaIcon Name="CinemaIconName.ChevronRight" Size="14" />
+                    </button>
+
+                    <button type="button"
+                            class="page-nav-btn"
+                            disabled="@(CurrentPage >= TotalPages)"
+                            title="Trang cuối"
+                            aria-label="Trang cuối"
+                            @onclick="() => ChangePage(TotalPages)">
+                        <CinemaIcon Name="CinemaIconName.ChevronDown" Size="14" style="transform: rotate(-90deg);" />
+                    </button>
+
+                    <label class="pagination-jump-label" for="admin-page-jump">Đến trang</label>
+                    <input id="admin-page-jump"
+                           class="pagination-jump-input"
+                           type="number"
+                           min="1"
+                           max="@TotalPages"
+                           value="@jumpValue"
+                           aria-label="Đi tới trang"
+                           @onchange="JumpToPage" />
+                </div>
+            }
+        </div>
     </div>
 }
 
@@ -51,7 +106,14 @@
     [Parameter] public int CurrentPage { get; set; } = 1;
     [Parameter] public int PageSize { get; set; } = 10;
     [Parameter] public int TotalItems { get; set; } = 0;
+
+    /// <summary>Available page sizes. Leave empty to hide the selector.</summary>
+    [Parameter] public IReadOnlyList<int> PageSizeOptions { get; set; } = [];
+
     [Parameter] public EventCallback<int> OnPageChanged { get; set; }
+    [Parameter] public EventCallback<int> OnPageSizeChanged { get; set; }
+
+    private string jumpValue = string.Empty;
 
     private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)TotalItems / Math.Max(1, PageSize)));
     private int StartIndex => TotalItems == 0 ? 0 : (CurrentPage - 1) * PageSize + 1;
@@ -63,6 +125,26 @@
             return;
 
         await OnPageChanged.InvokeAsync(targetPage);
+    }
+
+    private async Task ChangePageSize(ChangeEventArgs args)
+    {
+        if (!int.TryParse(args.Value?.ToString(), out var size) || size <= 0 || size == PageSize)
+            return;
+
+        await OnPageSizeChanged.InvokeAsync(size);
+    }
+
+    private async Task JumpToPage(ChangeEventArgs args)
+    {
+        if (!int.TryParse(args.Value?.ToString(), out var target))
+            return;
+
+        jumpValue = string.Empty;
+        if (target < 1 || target > TotalPages || target == CurrentPage)
+            return;
+
+        await OnPageChanged.InvokeAsync(target);
     }
 
     private IEnumerable<int> GetPageNumbers()

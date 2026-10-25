@@ -3,9 +3,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Moq;
+using Npgsql;
 using WebXemPhim.Client.Components.Pages;
 using WebXemPhim.Client.Services;
 using WebXemPhim.Server.Controllers;
@@ -19,30 +19,30 @@ using Xunit;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
+public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>, IClassFixture<PostgresTestDatabaseFixture>
 {
     private readonly TestApiFactory _factory;
+    private readonly PostgresTestDatabaseFixture _fixture;
 
-    public ChallengerM3AdversarialSuite(TestApiFactory factory)
+    public ChallengerM3AdversarialSuite(TestApiFactory factory, PostgresTestDatabaseFixture fixture)
     {
         _factory = factory;
+        _fixture = fixture;
     }
 
-    private static async Task<(SqliteConnection Connection, AppDbContext Context, IDbContextFactory<AppDbContext> Factory)> CreateSqliteContextAsync()
-    {
-        var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connection)
-            .Options;
-        var context = new AppDbContext(options);
-        await context.Database.EnsureCreatedAsync();
-        await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
-        await DatabaseSeeder.SeedCatalogAsync(context);
-        await DatabaseSchemaHelper.SyncMoviesFtsAsync(context);
+    private PostgresTestDatabase Database => _fixture.Database;
 
-        var factoryMock = new TestDbContextFactory(options);
-        return (connection, context, factoryMock);
+    /// <summary>
+    /// Mở context PostgreSQL thật (Testcontainers) đã nạp catalog chuẩn, đồng bộ identity
+    /// sequence và rebuild lại toàn bộ <c>movies."search_vector"</c>.
+    /// </summary>
+    private async Task<(NpgsqlConnection Connection, AppDbContext Context, IDbContextFactory<AppDbContext> Factory)> CreatePostgresContextAsync()
+    {
+        var (connection, context, factory) = await Database.CreateOpenContextAsync();
+        await DatabaseSeeder.SeedCatalogAsync(context);
+        await DatabaseSchemaHelper.SyncIdentitySequencesAsync(context);
+        await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
+        return (connection, context, factory);
     }
 
     // =========================================================================
@@ -95,13 +95,14 @@ public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
     }
 
     [Fact]
-    public async Task Concurrent_DatabaseMovieService_GetHomeAggregateAsync_SqliteStress()
+    public async Task Concurrent_DatabaseMovieService_GetHomeAggregateAsync_PostgreSqlStress()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, _) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
-            var movieService = new DatabaseMovieService(dbFactory);
+            // 50 request đồng thời: mỗi context dùng connection riêng từ pool để không tranh chấp trên một NpgsqlConnection
+            var movieService = new DatabaseMovieService(Database.CreateFactory());
             const int concurrency = 50;
 
             var sw = Stopwatch.StartNew();
@@ -124,7 +125,7 @@ public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
             await Task.WhenAll(tasks);
             sw.Stop();
 
-            // 50 concurrent DB context queries on SQLite in-memory should finish well under 3 seconds
+            // 50 concurrent DB context queries trên PostgreSQL thật nên hoàn tất dưới 3 giây
             Assert.True(sw.ElapsedMilliseconds < 3000, $"Queries took {sw.ElapsedMilliseconds}ms, exceeding 3000ms threshold");
         }
     }
@@ -234,7 +235,7 @@ public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
     }
 
     // =========================================================================
-    // SECTION 3: SQLITE FTS5 VIETNAMESE SEARCH ACCENTED/UNACCENTED & EDGE CASES
+    // SECTION 3: POSTGRESQL TSVECTOR VIETNAMESE SEARCH ACCENTED/UNACCENTED & EDGE CASES
     // =========================================================================
 
     [Theory]
@@ -250,9 +251,9 @@ public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
     [InlineData("dat rung phuong nam", "Đất Rừng Phương Nam")]
     [InlineData("Đất Rừng Phương Nam", "Đất Rừng Phương Nam")]
     [InlineData("đẤt rỪnG pHưƠnG nAm", "Đất Rừng Phương Nam")]
-    public async Task SqliteFts5_AccentedAndUnaccented_FindsTargetMovies(string query, string expectedTitleMatch)
+    public async Task PostgreSqlTsVector_AccentedAndUnaccented_FindsTargetMovies(string query, string expectedTitleMatch)
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -288,7 +289,7 @@ public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
             }
 
             await context.SaveChangesAsync();
-            await DatabaseSchemaHelper.SyncMoviesFtsAsync(context);
+            await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
 
             var movieService = new DatabaseMovieService(dbFactory);
 
@@ -313,22 +314,22 @@ public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
     [InlineData("***")]
     [InlineData("())(()")]
     [InlineData("AND OR NOT NEAR")]
-    [InlineData("DROP TABLE movies_fts;")]
+    [InlineData("DROP TABLE movies;")]
     [InlineData("!@#$%^&*()_+-=[]{}|;':\",.<>/?")]
     [InlineData("🎬 Phim hay 2026 🔥")]
     [InlineData("a")]
     [InlineData("đ")]
     [InlineData("ô")]
     [InlineData("   ")]
-    public async Task SqliteFts5_AdversarialInputs_SpecialCharactersAndInjection_SafeExecution(string adversarialKeyword)
+    public async Task PostgreSqlTsVector_AdversarialInputs_SpecialCharactersAndInjection_SafeExecution(string adversarialKeyword)
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
             var movieService = new DatabaseMovieService(dbFactory);
 
-            // Must NOT throw SQLiteException, SqlException, or regex crash
+            // Must NOT throw PostgresException, SqlException, or regex crash
             var result = await movieService.FilterMoviesAsync(new MovieFilterRequest
             {
                 Keyword = adversarialKeyword,
@@ -343,9 +344,9 @@ public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
     }
 
     [Fact]
-    public async Task SqliteFts5_LongSearchTerm_ExecutesSafelyWithoutCpuSpike()
+    public async Task PostgreSqlTsVector_LongSearchTerm_ExecutesSafelyWithoutCpuSpike()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -371,9 +372,9 @@ public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
     }
 
     [Fact]
-    public async Task SqliteFts5_RelevanceSorting_ExactMatchRanksHigherThanPartialMatch()
+    public async Task PostgreSqlTsVector_RelevanceSorting_ExactMatchRanksHigherThanPartialMatch()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -397,7 +398,7 @@ public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
                 ReleaseYear = 2020
             });
             await context.SaveChangesAsync();
-            await DatabaseSchemaHelper.SyncMoviesFtsAsync(context);
+            await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
 
             var movieService = new DatabaseMovieService(dbFactory);
 
@@ -418,9 +419,9 @@ public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
     }
 
     [Fact]
-    public async Task SqliteFts5_ExecutionPerformance_1000Iterations_SubMillisecondPerQuery()
+    public async Task PostgreSqlTsVector_ExecutionPerformance_1000Iterations_SubMillisecondPerQuery()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -442,8 +443,8 @@ public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
             sw.Stop();
 
             var avgMs = (double)sw.ElapsedMilliseconds / iterations;
-            // SQLite FTS5 with in-memory DB must average < 5ms per query
-            Assert.True(avgMs < 5.0, $"Average search query took {avgMs:F2}ms, exceeding 5.0ms threshold");
+            // PostgreSQL tsvector với GIN index phải trung bình < 10ms mỗi truy vấn (bao gồm network virtualization overhead)
+            Assert.True(avgMs < 10.0, $"Average search query took {avgMs:F2}ms, exceeding 10.0ms threshold");
         }
     }
 
@@ -452,9 +453,9 @@ public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
     [InlineData("bo...gia!!!", "Bố Già")]
     [InlineData("\"Kỵ Sĩ Bóng Đêm\"", "Kỵ Sĩ Bóng Đêm")]
     [InlineData("MAT - BIEC", "Mắt Biếc")]
-    public async Task SqliteFts5_IrregularSpacingAndPunctuation_FindsMoviesAccurately(string query, string expectedTitleMatch)
+    public async Task PostgreSqlTsVector_IrregularSpacingAndPunctuation_FindsMoviesAccurately(string query, string expectedTitleMatch)
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -485,7 +486,7 @@ public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
                 });
             }
             await context.SaveChangesAsync();
-            await DatabaseSchemaHelper.SyncMoviesFtsAsync(context);
+            await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
 
             var movieService = new DatabaseMovieService(dbFactory);
             var result = await movieService.FilterMoviesAsync(new MovieFilterRequest
@@ -503,9 +504,9 @@ public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
     }
 
     [Fact]
-    public async Task SqliteFts5_CombinedKeywordWithGenresCountriesYears_FiltersIntersectCorrectly()
+    public async Task PostgreSqlTsVector_CombinedKeywordWithGenresCountriesYears_FiltersIntersectCorrectly()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -540,9 +541,9 @@ public sealed class ChallengerM3AdversarialSuite : IClassFixture<TestApiFactory>
     }
 
     [Fact]
-    public async Task SqliteFts5_PagingEdgeCases_HighPageOrZeroPageSize_HandlesGracefully()
+    public async Task PostgreSqlTsVector_PagingEdgeCases_HighPageOrZeroPageSize_HandlesGracefully()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {

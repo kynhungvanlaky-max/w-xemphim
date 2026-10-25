@@ -807,4 +807,79 @@ public sealed class AdminControllerTests
         Assert.Equal(MembershipTier.Vip, verifiedUser!.Membership);
         Assert.NotNull(verifiedUser.VipExpiresAtUtc);
     }
+
+    [Fact]
+    public async Task AddStreamSource_RejectsPrivateNetworkTarget()
+    {
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
+        await SeedEpisodeAsync(test.Options, episodeId: 20);
+
+        var result = await test.Episodes.AddStreamSource(20, new UpsertStreamSourceRequest
+        {
+            ServerName = "SSRF Probe",
+            ServerType = StreamServerType.HydraCdn,
+            Quality = "1080p",
+            StreamUrl = "http://169.254.169.254/latest/meta-data"
+        });
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+        var envelope = Assert.IsType<ApiResponse<StreamSourceDto>>(badRequest.Value);
+        Assert.False(envelope.Success);
+
+        await using var context = new AppDbContext(test.Options);
+        Assert.Empty(await context.StreamSources.Where(s => s.EpisodeId == 20).ToListAsync());
+    }
+
+    [Fact]
+    public async Task UpdateStreamSource_RejectsLocalhostTarget()
+    {
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
+        await SeedEpisodeAsync(test.Options, episodeId: 20);
+
+        var add = await test.Episodes.AddStreamSource(20, new UpsertStreamSourceRequest
+        {
+            ServerName = "Safe Source",
+            ServerType = StreamServerType.HydraCdn,
+            Quality = "1080p",
+            StreamUrl = "https://example.com/movie.m3u8"
+        });
+        Assert.IsType<OkObjectResult>(add.Result);
+
+        var update = await test.Episodes.UpdateStreamSource(20, 1, new UpsertStreamSourceRequest
+        {
+            ServerName = "Unsafe Source",
+            ServerType = StreamServerType.HydraCdn,
+            Quality = "1080p",
+            StreamUrl = "http://localhost:8080/internal.m3u8"
+        });
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(update.Result);
+        var envelope = Assert.IsType<ApiResponse<StreamSourceDto>>(badRequest.Value);
+        Assert.False(envelope.Success);
+
+        await using var context = new AppDbContext(test.Options);
+        var stored = await context.StreamSources.SingleAsync(s => s.EpisodeId == 20);
+        Assert.Equal("https://example.com/movie.m3u8", stored.StreamUrl);
+    }
+
+    private static async Task SeedEpisodeAsync(DbContextOptions<AppDbContext> options, int episodeId)
+    {
+        await using var context = new AppDbContext(options);
+        if (await context.Episodes.AnyAsync(e => e.Id == episodeId))
+        {
+            return;
+        }
+
+        context.Episodes.Add(new EpisodeEntity
+        {
+            Id = episodeId,
+            MovieId = 1,
+            EpisodeNumber = 1,
+            Title = "Tập 1",
+            DurationMinutes = 45
+        });
+        await context.SaveChangesAsync();
+    }
 }

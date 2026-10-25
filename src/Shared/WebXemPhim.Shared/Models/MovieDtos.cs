@@ -68,6 +68,13 @@ public class GenreDto
     public int MovieCount { get; set; }
 }
 
+/// <summary>Payload for creating or renaming a genre.</summary>
+public class UpsertGenreRequest
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Slug { get; set; }
+}
+
 public class WatchlistItemDto
 {
     public int MovieId { get; set; }

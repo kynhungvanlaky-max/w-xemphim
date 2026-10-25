@@ -11,7 +11,7 @@
 @inject NavigationManager Navigation
 @implements IDisposable
 
-<PageTitle>@DisplayTitle - CinemaFlow</PageTitle>
+<CinemaPageTitle>@DisplayTitle - CinemaFlow</CinemaPageTitle>
 
 <div class="movie-detail-container">
 @if (isLoading)
@@ -215,19 +215,14 @@ else
             @if (movie?.SimilarMovies is { Count: > 0 })
             {
                 <section class="overview-related-strip" aria-labelledby="overview-related-title">
-                    <div class="related-strip-heading">
-                        <h2 id="overview-related-title" class="section-sub-heading">Phim tương tự</h2>
-                        <button type="button" class="related-view-all" @onclick='() => activeTab = "related"'>Xem tất cả <span aria-hidden="true">→</span></button>
-                    </div>
-                    <div class="related-strip-track">
-                        @foreach (var related in movie.SimilarMovies.Take(6))
-                        {
-                            <a href="@($"/movie/{related.Id}")" class="related-strip-card">
-                                <img src="@related.BackdropUrl" alt="@related.Title" />
-                                <span>@related.Title</span>
-                            </a>
-                        }
-                    </div>
+                    <RelatedMovieStrip Movies="@movie.SimilarMovies.Take(6)"
+                                       Title="Phim tương tự"
+                                       HeadingId="overview-related-title"
+                                       HrefTemplate="/movie/{0}">
+                        <Action>
+                            <button type="button" class="related-view-all" @onclick='() => activeTab = "related"'>Xem tất cả <span aria-hidden="true">→</span></button>
+                        </Action>
+                    </RelatedMovieStrip>
                 </section>
             }
         }

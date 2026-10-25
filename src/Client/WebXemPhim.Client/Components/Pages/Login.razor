@@ -4,7 +4,7 @@
 @inject IWebHostEnvironment Environment
 @using WebXemPhim.Client.Components.Common
 
-<PageTitle>Đăng nhập - CinemaFlow</PageTitle>
+<CinemaPageTitle>Đăng nhập - CinemaFlow</CinemaPageTitle>
 
 <main class="auth-shell">
     <section class="auth-intro">
@@ -25,7 +25,7 @@
                 <CinemaIcon Name="CinemaIconName.Shield" Size="20" />
                 <div><strong>Xác thực hai lớp</strong><span>Mở ứng dụng xác thực và nhập mã 6 số. Bạn cũng có thể dùng một mã khôi phục.</span></div>
             </div>
-            <EditForm Model="mfaModel" OnValidSubmit="VerifyMfa">
+            <EditForm Model="mfaModel" FormName="verify-mfa" OnValidSubmit="VerifyMfa">
                 <DataAnnotationsValidator />
                 <div class="form-field">
                     <label for="mfa-code">Mã xác thực</label>
@@ -39,7 +39,7 @@
         }
         else
         {
-        <EditForm Model="model" OnValidSubmit="Submit">
+        <EditForm Model="model" FormName="login" OnValidSubmit="Submit">
             <DataAnnotationsValidator />
             <div class="form-field">
                 <label for="login-email">Email hoặc Tên đăng nhập</label>
@@ -85,6 +85,9 @@
     private bool mfaRequired;
     private string? error;
 
+    private static bool IsAdminRoute(string path) =>
+        path.StartsWith("/admin", StringComparison.OrdinalIgnoreCase);
+
     private void QuickFill(string email, string password)
     {
         model.Email = email;
@@ -115,13 +118,18 @@
         }
         else if (response?.Success == true)
         {
+            var target = AuthNavigation.ReturnPath(ReturnUrl, "/admin");
             if (response.Data?.User?.IsAdmin == true)
             {
-                Nav.NavigateTo(AuthNavigation.ReturnPath(ReturnUrl, "/admin"));
+                // The cockpit stylesheet is linked from the admin layout head. A client side
+                // navigation paints the cockpit before that sheet arrives, which shows a flash
+                // of unstyled content on the very first entry — the admin area is therefore
+                // entered with a full document load.
+                Nav.NavigateTo(target, forceLoad: IsAdminRoute(target));
             }
             else
             {
-                Nav.NavigateTo(AuthNavigation.ReturnPath(ReturnUrl));
+                Nav.NavigateTo(target);
             }
         }
         else

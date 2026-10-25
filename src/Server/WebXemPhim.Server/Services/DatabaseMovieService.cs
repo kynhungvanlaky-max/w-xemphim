@@ -9,7 +9,6 @@ using WebXemPhim.Shared.Models;
 using WebXemPhim.Shared.Requests;
 using WebXemPhim.Shared.Responses;
 using WebXemPhim.Shared.Utils;
-
 namespace WebXemPhim.Server.Services;
 
 public sealed class DatabaseMovieService(
@@ -36,7 +35,7 @@ public sealed class DatabaseMovieService(
         var detail = MapDetail(await DetailQuery(context).SingleOrDefaultAsync(movie => movie.Id == id));
         if (detail is not null)
         {
-            detail.SimilarMovies = await GetSimilarMoviesAsync(detail.Id, 6);
+            detail.SimilarMovies = await GetSimilarMoviesAsync(detail.Id, SimilarMovieCount);
         }
         return detail;
     }
@@ -48,7 +47,7 @@ public sealed class DatabaseMovieService(
         var detail = MapDetail(await DetailQuery(context).SingleOrDefaultAsync(movie => movie.Slug == normalized));
         if (detail is not null)
         {
-            detail.SimilarMovies = await GetSimilarMoviesAsync(detail.Id, 6);
+            detail.SimilarMovies = await GetSimilarMoviesAsync(detail.Id, SimilarMovieCount);
         }
         return detail;
     }
@@ -63,6 +62,7 @@ public sealed class DatabaseMovieService(
     public async Task<List<MovieDto>> GetTrendingMoviesAsync(int count = 10)
     {
         if (count <= 0) return [];
+        count = Math.Clamp(count, 1, 50);
         await using var context = await contextFactory.CreateDbContextAsync();
         var movies = await SummaryQuery(context).Where(movie => movie.IsTrending)
             .OrderByDescending(movie => movie.Rating).ThenByDescending(movie => movie.ViewCount)
@@ -73,6 +73,7 @@ public sealed class DatabaseMovieService(
     public async Task<List<MovieDto>> GetTopSeriesAsync(int count = 10)
     {
         if (count <= 0) return [];
+        count = Math.Clamp(count, 1, 50);
         await using var context = await contextFactory.CreateDbContextAsync();
         var movies = await SummaryQuery(context)
             .Where(movie => movie.Type == MovieType.Series || movie.Type == MovieType.Anime)
@@ -83,6 +84,7 @@ public sealed class DatabaseMovieService(
     public async Task<List<MovieDto>> GetLatestMoviesAsync(int count = 12)
     {
         if (count <= 0) return [];
+        count = Math.Clamp(count, 1, 50);
         await using var context = await contextFactory.CreateDbContextAsync();
         var movies = await SummaryQuery(context).OrderByDescending(movie => movie.ReleaseYear)
             .ThenByDescending(movie => movie.Id).Take(count).ToListAsync();
@@ -152,44 +154,26 @@ public sealed class DatabaseMovieService(
         await using var context = await contextFactory.CreateDbContextAsync();
         var query = context.Movies.AsNoTracking().AsQueryable();
 
-        List<int>? ftsMatchingIds = null;
+        // Giới hạn đầu vào công khai: pageSize do client gửi không được phép kéo toàn bộ
+        // catalog hoặc tạo truy vấn quá nặng.
+        var page = Math.Clamp(request.Page <= 0 ? 1 : request.Page, 1, 1_000_000);
+        var pageSize = Math.Clamp(request.PageSize <= 0 ? 18 : request.PageSize, 1, 100);
+
+        List<int>? searchMatchingIds = null;
         if (!string.IsNullOrWhiteSpace(request.Keyword))
         {
-            var ftsHandled = false;
-            if (context.Database.IsSqlite())
+            var searchHandled = false;
+            if (context.Database.IsNpgsql())
             {
                 try
                 {
-                    var ftsQuery = BuildFts5Query(request.Keyword);
-                    if (!string.IsNullOrWhiteSpace(ftsQuery))
+                    var tsQuery = BuildPostgresTsQuery(request.Keyword);
+                    if (!string.IsNullOrWhiteSpace(tsQuery))
                     {
-                        var matchingIds = new List<int>();
-                        var conn = context.Database.GetDbConnection();
-                        var wasOpen = conn.State == System.Data.ConnectionState.Open;
-                        if (!wasOpen) await conn.OpenAsync();
-                        try
-                        {
-                            await using var cmd = conn.CreateCommand();
-                            cmd.CommandText = "SELECT movie_id FROM movies_fts WHERE movies_fts MATCH @query ORDER BY rank;";
-                            var pQuery = cmd.CreateParameter();
-                            pQuery.ParameterName = "@query";
-                            pQuery.Value = ftsQuery;
-                            cmd.Parameters.Add(pQuery);
-
-                            await using var reader = await cmd.ExecuteReaderAsync();
-                            while (await reader.ReadAsync())
-                            {
-                                matchingIds.Add(reader.GetInt32(0));
-                            }
-                        }
-                        finally
-                        {
-                            if (!wasOpen) await conn.CloseAsync();
-                        }
-
+                        var matchingIds = await QueryPostgresSearchAsync(context, tsQuery);
                         if (matchingIds.Count > 0)
                         {
-                            ftsMatchingIds = matchingIds;
+                            searchMatchingIds = matchingIds;
                             query = query.Where(movie => matchingIds.Contains(movie.Id));
                         }
                         else
@@ -198,20 +182,20 @@ public sealed class DatabaseMovieService(
                             {
                                 Items = [],
                                 TotalItems = 0,
-                                Page = Math.Max(request.Page, 1),
-                                PageSize = request.PageSize <= 0 ? 18 : request.PageSize
+                                Page = page,
+                                PageSize = pageSize
                             };
                         }
-                        ftsHandled = true;
+                        searchHandled = true;
                     }
                 }
                 catch
                 {
-                    ftsHandled = false;
+                    searchHandled = false;
                 }
             }
 
-            if (!ftsHandled)
+            if (!searchHandled)
             {
                 var normKeyword = VietnameseTextNormalizer.NormalizeForSearch(request.Keyword);
                 var rawKeyword = request.Keyword.Trim().ToLowerInvariant();
@@ -239,8 +223,8 @@ public sealed class DatabaseMovieService(
                 else
                 {
                     // Prefer the pre-normalized, persistent SearchText column. This keeps
-                    // MySQL/relational providers aligned with the SQLite FTS + Vietnamese
-                    // normalization behaviour and avoids per-row client-side evaluation.
+                    // MySQL/relational providers aligned with the PostgreSQL tsvector index and
+                    // the Vietnamese normalization behaviour without per-row client-side evaluation.
                     var hasSearchText = await context.Movies.AsNoTracking()
                         .AnyAsync(m => m.SearchText != null && m.SearchText != string.Empty);
                     if (hasSearchText)
@@ -265,8 +249,8 @@ public sealed class DatabaseMovieService(
         var countries = request.ResolveCountries();
         var years = request.ResolveYears();
         var types = request.ResolveTypes();
-        // SQLite LOWER handles ASCII only. Resolve Vietnamese labels in .NET,
-        // then compare their exact stored values inside the database query.
+        // PostgreSQL folds only ASCII in LOWER(), so Vietnamese labels are resolved in .NET
+        // and then compared against their exact stored values inside the database query.
         if (genres.Length > 0)
         {
             var available = await context.Genres.AsNoTracking().Select(g => new { g.Name, g.Slug }).ToListAsync();
@@ -283,24 +267,69 @@ public sealed class DatabaseMovieService(
         if (years.Length > 0) query = query.Where(movie => years.Contains(movie.ReleaseYear));
         if (types.Length > 0) query = query.Where(movie => types.Contains(movie.Type));
 
-        var page = request.Page <= 0 ? 1 : request.Page;
-        var pageSize = request.PageSize <= 0 ? 18 : request.PageSize;
-
         int totalItems;
-        if (request.SortBy.Equals("relevance", StringComparison.OrdinalIgnoreCase) && ftsMatchingIds != null && ftsMatchingIds.Count > 0)
+        if (request.SortBy.Equals("relevance", StringComparison.OrdinalIgnoreCase) && searchMatchingIds != null && searchMatchingIds.Count > 0)
         {
-            var allMatchedIdList = await query.Select(m => m.Id).ToListAsync();
-            var allMatchedIdSet = allMatchedIdList.ToHashSet();
-            totalItems = allMatchedIdSet.Count;
+            // Khi không có bộ lọc bổ sung (thể loại / quốc gia / năm / loại phim) thì mọi id khớp
+            // tìm kiếm đều hợp lệ, nên không cần vòng truy vấn "giao nhau" thứ hai.
+            var hasExtraFilters = genres.Length > 0 || countries.Length > 0 || years.Length > 0 || types.Length > 0;
 
-            var pagedIds = ftsMatchingIds
-                .Where(allMatchedIdSet.Contains)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToList();
+            List<int> pagedIds;
+            if (hasExtraFilters)
+            {
+                var allMatchedIdList = await query.Select(m => m.Id).ToListAsync();
+                var allMatchedIdSet = allMatchedIdList.ToHashSet();
+                totalItems = allMatchedIdSet.Count;
 
-            var pageMovies = await SummaryQuery(context)
-                .Where(m => pagedIds.Contains(m.Id))
+                pagedIds = searchMatchingIds
+                    .Where(allMatchedIdSet.Contains)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToList();
+            }
+            else
+            {
+                totalItems = searchMatchingIds.Count;
+
+                pagedIds = searchMatchingIds
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToList();
+            }
+
+            // Chiếu thẳng ra DTO để chỉ cần MỘT vòng truy vấn. Dùng Include sẽ khiến EF tách
+            // bản ghi thành 3 câu lệnh riêng (phim + liên kết thể loại + thể loại), làm nặng
+            // đường tìm kiếm nóng.
+            var pageMovies = await context.Movies.AsNoTracking()
+                .Where(movie => pagedIds.Contains(movie.Id))
+                .Select(movie => new MovieDto
+                {
+                    Id = movie.Id,
+                    Title = movie.Title,
+                    OriginalTitle = movie.OriginalTitle,
+                    Slug = movie.Slug,
+                    Overview = movie.Overview,
+                    PosterUrl = movie.PosterUrl,
+                    BackdropUrl = movie.BackdropUrl,
+                    TrailerUrl = movie.TrailerUrl,
+                    Rating = movie.Rating,
+                    VoteCount = movie.VoteCount,
+                    ReleaseYear = movie.ReleaseYear,
+                    DurationMinutes = movie.DurationMinutes,
+                    AgeRating = movie.AgeRating,
+                    Quality = movie.Quality,
+                    Type = movie.Type,
+                    Genres = movie.MovieGenres
+                        .OrderBy(item => item.GenreId)
+                        .Select(item => item.Genre.Name)
+                        .ToList(),
+                    Country = movie.Country,
+                    ViewCount = movie.ViewCount,
+                    IsTrending = movie.IsTrending,
+                    IsFeatured = movie.IsFeatured,
+                    TotalEpisodes = movie.TotalEpisodes,
+                    CurrentEpisode = movie.CurrentEpisode
+                })
                 .ToListAsync();
 
             var rankMap = pagedIds.Select((id, index) => (id, index)).ToDictionary(x => x.id, x => x.index);
@@ -308,7 +337,7 @@ public sealed class DatabaseMovieService(
 
             return new PagedResult<MovieDto>
             {
-                Items = sortedMovies.Select(MapSummary).ToList(),
+                Items = sortedMovies,
                 TotalItems = totalItems,
                 Page = page,
                 PageSize = pageSize
@@ -337,9 +366,12 @@ public sealed class DatabaseMovieService(
         };
     }
 
+    /// <summary>Số phim tương tự gắn kèm mỗi phim (dùng cho trang xem và trang thông tin).</summary>
+    private const int SimilarMovieCount = 8;
+
     public async Task<List<MovieDto>> GetSimilarMoviesAsync(int movieId, int count = 6)
-    {
-        if (count <= 0) return [];
+    {        if (count <= 0) return [];
+        count = Math.Clamp(count, 1, 50);
         await using var context = await contextFactory.CreateDbContextAsync();
         var current = await context.Movies.AsNoTracking().Include(movie => movie.MovieGenres)
             .SingleOrDefaultAsync(movie => movie.Id == movieId);
@@ -347,9 +379,18 @@ public sealed class DatabaseMovieService(
 
         var genreIds = current.MovieGenres.Select(item => item.GenreId).ToList();
         var movies = await SummaryQuery(context)
-            .Where(movie => movie.Id != movieId &&
-                (movie.Type == current.Type || movie.MovieGenres.Any(item => genreIds.Contains(item.GenreId))))
-            .OrderByDescending(movie => movie.Rating).Take(count).ToListAsync();
+            .Where(movie => movie.Id != movieId
+                // Chỉ gợi ý những phim đã có tập phát — bấm vào phim chưa có nguồn thì người xem
+                // sẽ gặp ngay màn hình "chưa có nguồn phát".
+                && movie.Episodes.Any(episode => episode.Streams.Any())
+                && (movie.Type == current.Type
+                    || movie.MovieGenres.Any(item => genreIds.Contains(item.GenreId))))
+            // Xếp theo mức tương đồng (số thể loại chung) trước, rồi mới theo điểm đánh giá —
+            // nếu chỉ theo điểm đánh giá thì phim hay nhất thắng chứ không phải phim giống nhất.
+            .OrderByDescending(movie => movie.MovieGenres.Count(item => genreIds.Contains(item.GenreId)))
+            .ThenByDescending(movie => movie.Rating)
+            .ThenByDescending(movie => movie.ViewCount)
+            .Take(count).ToListAsync();
         return movies.Select(MapSummary).ToList();
     }
 
@@ -429,6 +470,12 @@ public sealed class DatabaseMovieService(
                 Overview = episode.Overview,
                 Streams = episode.Streams.OrderBy(stream => stream.Position).Select(stream => new StreamSourceDto
                 {
+                    // The episode id and the stream position are what the playback URL is
+                    // signed with. Leaving them at 0 produced a URL for episode 0, which the
+                    // stream endpoint answers with 404 — the player then never started.
+                    Id = stream.Position,
+                    EpisodeId = stream.EpisodeId,
+                    Position = stream.Position,
                     ServerName = stream.ServerName,
                     ServerType = stream.ServerType,
                     Quality = stream.Quality,
@@ -512,53 +559,75 @@ public sealed class DatabaseMovieService(
     public async Task<List<MovieDto>> SearchMoviesAsync(string keyword, int limit = 20)
     {
         if (string.IsNullOrWhiteSpace(keyword)) return [];
+        var safeLimit = Math.Clamp(limit <= 0 ? 20 : limit, 1, 50);
         var result = await FilterMoviesAsync(new MovieFilterRequest
         {
             Keyword = keyword.Trim(),
             SortBy = "relevance",
             Page = 1,
-            PageSize = limit <= 0 ? 20 : limit
+            PageSize = safeLimit
         });
         return result.Items;
     }
 
-    public static string BuildFts5Query(string? keyword)
+    /// <summary>
+    /// Builds a PostgreSQL <c>tsquery</c> expression from a free-text keyword.
+    /// The keyword is normalized with the shared Vietnamese normalizer so that "Xứ Cát" and
+    /// "xu cat" produce the same query, and every token is quoted so that words such as
+    /// "and"/"or" cannot be interpreted as tsquery operators.
+    /// </summary>
+    public static string BuildPostgresTsQuery(string? keyword)
     {
         if (string.IsNullOrWhiteSpace(keyword)) return string.Empty;
 
-        var rawTokens = Regex.Matches(keyword, @"[\p{L}\p{N}]+")
-            .Select(m => m.Value.Trim())
-            .Where(t => t.Length > 0)
+        var normalized = VietnameseTextNormalizer.NormalizeForSearch(keyword);
+        var tokens = Regex.Matches(normalized, @"[\p{L}\p{N}]+")
+            .Select(match => match.Value)
+            .Where(token => token.Length > 0)
+            .Distinct(StringComparer.Ordinal)
             .ToList();
 
-        if (rawTokens.Count == 0) return string.Empty;
+        if (tokens.Count == 0) return string.Empty;
 
-        var normKeyword = VietnameseTextNormalizer.NormalizeForSearch(keyword);
-        var normTokens = Regex.Matches(normKeyword, @"[\p{L}\p{N}]+")
-            .Select(m => m.Value.Trim())
-            .Where(t => t.Length > 0)
-            .ToList();
+        return string.Join(" & ", tokens.Select(token => $"'{token.Replace("'", "''")}':*"));
+    }
 
-        var clauses = new List<string>();
-
-        var rawClause = string.Join(" ", rawTokens.Select(t => $"\"{t.Replace("\"", "\"\"")}\"*"));
-        if (!string.IsNullOrWhiteSpace(rawClause))
+    /// <summary>
+    /// Runs the PostgreSQL full-text search and returns the matching movie ids ordered by
+    /// relevance (the same order the FTS5 implementation produced).
+    /// </summary>
+    private static async Task<List<int>> QueryPostgresSearchAsync(AppDbContext context, string tsQuery)
+    {
+        var connection = context.Database.GetDbConnection();
+        var wasOpen = connection.State == System.Data.ConnectionState.Open;
+        if (!wasOpen) await connection.OpenAsync();
+        try
         {
-            clauses.Add(rawClause);
-        }
+            var matchingIds = new List<int>();
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = @"
+SELECT m.""Id""
+  FROM movies m
+  CROSS JOIN to_tsquery('simple', @query) q
+ WHERE m.""search_vector"" @@ q
+ ORDER BY ts_rank_cd(m.""search_vector"", q) DESC, m.""Id"" ASC;";
+            var pQuery = cmd.CreateParameter();
+            pQuery.ParameterName = "@query";
+            pQuery.Value = tsQuery;
+            cmd.Parameters.Add(pQuery);
 
-        if (normTokens.Count > 0)
-        {
-            var normClause = string.Join(" ", normTokens.Select(t => $"\"{t.Replace("\"", "\"\"")}\"*"));
-            if (!clauses.Contains(normClause, StringComparer.OrdinalIgnoreCase))
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
             {
-                clauses.Add(normClause);
+                matchingIds.Add(reader.GetInt32(0));
             }
-        }
 
-        if (clauses.Count == 0) return string.Empty;
-        if (clauses.Count == 1) return clauses[0];
-        return $"({clauses[0]}) OR ({clauses[1]})";
+            return matchingIds;
+        }
+        finally
+        {
+            if (!wasOpen) await connection.CloseAsync();
+        }
     }
 }
 

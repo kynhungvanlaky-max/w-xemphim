@@ -1,27 +1,25 @@
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Shared.Enums;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public sealed class ChallengerM1EmpiricalTests
+public sealed class ChallengerM1EmpiricalTests : IClassFixture<PostgresTestDatabaseFixture>
 {
-    private static async Task<(SqliteConnection Connection, AppDbContext Context)> CreateOpenSqliteConnectionAndContextAsync()
+    private readonly PostgresTestDatabaseFixture _fixture;
+
+    public ChallengerM1EmpiricalTests(PostgresTestDatabaseFixture fixture)
     {
-        var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connection)
-            .Options;
-        var context = new AppDbContext(options);
-        return (connection, context);
+        _fixture = fixture;
     }
+
+    private PostgresTestDatabase Database => _fixture.Database;
 
     [Fact]
     public async Task CompleteCascadeDelete_All13UserRelationships_CascadesOrSetsNullEmpirically()
     {
-        var (connection, context) = await CreateOpenSqliteConnectionAndContextAsync();
+        var (connection, context, _) = await Database.CreateOpenContextAsync();
         await using (connection)
         await using (context)
         {
@@ -140,7 +138,7 @@ public sealed class ChallengerM1EmpiricalTests
             Assert.Empty(await context.PlaybackIssues.Where(x => x.UserId == userId).ToListAsync());
 
             // Note: If table security_audit_events is created by EF Core EnsureCreatedAsync(),
-            // EF model did not declare a foreign key for SecurityAuditEventEntity, so SQLite table lacks FK.
+            // EF model did not declare a foreign key for SecurityAuditEventEntity, so PostgreSQL table lacks FK.
             // But when created by DatabaseSchemaHelper directly, it declares FOREIGN KEY (UserId) REFERENCES users(Id) ON DELETE SET NULL.
             // Let's verify that the 12 cascading child tables all cleanly deleted their records.
             Assert.True(true);
@@ -150,68 +148,57 @@ public sealed class ChallengerM1EmpiricalTests
     [Fact]
     public async Task SecurityAuditEvents_WhenCreatedByDatabaseSchemaHelper_EnforcesOnDeleteSetNull()
     {
-        var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
-
+        var (connection, context, _) = await Database.CreateOpenContextAsync();
         await using (connection)
-        await using (var context = new AppDbContext(options))
+        await using (context)
         {
-            // Create users, movies, episodes tables first
+            // Xóa bảng audit để DatabaseSchemaHelper tự tạo lại bằng DDL của helper
+            // (không phải DDL của EF Core EnsureCreatedAsync)
             await using (var cmd = connection.CreateCommand())
             {
-                cmd.CommandText = @"
-                    CREATE TABLE users (
-                        Id TEXT NOT NULL PRIMARY KEY,
-                        FullName TEXT NOT NULL,
-                        Email TEXT NOT NULL,
-                        NormalizedEmail TEXT NOT NULL,
-                        PasswordSalt BLOB NOT NULL,
-                        PasswordHash BLOB NOT NULL,
-                        Membership INTEGER NOT NULL,
-                        CreatedAtUtc TEXT NOT NULL
-                    );
-                    CREATE TABLE movies (
-                        Id INTEGER NOT NULL PRIMARY KEY,
-                        Title TEXT NOT NULL
-                    );
-                    CREATE TABLE episodes (
-                        Id INTEGER NOT NULL PRIMARY KEY,
-                        MovieId INTEGER NOT NULL
-                    );";
+                cmd.CommandText = "DROP TABLE IF EXISTS security_audit_events;";
                 await cmd.ExecuteNonQueryAsync();
             }
 
             // Create auxiliary tables using DatabaseSchemaHelper DDL directly (not EF EnsureCreatedAsync)
             await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
 
-            var userId = Guid.NewGuid().ToString();
-            var eventId = Guid.NewGuid().ToString();
+            var userId = Guid.NewGuid();
+            var eventId = Guid.NewGuid();
 
             // Insert user and security audit event
             await using (var cmd = connection.CreateCommand())
             {
-                cmd.CommandText = $@"
-                    INSERT INTO users (Id, FullName, Email, NormalizedEmail, PasswordSalt, PasswordHash, Membership, CreatedAtUtc)
-                    VALUES ('{userId}', 'Audit Test', 'audit@cinema.vn', 'AUDIT@CINEMA.VN', x'00', x'00', 0, '2026-01-01');
+                cmd.CommandText = @"
+                    INSERT INTO users (""Id"", ""FullName"", ""Email"", ""NormalizedEmail"", ""PasswordSalt"", ""PasswordHash"", ""Membership"", ""CreatedAtUtc"")
+                    VALUES (@userId, 'Audit Test', 'audit@cinema.vn', 'AUDIT@CINEMA.VN', '\x00'::bytea, '\x00'::bytea, 0, '2026-01-01T00:00:00Z');";
+                cmd.Parameters.AddWithValue("userId", userId);
+                await cmd.ExecuteNonQueryAsync();
+            }
 
-                    INSERT INTO security_audit_events (Id, UserId, EventType, Success, Detail, CreatedAtUtc)
-                    VALUES ('{eventId}', '{userId}', 'Login', 1, 'Test login', '2026-01-01');
-                ";
+            await using (var cmd = connection.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    INSERT INTO security_audit_events (""Id"", ""UserId"", ""EventType"", ""Success"", ""Detail"", ""CreatedAtUtc"")
+                    VALUES (@eventId, @userId, 'Login', TRUE, 'Test login', '2026-01-01T00:00:00Z');";
+                cmd.Parameters.AddWithValue("userId", userId);
+                cmd.Parameters.AddWithValue("eventId", eventId);
                 await cmd.ExecuteNonQueryAsync();
             }
 
             // Delete user
             await using (var cmd = connection.CreateCommand())
             {
-                cmd.CommandText = $"DELETE FROM users WHERE Id = '{userId}';";
+                cmd.CommandText = "DELETE FROM users WHERE \"Id\" = @userId;";
+                cmd.Parameters.AddWithValue("userId", userId);
                 await cmd.ExecuteNonQueryAsync();
             }
 
             // Check security_audit_events.UserId
             await using (var cmd = connection.CreateCommand())
             {
-                cmd.CommandText = $"SELECT UserId FROM security_audit_events WHERE Id = '{eventId}';";
+                cmd.CommandText = "SELECT \"UserId\" FROM security_audit_events WHERE \"Id\" = @eventId";
+                cmd.Parameters.AddWithValue("eventId", eventId);
                 var res = await cmd.ExecuteScalarAsync();
                 Assert.True(res is DBNull or null, $"Expected UserId to be set to NULL by ON DELETE SET NULL, but got '{res}'");
             }
@@ -221,7 +208,7 @@ public sealed class ChallengerM1EmpiricalTests
     [Fact]
     public async Task CascadeDelete_WhenMovieDeleted_CascadesAllChildEntities()
     {
-        var (connection, context) = await CreateOpenSqliteConnectionAndContextAsync();
+        var (connection, context, _) = await Database.CreateOpenContextAsync();
         await using (connection)
         await using (context)
         {
@@ -292,42 +279,71 @@ public sealed class ChallengerM1EmpiricalTests
     [Fact]
     public async Task SchemaMigration_WhenLegacyTableLacksColumns_EnsureTablesCreatedSafelyAltersTable()
     {
-        var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
-
+        var (connection, context, _) = await Database.CreateOpenContextAsync();
         await using (connection)
+        await using (context)
         {
-            // 1. Manually create legacy user_settings table WITHOUT Language column
-            await using (var cmd = connection.CreateCommand())
+            var legacyUserId = Guid.NewGuid();
+            try
             {
-                cmd.CommandText = @"
-                    CREATE TABLE user_settings (
-                        UserId TEXT NOT NULL PRIMARY KEY,
-                        DefaultQuality TEXT NOT NULL,
-                        AutoplayNext INTEGER NOT NULL,
-                        NotifyNewEpisodes INTEGER NOT NULL,
-                        UpdatedAtUtc TEXT NOT NULL
-                    );
-                    INSERT INTO user_settings (UserId, DefaultQuality, AutoplayNext, NotifyNewEpisodes, UpdatedAtUtc)
-                    VALUES ('user-legacy-123', '1080p', 1, 1, '2026-01-01T00:00:00Z');
-                ";
-                await cmd.ExecuteNonQueryAsync();
-            }
+                // 1. Manually create legacy user_settings table WITHOUT Language column
+                await using (var cmd = connection.CreateCommand())
+                {
+                    cmd.CommandText = "DROP TABLE IF EXISTS user_settings;";
+                    await cmd.ExecuteNonQueryAsync();
+                }
 
-            // 2. Run EnsureTablesCreatedAsync
-            await using (var context = new AppDbContext(options))
-            {
+                await using (var cmd = connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        CREATE TABLE user_settings (
+                            ""UserId"" uuid NOT NULL PRIMARY KEY,
+                            ""DefaultQuality"" varchar(32) NOT NULL,
+                            ""AutoplayNext"" boolean NOT NULL,
+                            ""NotifyNewEpisodes"" boolean NOT NULL,
+                            ""UpdatedAtUtc"" timestamptz NOT NULL
+                        );";
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                await using (var cmd = connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        INSERT INTO user_settings (""UserId"", ""DefaultQuality"", ""AutoplayNext"", ""NotifyNewEpisodes"", ""UpdatedAtUtc"")
+                        VALUES (@userId, '1080p', TRUE, TRUE, '2026-01-01T00:00:00Z');";
+                    cmd.Parameters.AddWithValue("userId", legacyUserId);
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                // 2. Run EnsureTablesCreatedAsync
                 await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
-            }
 
-            // 3. Verify Language column was added and default value 'vi' was assigned
-            await using (var cmd = connection.CreateCommand())
+                // 3. Verify Language column was added and default value 'vi' was assigned
+                // (PostgreSQL hạ chữ thường cho tên cột không được quote nên cột vừa thêm
+                //  có thể là "language" hoặc "Language" tuỳ vào DDL của helper)
+                var languageColumn = await context.Database.SqlQueryRaw<string>(
+                    "SELECT column_name AS \"Value\" FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'user_settings' AND lower(column_name) = 'language'").SingleAsync();
+                Assert.NotNull(languageColumn);
+
+                await using (var cmd = connection.CreateCommand())
+                {
+                    cmd.CommandText = $"SELECT \"{languageColumn}\" FROM user_settings WHERE \"UserId\" = @userId";
+                    cmd.Parameters.AddWithValue("userId", legacyUserId);
+                    var langVal = await cmd.ExecuteScalarAsync();
+                    Assert.NotNull(langVal);
+                    Assert.Equal("vi", langVal.ToString());
+                }
+            }
+            finally
             {
-                cmd.CommandText = "SELECT Language FROM user_settings WHERE UserId = 'user-legacy-123';";
-                var langVal = await cmd.ExecuteScalarAsync();
-                Assert.NotNull(langVal);
-                Assert.Equal("vi", langVal.ToString());
+                // Khôi phục lại schema chuẩn của user_settings cho các test khác trong cùng class
+                await using (var cmd = connection.CreateCommand())
+                {
+                    cmd.CommandText = "DROP TABLE IF EXISTS user_settings;";
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
             }
         }
     }
@@ -335,7 +351,7 @@ public sealed class ChallengerM1EmpiricalTests
     [Fact]
     public async Task RepeatedIdempotencyStress_ExecutingSchemaHelper10Times_RemainsStable()
     {
-        var (connection, context) = await CreateOpenSqliteConnectionAndContextAsync();
+        var (connection, context, _) = await Database.CreateOpenContextAsync();
         await using (connection)
         await using (context)
         {
@@ -348,7 +364,7 @@ public sealed class ChallengerM1EmpiricalTests
 
             // Verify tables and indexes exist intact
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT COUNT(1) FROM sqlite_master WHERE type='table';";
+            cmd.CommandText = "SELECT COUNT(1) FROM information_schema.tables WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'";
             var tableCount = Convert.ToInt32(await cmd.ExecuteScalarAsync());
             Assert.True(tableCount > 15);
         }
@@ -357,21 +373,29 @@ public sealed class ChallengerM1EmpiricalTests
     [Fact]
     public async Task SecondaryIndexes_AreUtilizedByQueryPlanner()
     {
-        var (connection, context) = await CreateOpenSqliteConnectionAndContextAsync();
+        var (connection, context, _) = await Database.CreateOpenContextAsync();
         await using (connection)
         await using (context)
         {
             await context.Database.EnsureCreatedAsync();
             await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
 
-            // Check EXPLAIN QUERY PLAN on watch_progress MovieId
+            // PostgreSQL dùng cost-based planner nên bảng rỗng sẽ bị seq scan.
+            // Tắt seq scan để planner buộc dùng index thật sự tồn tại cho điều kiện lọc theo MovieId.
+            await using (var setCmd = connection.CreateCommand())
+            {
+                setCmd.CommandText = "SET enable_seqscan = off;";
+                await setCmd.ExecuteNonQueryAsync();
+            }
+
+            // Check EXPLAIN on watch_progress MovieId
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = "EXPLAIN QUERY PLAN SELECT * FROM watch_progress WHERE MovieId = 1;";
+            cmd.CommandText = "EXPLAIN SELECT * FROM watch_progress WHERE \"MovieId\" = 1";
             await using var reader = await cmd.ExecuteReaderAsync();
             var detail = string.Empty;
             while (await reader.ReadAsync())
             {
-                detail += reader["detail"]?.ToString() + " ";
+                detail += reader[0]?.ToString() + " ";
             }
 
             Assert.Contains("IX_watch_progress_MovieId", detail);

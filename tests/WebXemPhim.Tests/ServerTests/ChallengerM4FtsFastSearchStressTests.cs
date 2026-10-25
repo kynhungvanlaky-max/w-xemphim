@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Server.Services;
 using WebXemPhim.Shared.Enums;
@@ -12,21 +12,24 @@ using Xunit;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public class ChallengerM4FtsFastSearchStressTests
+public class ChallengerM4FtsFastSearchStressTests : IClassFixture<PostgresTestDatabaseFixture>
 {
-    private static async Task<(SqliteConnection Connection, AppDbContext Context, IDbContextFactory<AppDbContext> Factory)> CreateSqliteContextAsync()
-    {
-        var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connection)
-            .Options;
-        var context = new AppDbContext(options);
-        await context.Database.EnsureCreatedAsync();
-        await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
+    private readonly PostgresTestDatabaseFixture _fixture;
 
-        var factory = new TestDbContextFactory(options);
-        return (connection, context, factory);
+    public ChallengerM4FtsFastSearchStressTests(PostgresTestDatabaseFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    private PostgresTestDatabase Database => _fixture.Database;
+
+    /// <summary>
+    /// Mở context PostgreSQL thật (Testcontainers). Schema + trigger + GIN index đã được
+    /// tạo sẵn bởi fixture; các bảng được truncate trước mỗi test.
+    /// </summary>
+    private async Task<(NpgsqlConnection Connection, AppDbContext Context, IDbContextFactory<AppDbContext> Factory)> CreatePostgresContextAsync()
+    {
+        return await Database.CreateOpenContextAsync();
     }
 
     #region 1. Vietnamese Text Normalization & Unicode Edge Cases
@@ -120,7 +123,7 @@ public class ChallengerM4FtsFastSearchStressTests
 
     #endregion
 
-    #region 2. Adversarial FTS5 Query Construction
+    #region 2. Adversarial tsquery Construction
 
     [Theory]
     [InlineData("Title: Subtitle")]
@@ -137,20 +140,20 @@ public class ChallengerM4FtsFastSearchStressTests
     [InlineData("SELECT * FROM movies; -- ' DROP TABLE")]
     [InlineData("1' OR '1'='1")]
     [InlineData("🎬🍿🎥💥🔥")]
-    public void BuildFts5Query_SanitizesComplexAndAdversarialInputs_NeverThrows(string keyword)
+    public void BuildPostgresTsQuery_SanitizesComplexAndAdversarialInputs_NeverThrows(string keyword)
     {
-        var query = DatabaseMovieService.BuildFts5Query(keyword);
+        var query = DatabaseMovieService.BuildPostgresTsQuery(keyword);
         Assert.NotNull(query);
     }
 
     [Fact]
-    public void BuildFts5Query_MassiveKeyword_HandlesGracefullyWithoutOverflow()
+    public void BuildPostgresTsQuery_MassiveKeyword_HandlesGracefullyWithoutOverflow()
     {
         var massive = string.Join(" ", Enumerable.Range(1, 300).Select(i => $"Keyword{i}"));
-        var query = DatabaseMovieService.BuildFts5Query(massive);
+        var query = DatabaseMovieService.BuildPostgresTsQuery(massive);
         Assert.NotEmpty(query);
-        Assert.Contains("\"Keyword1\"*", query);
-        Assert.Contains("\"Keyword300\"*", query);
+        Assert.Contains("'keyword1':*", query);
+        Assert.Contains("'keyword300':*", query);
     }
 
     [Theory]
@@ -161,9 +164,9 @@ public class ChallengerM4FtsFastSearchStressTests
     [InlineData("parentheses (test)")]
     [InlineData("C++ Programming")]
     [InlineData("Top-Gun: Maverick")]
-    public async Task Fts5_AdversarialQueryExecution_InSqlite_ExecutesWithoutSyntaxError(string keyword)
+    public async Task TsVector_AdversarialQueryExecution_InPostgreSql_ExecutesWithoutSyntaxError(string keyword)
     {
-        var (connection, context, factory) = await CreateSqliteContextAsync();
+        var (connection, context, factory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -175,12 +178,12 @@ public class ChallengerM4FtsFastSearchStressTests
 
     #endregion
 
-    #region 3. SQLite FTS5 Triggers & Rapid Batch CUD Integrity
+    #region 3. PostgreSQL tsvector Triggers & Rapid Batch CUD Integrity
 
     [Fact]
-    public async Task Triggers_RapidBatchInsert_MaintainsExactFtsSynchronization()
+    public async Task Triggers_RapidBatchInsert_MaintainsExactTsVectorSynchronization()
     {
-        var (connection, context, factory) = await CreateSqliteContextAsync();
+        var (connection, context, factory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -207,11 +210,11 @@ public class ChallengerM4FtsFastSearchStressTests
             context.Movies.AddRange(movies);
             await context.SaveChangesAsync();
 
-            // Verify SQLite trigger trg_movies_fts_insert populated movies_fts
+            // Verify PostgreSQL trigger trg_movies_search_vector populated movies."search_vector"
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT COUNT(1) FROM movies_fts;";
-            var ftsCount = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-            Assert.Equal(batchCount, ftsCount);
+            cmd.CommandText = "SELECT COUNT(1) FROM movies WHERE \"search_vector\" IS NOT NULL";
+            var indexedCount = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+            Assert.Equal(batchCount, indexedCount);
 
             var service = new DatabaseMovieService(factory);
 
@@ -230,7 +233,7 @@ public class ChallengerM4FtsFastSearchStressTests
     [Fact]
     public async Task Triggers_RapidBatchUpdate_ReflectsNewTitlesImmediately()
     {
-        var (connection, context, factory) = await CreateSqliteContextAsync();
+        var (connection, context, factory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -270,25 +273,25 @@ public class ChallengerM4FtsFastSearchStressTests
             var oldSearch = await service.SearchMoviesAsync("Ban Dau", 50);
             Assert.Empty(oldSearch);
 
-            // Trigger immediately updates title and director in movies_fts for accented searches
+            // Trigger immediately updates title and director in movies."search_vector" for accented searches
             var newSearchAccented = await service.SearchMoviesAsync("Cập Nhật Mới", 50);
             Assert.Equal(batchCount, newSearchAccented.Count);
 
             var dirSearchAccented = await service.SearchMoviesAsync("Đạo Diễn Mới", 50);
             Assert.Equal(batchCount, dirSearchAccented.Count);
 
-            // When IndexSingleMovieAsync / SyncMoviesFtsAsync is invoked (as done by AdminMoviesController),
-            // normalized_content is populated, enabling unaccented search across Latin Extended Additional diacritics
-            await DatabaseSchemaHelper.SyncMoviesFtsAsync(context);
+            // When RefreshMovieSearchIndexAsync / SyncMovieSearchIndexAsync is invoked (as done by AdminMoviesController),
+            // the search vector is rebuilt with the unaccented tokens, enabling unaccented search across Latin Extended Additional diacritics
+            await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
             var newSearchUnaccented = await service.SearchMoviesAsync("Cap Nhat Moi", 50);
             Assert.Equal(batchCount, newSearchUnaccented.Count);
         }
     }
 
     [Fact]
-    public async Task Triggers_RapidBatchDelete_CleansVirtualTableWithoutOrphans()
+    public async Task Triggers_RapidBatchDelete_CleansSearchVectorWithoutOrphans()
     {
-        var (connection, context, factory) = await CreateSqliteContextAsync();
+        var (connection, context, factory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -319,9 +322,9 @@ public class ChallengerM4FtsFastSearchStressTests
             await context.SaveChangesAsync();
 
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT COUNT(1) FROM movies_fts;";
-            var ftsCount = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-            Assert.Equal(10, ftsCount);
+            cmd.CommandText = "SELECT COUNT(1) FROM movies WHERE \"search_vector\" IS NOT NULL";
+            var indexedCount = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+            Assert.Equal(10, indexedCount);
 
             var service = new DatabaseMovieService(factory);
             var results = await service.SearchMoviesAsync("Phim Xóa", 50);
@@ -330,9 +333,9 @@ public class ChallengerM4FtsFastSearchStressTests
     }
 
     [Fact]
-    public async Task IndexSingleMovieAsync_IdempotenceAndStabilityUnderRapidCalls()
+    public async Task RefreshMovieSearchIndexAsync_IdempotenceAndStabilityUnderRapidCalls()
     {
-        var (connection, context, factory) = await CreateSqliteContextAsync();
+        var (connection, context, factory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -354,15 +357,15 @@ public class ChallengerM4FtsFastSearchStressTests
             context.Movies.Add(movie);
             await context.SaveChangesAsync();
 
-            // Rapid repeated calls to IndexSingleMovieAsync
+            // Rapid repeated calls to RefreshMovieSearchIndexAsync
             for (var i = 0; i < 5; i++)
             {
-                await DatabaseSchemaHelper.IndexSingleMovieAsync(context, movie.Id);
+                await DatabaseSchemaHelper.RefreshMovieSearchIndexAsync(context, movie.Id);
             }
 
-            // Must have exactly 1 record in movies_fts, not 5
+            // Must have exactly 1 indexed movie, not 5
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT COUNT(1) FROM movies_fts WHERE movie_id = @id;";
+            cmd.CommandText = "SELECT COUNT(1) FROM movies WHERE \"search_vector\" IS NOT NULL AND \"Id\" = @id";
             var p = cmd.CreateParameter();
             p.ParameterName = "@id";
             p.Value = movie.Id;
@@ -379,12 +382,12 @@ public class ChallengerM4FtsFastSearchStressTests
 
     #endregion
 
-    #region 4. BM25 Rank Ordering Verification
+    #region 4. ts_rank_cd Rank Ordering Verification
 
     [Fact]
-    public async Task Fts5_Bm25Ranking_RanksTitleMatchesAheadOfOverviewOnlyMatches()
+    public async Task TsVector_RankRanking_RanksTitleMatchesAheadOfOverviewOnlyMatches()
     {
-        var (connection, context, factory) = await CreateSqliteContextAsync();
+        var (connection, context, factory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -422,7 +425,7 @@ public class ChallengerM4FtsFastSearchStressTests
 
             context.Movies.AddRange(m1, m2);
             await context.SaveChangesAsync();
-            await DatabaseSchemaHelper.SyncMoviesFtsAsync(context);
+            await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
 
             var service = new DatabaseMovieService(factory);
             var request = new MovieFilterRequest
@@ -438,13 +441,42 @@ public class ChallengerM4FtsFastSearchStressTests
             // Movie 1 (title match) must rank first
             Assert.Equal("Người Nhện", paged.Items[0].Title);
             Assert.Equal("Vũ Trụ Hoạt Hình LEGO", paged.Items[1].Title);
+
+            // ts_rank_cd (thay cho bm25 của FTS5) phải xếp hạng theo trọng số: Title (A) > Overview (D)
+            var tsQuery = DatabaseMovieService.BuildPostgresTsQuery("Người Nhện");
+            var ranking = new List<(int Id, double Rank)>();
+            await using (var cmd = connection.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT m.""Id"",
+       ts_rank_cd(m.""search_vector"", to_tsquery('simple', @q)) AS ""Rank""
+  FROM movies m
+ WHERE m.""search_vector"" @@ to_tsquery('simple', @q)
+ ORDER BY ""Rank"" DESC, m.""Id"" ASC;";
+                var p = cmd.CreateParameter();
+                p.ParameterName = "@q";
+                p.Value = tsQuery;
+                cmd.Parameters.Add(p);
+
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    ranking.Add((reader.GetInt32(0), Convert.ToDouble(reader.GetValue(1))));
+                }
+            }
+
+            Assert.Equal(2, ranking.Count);
+            Assert.Equal(m1.Id, ranking[0].Id);
+            Assert.Equal(m2.Id, ranking[1].Id);
+            Assert.True(ranking[0].Rank > ranking[1].Rank,
+                $"ts_rank_cd phải ưu tiên khớp ở tiêu đề: {ranking[0].Rank} <= {ranking[1].Rank}");
         }
     }
 
     [Fact]
-    public async Task Fts5_RelevanceSorting_SupportsPaginationAccurately()
+    public async Task TsVector_RelevanceSorting_SupportsPaginationAccurately()
     {
-        var (connection, context, factory) = await CreateSqliteContextAsync();
+        var (connection, context, factory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -468,7 +500,7 @@ public class ChallengerM4FtsFastSearchStressTests
             }
             context.Movies.AddRange(movies);
             await context.SaveChangesAsync();
-            await DatabaseSchemaHelper.SyncMoviesFtsAsync(context);
+            await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
 
             var service = new DatabaseMovieService(factory);
 
@@ -553,7 +585,7 @@ public class ChallengerM4FtsFastSearchStressTests
     [Fact]
     public async Task SearchMoviesAsync_EmptyOrWhitespaceKeyword_ReturnsEmptyListImmediately()
     {
-        var (connection, context, factory) = await CreateSqliteContextAsync();
+        var (connection, context, factory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {

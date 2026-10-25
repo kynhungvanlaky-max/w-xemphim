@@ -1,176 +1,182 @@
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using WebXemPhim.Server.Data;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public sealed class DatabaseSchemaConstraintsTests
+public sealed class DatabaseSchemaConstraintsTests : IClassFixture<PostgresTestDatabaseFixture>
 {
-    private static async Task<(SqliteConnection Connection, AppDbContext Context)> CreateSqliteContextAsync()
+    private readonly PostgresTestDatabaseFixture _fixture;
+
+    public DatabaseSchemaConstraintsTests(PostgresTestDatabaseFixture fixture)
     {
-        var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connection)
-            .Options;
-        var context = new AppDbContext(options);
-        return (connection, context);
+        _fixture = fixture;
     }
+
+    private PostgresTestDatabase Database => _fixture.Database;
 
     [Fact]
     public async Task EnsureTablesCreatedAsync_CreatesAllRequiredTablesAndIndexes()
     {
-        var (connection, context) = await CreateSqliteContextAsync();
-        await using (connection)
-        await using (context)
-        {
-            await context.Database.EnsureCreatedAsync();
-            await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
+        var database = Database;
+        await database.ResetAsync();
+        await using var context = database.CreateContext();
+        await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
 
-            var tables = new List<string>();
-            await using (var cmd = connection.CreateCommand())
-            {
-                cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;";
-                await using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
-                {
-                    tables.Add(reader.GetString(0));
-                }
-            }
+        var tables = await database.GetTableNamesAsync();
 
-            Assert.Contains("users", tables);
-            Assert.Contains("user_security", tables);
-            Assert.Contains("mfa_credentials", tables);
-            Assert.Contains("mfa_challenges", tables);
-            Assert.Contains("mfa_verified_sessions", tables);
-            Assert.Contains("playback_issues", tables);
-            Assert.Contains("user_library", tables);
-            Assert.Contains("user_settings", tables);
-            Assert.Contains("notifications", tables);
-            Assert.Contains("watch_progress", tables);
-            Assert.Contains("audit_logs", tables);
-            Assert.Contains("vip_plans", tables);
-            Assert.Contains("coupons", tables);
-        }
+        Assert.Contains("users", tables);
+        Assert.Contains("user_security", tables);
+        Assert.Contains("mfa_credentials", tables);
+        Assert.Contains("mfa_challenges", tables);
+        Assert.Contains("mfa_verified_sessions", tables);
+        Assert.Contains("playback_issues", tables);
+        Assert.Contains("user_library", tables);
+        Assert.Contains("user_settings", tables);
+        Assert.Contains("notifications", tables);
+        Assert.Contains("watch_progress", tables);
+        Assert.Contains("audit_logs", tables);
+        Assert.Contains("vip_plans", tables);
+        Assert.Contains("coupons", tables);
+        Assert.Contains("active_streams", tables);
+        Assert.Contains("app_maintenance_flags", tables);
     }
 
     [Fact]
     public async Task EnsureTablesCreatedAsync_CreatesSecondaryIndexes()
     {
-        var (connection, context) = await CreateSqliteContextAsync();
-        await using (connection)
-        await using (context)
-        {
-            await context.Database.EnsureCreatedAsync();
-            await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
+        var database = Database;
+        await database.ResetAsync();
+        await using var context = database.CreateContext();
+        await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
 
-            var indexes = new List<string>();
-            await using (var cmd = connection.CreateCommand())
-            {
-                cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%';";
-                await using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
-                {
-                    indexes.Add(reader.GetString(0));
-                }
-            }
+        var indexes = await database.GetIndexNamesAsync();
 
-            Assert.Contains("IX_playback_issues_UserId_MovieId", indexes);
-            Assert.Contains("IX_user_library_MovieId", indexes);
-            Assert.Contains("IX_watch_progress_MovieId", indexes);
-            Assert.Contains("IX_notifications_UserId_Read", indexes);
-            Assert.Contains("IX_audit_logs_TimestampUtc", indexes);
-            Assert.Contains("IX_audit_logs_AdminEmail", indexes);
-            Assert.Contains("IX_mfa_challenges_UserId", indexes);
-            Assert.Contains("IX_mfa_verified_sessions_UserId", indexes);
-            Assert.Contains("IX_security_audit_events_UserId", indexes);
-        }
+        Assert.Contains("IX_playback_issues_UserId_MovieId", indexes);
+        Assert.Contains("IX_user_library_MovieId", indexes);
+        Assert.Contains("IX_watch_progress_MovieId", indexes);
+        Assert.Contains("IX_notifications_UserId_Read", indexes);
+        Assert.Contains("IX_audit_logs_TimestampUtc", indexes);
+        Assert.Contains("IX_audit_logs_AdminEmail", indexes);
+        Assert.Contains("IX_mfa_challenges_UserId", indexes);
+        Assert.Contains("IX_mfa_verified_sessions_UserId", indexes);
+        Assert.Contains("IX_security_audit_events_UserId", indexes);
     }
 
     [Fact]
     public async Task EnsureTablesCreatedAsync_IsIdempotentOnSubsequentRuns()
     {
-        var (connection, context) = await CreateSqliteContextAsync();
-        await using (connection)
-        await using (context)
-        {
-            await context.Database.EnsureCreatedAsync();
-            await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
-            // Run second time to verify no exceptions occur with PRAGMA table_info checks and CREATE IF NOT EXISTS
-            await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
+        var database = Database;
+        await database.ResetAsync();
+        await using var context = database.CreateContext();
+        await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
+        // Run second time to verify no exceptions occur with information_schema checks and CREATE IF NOT EXISTS
+        await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
 
-            Assert.True(true);
-        }
+        Assert.True(true);
     }
 
     [Fact]
     public async Task UserSettingsTable_ContainsLanguageColumnWithDefaultVi()
     {
-        var (connection, context) = await CreateSqliteContextAsync();
-        await using (connection)
-        await using (context)
-        {
-            await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
+        var database = Database;
+        await database.ResetAsync();
+        await using var context = database.CreateContext();
+        await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
 
-            var columns = new List<string>();
-            await using (var cmd = connection.CreateCommand())
-            {
-                cmd.CommandText = "PRAGMA table_info(user_settings);";
-                await using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
-                {
-                    columns.Add(reader.GetString(1));
-                }
-            }
+        var columns = await database.GetColumnNamesAsync("user_settings");
 
-            Assert.Contains("Language", columns);
-            Assert.Contains("UserId", columns);
-            Assert.Contains("DefaultQuality", columns);
-            Assert.Contains("AutoplayNext", columns);
-            Assert.Contains("NotifyNewEpisodes", columns);
-        }
+        Assert.Contains("Language", columns);
+        Assert.Contains("UserId", columns);
+        Assert.Contains("DefaultQuality", columns);
+        Assert.Contains("AutoplayNext", columns);
+        Assert.Contains("NotifyNewEpisodes", columns);
     }
 
     [Fact]
     public async Task VipPlansAndCouponsTables_HaveExpectedPrimaryKeysAndColumns()
     {
-        var (connection, context) = await CreateSqliteContextAsync();
-        await using (connection)
-        await using (context)
+        var database = Database;
+        await database.ResetAsync();
+        await using var context = database.CreateContext();
+        await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
+
+        var vipColumns = await database.GetColumnNamesAsync("vip_plans");
+        Assert.Contains("Id", vipColumns);
+        Assert.Contains("Name", vipColumns);
+        Assert.Contains("PriceVnd", vipColumns);
+        Assert.Contains("DurationDays", vipColumns);
+        Assert.Contains("IsActive", vipColumns);
+
+        var couponColumns = await database.GetColumnNamesAsync("coupons");
+        Assert.Contains("Code", couponColumns);
+        Assert.Contains("DiscountType", couponColumns);
+        Assert.Contains("DiscountValue", couponColumns);
+        Assert.Contains("ValidUntilUtc", couponColumns);
+        Assert.Contains("IsActive", couponColumns);
+    }
+
+    [Fact]
+    public async Task PostgreSqlSchema_UsesNativeColumnTypes()
+    {
+        var database = Database;
+        await database.ResetAsync();
+        await using var context = database.CreateContext();
+        await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
+
+        var usersIdType = await context.Database.SqlQueryRaw<string>(
+            "SELECT data_type AS \"Value\" FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'Id'").SingleAsync();
+        Assert.Equal("uuid", usersIdType);
+
+        var createdAtType = await context.Database.SqlQueryRaw<string>(
+            "SELECT data_type AS \"Value\" FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'CreatedAtUtc'").SingleAsync();
+        Assert.Equal("timestamp with time zone", createdAtType);
+
+        var isAdminType = await context.Database.SqlQueryRaw<string>(
+            "SELECT data_type AS \"Value\" FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'user_security' AND column_name = 'IsAdmin'").SingleAsync();
+        Assert.Equal("boolean", isAdminType);
+
+        // Money must not fall back to a text representation any more.
+        var priceType = await context.Database.SqlQueryRaw<string>(
+            "SELECT data_type AS \"Value\" FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'vip_plans' AND column_name = 'PriceVnd'").SingleAsync();
+        Assert.Equal("numeric", priceType);
+
+        var saltType = await context.Database.SqlQueryRaw<string>(
+            "SELECT data_type AS \"Value\" FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'PasswordSalt'").SingleAsync();
+        Assert.Equal("bytea", saltType);
+    }
+
+    [Fact]
+    public async Task ForeignKeys_AreEnforcedAndCascadeOnDelete()
+    {
+        var database = Database;
+        await database.ResetAsync();
+        await using var context = database.CreateContext();
+
+        var userId = Guid.NewGuid();
+        context.Users.Add(new UserEntity
         {
-            await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
+            Id = userId,
+            FullName = "Người Dùng",
+            Email = "cascade@cinema.test",
+            NormalizedEmail = "CASCADE@CINEMA.TEST",
+            PasswordSalt = [1, 2, 3],
+            PasswordHash = [4, 5, 6],
+            CreatedAtUtc = DateTime.UtcNow
+        });
+        context.Notifications.Add(new NotificationEntity
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Title = "Thông báo",
+            Copy = "Nội dung",
+            Icon = "Bell",
+            CreatedAtUtc = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
 
-            var vipColumns = new List<string>();
-            await using (var cmd = connection.CreateCommand())
-            {
-                cmd.CommandText = "PRAGMA table_info(vip_plans);";
-                await using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
-                {
-                    vipColumns.Add(reader.GetString(1));
-                }
-            }
-            Assert.Contains("Id", vipColumns);
-            Assert.Contains("Name", vipColumns);
-            Assert.Contains("PriceVnd", vipColumns);
-            Assert.Contains("DurationDays", vipColumns);
-            Assert.Contains("IsActive", vipColumns);
+        context.Users.Remove(await context.Users.FirstAsync(u => u.Id == userId));
+        await context.SaveChangesAsync();
 
-            var couponColumns = new List<string>();
-            await using (var cmd = connection.CreateCommand())
-            {
-                cmd.CommandText = "PRAGMA table_info(coupons);";
-                await using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
-                {
-                    couponColumns.Add(reader.GetString(1));
-                }
-            }
-            Assert.Contains("Code", couponColumns);
-            Assert.Contains("DiscountType", couponColumns);
-            Assert.Contains("DiscountValue", couponColumns);
-            Assert.Contains("ValidUntilUtc", couponColumns);
-            Assert.Contains("IsActive", couponColumns);
-        }
+        Assert.Equal(0, await context.Notifications.CountAsync());
     }
 }

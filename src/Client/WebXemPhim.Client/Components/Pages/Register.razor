@@ -3,7 +3,7 @@
 @inject NavigationManager Nav
 @using WebXemPhim.Client.Components.Common
 
-<PageTitle>Đăng ký - CinemaFlow</PageTitle>
+<CinemaPageTitle>Đăng ký - CinemaFlow</CinemaPageTitle>
 
 <main class="auth-shell">
     <section class="auth-intro auth-register-art">
@@ -14,7 +14,7 @@
     </section>
     <section class="auth-panel" aria-labelledby="register-title">
         <div><h2 id="register-title">Tạo tài khoản</h2><p>Đã là thành viên? <a href="@($"/login?returnUrl={Uri.EscapeDataString(AuthNavigation.ReturnPath(ReturnUrl))}")">Đăng nhập</a></p></div>
-        <EditForm Model="model" OnValidSubmit="Submit">
+        <EditForm Model="model" FormName="register" OnValidSubmit="Submit">
             <DataAnnotationsValidator />
             <div class="form-field"><label for="full-name">Họ và tên</label><InputText id="full-name" autocomplete="name" @bind-Value="model.FullName" /><ValidationMessage For="() => model.FullName" /></div>
             <div class="form-field"><label for="register-email">Email</label><InputText id="register-email" type="email" autocomplete="email" @bind-Value="model.Email" /><ValidationMessage For="() => model.Email" /></div>

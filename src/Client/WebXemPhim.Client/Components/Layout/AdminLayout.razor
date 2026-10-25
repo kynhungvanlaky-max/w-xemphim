@@ -1,5 +1,25 @@
 <HeadContent>
+    @* Only ONE head content block per component is honoured by Blazor, so the cockpit
+       stylesheet and the fallback title have to live in the same block. The title is only
+       emitted while the gate is showing; once the operator is inside, the page component
+       provides the real title. *@
     <link rel="stylesheet" href="@Assets["css/admin-workspace.css"]" />
+    @if (!Auth.IsInitialized)
+    {
+        <title>Đang xác minh quyền truy cập - CinemaFlow Admin</title>
+    }
+    else if (Auth.ApiUnavailable)
+    {
+        <title>Đang kết nối máy chủ - CinemaFlow Admin</title>
+    }
+    else if (!Auth.IsAuthenticated)
+    {
+        <title>Yêu cầu đăng nhập - CinemaFlow Admin</title>
+    }
+    else if (!Auth.IsAdmin)
+    {
+        <title>Không có quyền truy cập - CinemaFlow Admin</title>
+    }
 </HeadContent>
 @inherits LayoutComponentBase
 @using WebXemPhim.Client.Services
@@ -14,6 +34,17 @@
     <main class="admin-access-gate" aria-live="polite">
         <p>Đang xác minh quyền truy cập</p>
         <h1>Khu vực vận hành được bảo vệ.</h1>
+    </main>
+}
+else if (Auth.ApiUnavailable)
+{
+    <main class="admin-access-gate" role="status" aria-live="polite">
+        <p>Máy chủ chưa sẵn sàng</p>
+        <h1>Đang kết nối lại với máy chủ quản trị.</h1>
+        <p class="admin-gate-hint">Phiên đăng nhập vẫn được giữ. Trang sẽ tự tải lại ngay khi máy chủ phản hồi.</p>
+        <button type="button" class="button primary" @onclick="RetryAccessAsync" disabled="@isRetryingAccess">
+            @(isRetryingAccess ? "Đang thử lại..." : "Thử lại ngay")
+        </button>
     </main>
 }
 else if (!Auth.IsAuthenticated)
@@ -41,7 +72,7 @@ else
                 <div class="utility-left">
                     <span class="utility-breadcrumb-label">CINEMAFLOW COCKPIT</span>
                     <span class="utility-separator">/</span>
-                    <span class="utility-environment-tag">DEV LIVE</span>
+                    <span class="utility-environment-tag">@CurrentSectionLabel</span>
                 </div>
                 <div class="utility-right">
                     <a href="/" class="utility-link-btn" title="Về trang người dùng xem phim">
@@ -71,6 +102,7 @@ else
             </main>
         </div>
         <AdminCommandPalette @ref="cmdPalette" />
+        <Toast />
     </div>
 }
 
@@ -104,12 +136,101 @@ else
         Theme.OnChange += HandleThemeChanged;
     }
 
+    /// <summary>Nhãn breadcrumb bám theo route hiện tại thay vì luôn hiển thị "DEV LIVE".</summary>
+    private string CurrentSectionLabel
+    {
+        get
+        {
+            var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/').ToLowerInvariant();
+            return path switch
+            {
+                "/admin" or "/admin/overview" => "TỔNG QUAN",
+                "/admin/movies" => "KHO PHIM",
+                "/admin/episodes" => "TẬP & STREAM",
+                "/admin/users" => "NGƯỜI DÙNG",
+                "/admin/reviews" => "KIỂM DUYỆT",
+                "/admin/vip" => "VIP & THANH TOÁN",
+                "/admin/audit-logs" => "NHẬT KÝ",
+                _ => "QUẢN TRỊ"
+            };
+        }
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
         await Auth.InitializeAsync();
         await Theme.InitializeAsync();
         CheckAccess();
+        if (Auth.ApiUnavailable) StartAccessRetry();
+    }
+
+    private bool isRetryingAccess;
+    private CancellationTokenSource? accessRetryCts;
+
+    /// <summary>
+    /// Thử lại việc khôi phục phiên khi máy chủ API chưa sẵn sàng. Không điều hướng ra
+    /// trang đăng nhập vì người dùng vẫn hợp lệ — chỉ là API chưa bật.
+    /// </summary>
+    private void StartAccessRetry()
+    {
+        if (accessRetryCts is not null) return;
+
+        accessRetryCts = new CancellationTokenSource();
+        var token = accessRetryCts.Token;
+        _ = Task.Run(async () =>
+        {
+            for (var attempt = 0; attempt < 30 && !token.IsCancellationRequested; attempt++)
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(2), token);
+                }
+                catch (TaskCanceledException)
+                {
+                    return;
+                }
+                if (token.IsCancellationRequested) return;
+
+                try
+                {
+                    await Auth.RefreshAsync();
+                }
+                catch (Exception)
+                {
+                    // Vẫn chưa sẵn sàng — thử lại ở vòng sau.
+                }
+
+                if (!Auth.ApiUnavailable)
+                {
+                    await InvokeAsync(() =>
+                    {
+                        CheckAccess();
+                        StateHasChanged();
+                    });
+                    return;
+                }
+            }
+        }, token);
+    }
+
+    private async Task RetryAccessAsync()
+    {
+        isRetryingAccess = true;
+        try
+        {
+            await Auth.RefreshAsync();
+        }
+        catch (Exception)
+        {
+            // Giữ nguyên trạng thái "máy chủ chưa sẵn sàng" để người dùng thử lại sau.
+        }
+        finally
+        {
+            isRetryingAccess = false;
+            CheckAccess();
+            StateHasChanged();
+        }
     }
 
     private void HandleAuthStateChanged()
@@ -121,6 +242,9 @@ else
     private void CheckAccess()
     {
         if (!Auth.IsInitialized) return;
+        // API chưa sẵn sàng thì không được đá người dùng ra trang đăng nhập — phiên của họ
+        // vẫn hợp lệ, chỉ là chưa xác minh được. Trang sẽ tự thử lại.
+        if (Auth.ApiUnavailable) return;
         if (!Auth.IsAuthenticated)
             Nav.NavigateTo($"/login?returnUrl={Uri.EscapeDataString(AdminReturnPath)}", replace: true);
         else if (!Auth.IsAdmin)
@@ -133,5 +257,7 @@ else
     {
         Auth.OnChange -= HandleAuthStateChanged;
         Theme.OnChange -= HandleThemeChanged;
+        accessRetryCts?.Cancel();
+        accessRetryCts?.Dispose();
     }
 }

@@ -6,9 +6,10 @@
 @inject NavigationManager Nav
 @inject AuthState Auth
 @inject IAdminApiClient AdminApi
+@inject IJSRuntime JS
 @implements IDisposable
 
-<PageTitle>Kiểm duyệt đánh giá & Phản hồi - CinemaFlow Admin</PageTitle>
+<CinemaPageTitle>Kiểm duyệt đánh giá & Phản hồi - CinemaFlow Admin</CinemaPageTitle>
 
 <!-- Topbar -->
 <header class="admin-topbar">
@@ -20,7 +21,7 @@
     <div class="topbar-actions">
         <div class="topbar-search-pill">
             <CinemaIcon Name="CinemaIconName.Search" Size="16" Class="search-icon" />
-            <input type="text" placeholder="Tìm theo phim, người dùng, nội dung..." @bind="searchQuery" @bind:event="oninput" @onkeydown="HandleSearchKeyDown" />
+            <input type="text" aria-label="Tìm theo phim, người dùng, nội dung" placeholder="Tìm theo phim, người dùng, nội dung..." @bind="searchQuery" @bind:event="oninput" @bind:after="ScheduleReviewSearch" @onkeydown="HandleSearchKeyDown" />
         </div>
     </div>
 </header>
@@ -42,27 +43,179 @@
 <section class="admin-table-section">
     <div class="section-title-bar">
         <div class="title-with-dropdown">
-            <h2>Toàn bộ đánh giá (@filteredReviews.Count)</h2>
+            <h2>Danh sách đánh giá</h2>
         </div>
     </div>
 
-    <!-- Filter by Status & Star rating -->
-    <div class="status-tabs-row" style="flex-wrap: wrap; gap: 0.5rem;">
-        <button type="button" class="status-tab-btn @(statusFilter == null ? "active" : "")" @onclick="() => FilterByStatus(null)">
-            Tất cả
-        </button>
-        <button type="button" class="status-tab-btn @(statusFilter == "reported" ? "active" : "")" @onclick='() => FilterByStatus("reported")'>
-            <span class="status-dot red"></span> Bị báo cáo vi phạm
-        </button>
-        <button type="button" class="status-tab-btn @(statusFilter == "replied" ? "active" : "")" @onclick='() => FilterByStatus("replied")'>
-            <span class="status-dot blue"></span> Đã có phản hồi
-        </button>
-        <button type="button" class="status-tab-btn @(starFilter == 5 ? "active" : "")" @onclick="() => FilterByStar(5)">
-            ★ 9-10 điểm
-        </button>
-        <button type="button" class="status-tab-btn @(starFilter == 1 ? "active" : "")" @onclick="() => FilterByStar(1)">
-            ★ Dưới 7 điểm
-        </button>
+    <!-- Filter Suite: quick tabs + tuỳ chỉnh ẩn/hiện bộ lọc -->
+    <div class="cockpit-filter-suite">
+        <div class="filter-suite-top">
+            <div class="status-tabs-row" style="margin-bottom: 0; flex-wrap: wrap; gap: 0.5rem;">
+                <button type="button" class="status-tab-btn @((statusFilter == null && !starFilter.HasValue) ? "active" : "")" @onclick="() => FilterByStatus(null)">
+                    Tất cả
+                </button>
+                <button type="button" class="status-tab-btn @(statusFilter == "reported" ? "active" : "")" @onclick='() => FilterByStatus("reported")'>
+                    <span class="status-dot red"></span> Bị báo cáo vi phạm
+                </button>
+                <button type="button" class="status-tab-btn @(statusFilter == "replied" ? "active" : "")" @onclick='() => FilterByStatus("replied")'>
+                    <span class="status-dot blue"></span> Đã có phản hồi
+                </button>
+                <button type="button" class="status-tab-btn @(starFilter == 5 ? "active" : "")" @onclick="() => FilterByStar(5)">
+                    ★ 9-10 điểm
+                </button>
+                <button type="button" class="status-tab-btn @(starFilter == 1 ? "active" : "")" @onclick="() => FilterByStar(1)">
+                    ★ Dưới 7 điểm
+                </button>
+            </div>
+
+            <div class="filter-suite-tools">
+                <div class="filter-count-chip">
+                    <span>Tổng khớp bộ lọc: <strong>@totalItems</strong> đánh giá</span>
+                </div>
+
+                <div class="filter-settings-anchor">
+                    <button type="button"
+                            class="btn-filter-util @(showFilterSettings ? "is-active" : "")"
+                            aria-haspopup="true"
+                            aria-expanded="@(showFilterSettings ? "true" : "false")"
+                            title="Chọn bộ lọc muốn hiển thị"
+                            @onclick="ToggleFilterSettings">
+                        <CinemaIcon Name="CinemaIconName.Settings" Size="13" />
+                        <span>Bộ lọc</span>
+                        @if (hiddenFilters.Count > 0 && hiddenFilters.Count < FilterOptions.Length)
+                        {
+                            <span class="filter-util-badge" title="@($"{hiddenFilters.Count} bộ lọc đang ẩn")">@hiddenFilters.Count</span>
+                        }
+                    </button>
+
+                    @if (showFilterSettings)
+                    {
+                        <div class="filter-settings-backdrop" @onclick="CloseFilterSettings"></div>
+                        <div class="filter-settings-panel" role="group" aria-label="Tùy chỉnh bộ lọc hiển thị" @onkeydown="OnFilterSettingsKeyDown">
+                            <div class="filter-settings-head">
+                                <strong>Hiển thị bộ lọc</strong>
+                                <button type="button" class="btn-filter-util-reset" disabled="@(hiddenFilters.Count == 0)" @onclick="ShowAllFiltersAsync">
+                                    Hiện tất cả
+                                </button>
+                            </div>
+                            <p class="filter-settings-hint">Bỏ tick để ẩn bộ lọc không dùng. Giá trị đang chọn của bộ lọc bị ẩn sẽ được xóa để danh sách không bị lọc ngầm.</p>
+                            <div class="filter-settings-list">
+                                @foreach (var option in FilterOptions)
+                                {
+                                    <label class="filter-settings-item">
+                                        <input type="checkbox"
+                                               checked="@(!hiddenFilters.Contains(option.Key))"
+                                               @onclick="() => SetFilterVisibility(option.Key, hiddenFilters.Contains(option.Key))" />
+                                        <span>@option.Label</span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <button type="button"
+                        class="btn-filter-util"
+                        title="@(filtersCollapsed ? "Mở rộng khối bộ lọc" : "Thu gọn khối bộ lọc")"
+                        aria-expanded="@(filtersCollapsed ? "false" : "true")"
+                        @onclick="ToggleFilterCollapse">
+                    <CinemaIcon Name="@(filtersCollapsed ? CinemaIconName.ChevronRight : CinemaIconName.ChevronDown)" Size="13" />
+                    <span>@(filtersCollapsed ? "Mở rộng" : "Thu gọn")</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Filter Controls Grid (từng ô có thể bật/tắt) -->
+        @if (!filtersCollapsed)
+        {
+            <div class="filter-controls-grid">
+                @if (hiddenFilters.Count == FilterOptions.Length)
+                {
+                    <p class="filter-all-hidden-note">
+                        Chưa bật ô lọc nào. Mở <strong>Bộ lọc</strong> và tick những ô bạn cần dùng.
+                    </p>
+                }
+
+                @if (!hiddenFilters.Contains("status"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Trạng thái kiểm duyệt</label>
+                        <select class="admin-select-picker" value="@(statusFilter ?? "")" @onchange="OnReviewStatusChanged">
+                            <option value="">Tất cả trạng thái</option>
+                            <option value="reported">⚠ Bị báo cáo vi phạm</option>
+                            <option value="replied">💬 Đã có phản hồi</option>
+                            <option value="pending">⏳ Chưa có phản hồi</option>
+                        </select>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("stars"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Điểm đánh giá</label>
+                        <select class="admin-select-picker" value="@(starFilter?.ToString() ?? "")" @onchange="OnReviewStarChanged">
+                            <option value="">Mọi mức điểm</option>
+                            <option value="5">★ 9 – 10 điểm (xuất sắc)</option>
+                            <option value="1">★ Dưới 7 điểm (cần chú ý)</option>
+                        </select>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("search"))
+                {
+                    <div class="filter-control-item filter-control-search">
+                        <label class="filter-label" for="review-search">Tìm kiếm đánh giá</label>
+                        <div class="filter-search-box">
+                            <CinemaIcon Name="CinemaIconName.Search" Size="14" Class="filter-search-icon" />
+                            <input id="review-search"
+                                   type="text"
+                                   placeholder="Tên phim, người dùng hoặc nội dung..."
+                                   @bind="searchQuery"
+                                   @bind:event="oninput"
+                                   @bind:after="ScheduleReviewSearch"
+                                   @onkeydown="HandleSearchKeyDown" />
+                            @if (!string.IsNullOrWhiteSpace(searchQuery))
+                            {
+                                <button type="button" class="filter-search-clear" title="Xóa từ khóa tìm kiếm" aria-label="Xóa từ khóa tìm kiếm" @onclick="ClearSearchQuery">&times;</button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <!-- Active Filters Strip & Clear All -->
+        @if (HasActiveReviewFilters)
+        {
+            <div class="filter-active-strip">
+                <span class="active-filter-title">Bộ lọc đang áp dụng:</span>
+                @if (statusFilter != null)
+                {
+                    <span class="filter-pill-tag">
+                        <span>Trạng thái: @(statusFilter == "reported" ? "Bị báo cáo vi phạm" : statusFilter == "replied" ? "Đã có phản hồi" : "Chưa có phản hồi")</span>
+                        <button type="button" @onclick="ClearStatusFilter">&times;</button>
+                    </span>
+                }
+                @if (starFilter.HasValue)
+                {
+                    <span class="filter-pill-tag">
+                        <span>Điểm: @(starFilter == 5 ? "★ 9-10 điểm" : "★ Dưới 7 điểm")</span>
+                        <button type="button" @onclick="() => FilterByStar(null)">&times;</button>
+                    </span>
+                }
+                @if (!string.IsNullOrWhiteSpace(searchQuery))
+                {
+                    <span class="filter-pill-tag">
+                        <span>Tìm kiếm: "@searchQuery"</span>
+                        <button type="button" @onclick="ClearSearchQuery">&times;</button>
+                    </span>
+                }
+
+                <button type="button" class="btn-clear-all-filters" @onclick="ResetAllReviewFilters">
+                    Xóa tất cả bộ lọc
+                </button>
+            </div>
+        }
     </div>
 
     <div class="table-frame">
@@ -70,7 +223,7 @@
         {
             <div class="admin-table-state-msg">Đang tải danh sách đánh giá...</div>
         }
-        else if (filteredReviews.Count == 0)
+        else if (reviewsList.Count == 0)
         {
             <div class="admin-table-state-msg">Chưa có đánh giá nào phù hợp với bộ lọc.</div>
         }
@@ -88,7 +241,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var rev in filteredReviews.Skip((currentPage - 1) * pageSize).Take(pageSize))
+                    @foreach (var rev in reviewsList)
                     {
                         <tr class="@(rev.IsReported ? "is-reported-row" : "")">
                             <td>
@@ -101,7 +254,7 @@
                                     <strong>@rev.MovieTitle</strong>
                                 </div>
                             </td>
-                            <td><span class="rating-cell font-mono-num" style="color: @(rev.Rating >= 8 ? "#fbbf24" : rev.Rating <= 5 ? "#f87171" : "#ffffff");">★ @rev.Rating</span></td>
+                            <td><span class="rating-cell font-mono-num" style="color: @(rev.Rating >= 8 ? "var(--admin-accent-gold)" : rev.Rating <= 5 ? "var(--admin-accent-danger)" : "#ffffff");">★ @rev.Rating</span></td>
                             <td class="admin-review-comment" style="max-width: 420px;">
                                 <div style="margin-bottom: 0.35rem;">
                                     @if (rev.IsReported)
@@ -112,9 +265,9 @@
                                 </div>
                                 @if (!string.IsNullOrEmpty(rev.AdminReply))
                                 {
-                                    <div style="background: rgba(59, 130, 246, 0.08); border-left: 2px solid #3b82f6; padding: 4px 8px; border-radius: 0 4px 4px 0; margin-top: 4px; font-size: 0.78rem;">
-                                        <strong style="color: #60a5fa; display: block; font-size: 0.72rem;">CinemaFlow CSKH:</strong>
-                                        <span style="color: rgba(255,255,255,0.85);">@rev.AdminReply</span>
+                                    <div style="background: rgba(59, 130, 246, 0.08); border-left: 2px solid var(--admin-accent-blue); padding: 4px 8px; border-radius: 0 4px 4px 0; margin-top: 4px; font-size: 0.78rem;">
+                                        <strong style="color: var(--admin-accent-blue); display: block; font-size: 0.72rem;">CinemaFlow CSKH:</strong>
+                                        <span style="color: var(--admin-text-strong);">@rev.AdminReply</span>
                                     </div>
                                 }
                             </td>
@@ -124,10 +277,10 @@
                                     <button type="button" class="btn-action-icon" title="Phản hồi chính thức" @onclick="() => OpenReplyModal(rev)">
                                         <CinemaIcon Name="CinemaIconName.Edit" Size="13" />
                                     </button>
-                                    <button type="button" class="btn-action-icon" title="@(rev.IsReported ? "Hủy cờ vi phạm" : "Gắn cờ vi phạm")" style="color: @(rev.IsReported ? "#34d399" : "#fbbf24");" @onclick="() => ToggleReportReview(rev)">
+                                    <button type="button" class="btn-action-icon" title="@(rev.IsReported ? "Hủy cờ vi phạm" : "Gắn cờ vi phạm")" style="color: @(rev.IsReported ? "var(--admin-accent-green)" : "var(--admin-accent-gold)");" @onclick="() => ToggleReportReview(rev)">
                                         <CinemaIcon Name="CinemaIconName.AlertCircle" Size="13" />
                                     </button>
-                                    <button type="button" class="btn-action-icon" style="color: #ef4444;" title="Xóa đánh giá" @onclick="() => DeleteReview(rev.Id)">
+                                    <button type="button" class="btn-action-icon" style="color: var(--admin-accent-danger);" title="Xóa đánh giá" @onclick="() => RequestDeleteReview(rev)">
                                         <CinemaIcon Name="CinemaIconName.Trash" Size="13" />
                                     </button>
                                 </div>
@@ -139,8 +292,10 @@
 
             <AdminPagination CurrentPage="@currentPage"
                              PageSize="@pageSize"
-                             TotalItems="@filteredReviews.Count"
-                             OnPageChanged="p => { currentPage = p; StateHasChanged(); }" />
+                             TotalItems="@totalItems"
+                             PageSizeOptions="@(new[] { 10, 20, 50 })"
+                             OnPageChanged="HandlePageChanged"
+                             OnPageSizeChanged="HandlePageSizeChanged" />
         }
     </div>
 </section>
@@ -149,15 +304,19 @@
 @if (replyingReview != null)
 {
     <div class="admin-modal-backdrop" @onclick="CloseReplyModal">
-        <div class="admin-modal-card" style="max-width: 540px;" role="dialog" aria-modal="true" @onclick:stopPropagation>
+        <div class="admin-modal-card" style="max-width: 540px;" role="dialog" aria-modal="true" aria-labelledby="review-reply-title" @onclick:stopPropagation>
             <div class="admin-modal-header">
-                <h3>Phản hồi đánh giá của @replyingReview.UserFullName</h3>
+                <h3 id="review-reply-title">Phản hồi đánh giá của @replyingReview.UserFullName</h3>
                 <button type="button" class="btn-close-modal" @onclick="CloseReplyModal">&times;</button>
             </div>
             <div class="admin-modal-body">
+                @if (!string.IsNullOrEmpty(replyFormError))
+                {
+                    <div class="form-alert error" style="margin-bottom: 1rem;" role="alert">@replyFormError</div>
+                }
                 <div style="padding: 0.75rem; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); margin-bottom: 1rem; font-size: 0.85rem;">
                     <div style="font-weight: 600; margin-bottom: 2px;">@replyingReview.MovieTitle (★ @replyingReview.Rating)</div>
-                    <div style="color: rgba(255,255,255,0.7); font-style: italic;">"@replyingReview.Comment"</div>
+                    <div style="color: var(--admin-text-body); font-style: italic;">"@replyingReview.Comment"</div>
                 </div>
 
                 <div class="admin-form-group">
@@ -175,40 +334,87 @@
     </div>
 }
 
+<!-- HỘP THOẠI XÁC NHẬN XÓA ĐÁNH GIÁ -->
+<AdminConfirmDialog IsOpen="@(reviewPendingDelete != null)"
+                    Title="Xóa đánh giá vĩnh viễn"
+                    Message="@DeleteReviewMessage"
+                    ConfirmText="Xóa vĩnh viễn"
+                    CancelText="Huỷ"
+                    Variant="danger"
+                    OnConfirm="ConfirmDeleteReview"
+                    OnCancel="CancelDeleteReview" />
+
 @code {
     private List<AdminReviewDto> reviewsList = [];
-    private List<AdminReviewDto> filteredReviews = [];
     private string searchQuery = "";
+    private readonly SearchDebouncer reviewSearchDebouncer = new();
     private int? starFilter = null;
     private string? statusFilter = null;
     private bool isLoadingReviews = true;
     private string? actionAlert;
     private string? actionError;
     private int currentPage = 1;
-    private int pageSize = 8;
+    private int pageSize = 10;
+    private int totalItems = 0;
+
+    // Tùy chỉnh bộ lọc: ẩn/hiện từng ô lọc, lưu lại theo trình duyệt.
+    private const string FilterPrefsStorageKey = "cinemaflow_admin_review_filter_prefs_v2";
+    private static readonly (string Key, string Label)[] FilterOptions =
+    [
+        ("status", "Trạng thái kiểm duyệt"),
+        ("stars", "Điểm đánh giá"),
+        ("search", "Tìm kiếm đánh giá")
+    ];
+    // Mặc định ban đầu: chưa bật ô lọc nào (tick trống) — admin tự chọn ô cần dùng.
+    private readonly HashSet<string> hiddenFilters = [.. FilterOptions.Select(o => o.Key)];
+    private bool showFilterSettings;
+    private bool filtersCollapsed;
 
     // Reply modal state
     private AdminReviewDto? replyingReview;
     private string adminReplyText = "";
+    private string? replyFormError;
     private bool isSubmittingReply = false;
+
+    // Delete confirmation state
+    private AdminReviewDto? reviewPendingDelete;
+
+    private bool HasActiveReviewFilters =>
+        statusFilter != null ||
+        starFilter.HasValue ||
+        !string.IsNullOrWhiteSpace(searchQuery);
+
+    private string DeleteReviewMessage => reviewPendingDelete == null
+        ? string.Empty
+        : $"Đánh giá ★ {reviewPendingDelete.Rating} của \"{reviewPendingDelete.UserFullName}\" về phim \"{reviewPendingDelete.MovieTitle}\" sẽ bị XÓA VĨNH VIỄN khỏi hệ thống. Điểm đánh giá của phim sẽ được tính lại và không thể khôi phục lại đánh giá này.";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             await Auth.InitializeAsync();
+            await LoadFilterPrefsAsync();
             await LoadReviews();
         }
     }
 
-    private async Task LoadReviews()
+    private async Task LoadReviews(bool showLoading = true)
     {
         if (!Auth.IsAdmin) return;
-        isLoadingReviews = true;
+        if (showLoading) isLoadingReviews = true;
         try
         {
-            reviewsList = await AdminApi.GetReviewsAsync();
-            ApplyFilters();
+            var result = await AdminApi.GetReviewsPagedAsync(
+                page: currentPage,
+                pageSize: pageSize,
+                query: string.IsNullOrWhiteSpace(searchQuery) ? null : searchQuery.Trim(),
+                status: statusFilter,
+                minRating: starFilter == 5 ? 9 : null,
+                maxRating: starFilter == 5 ? 10 : starFilter == 1 ? 6 : null,
+                sortBy: null);
+
+            reviewsList = result.Items;
+            totalItems = result.TotalItems;
         }
         catch (Exception ex)
         {
@@ -221,74 +427,238 @@
         }
     }
 
-    private void ApplyFilters()
-    {
-        var result = reviewsList.AsEnumerable();
-        if (statusFilter == "reported")
-        {
-            result = result.Where(r => r.IsReported);
-        }
-        else if (statusFilter == "replied")
-        {
-            result = result.Where(r => !string.IsNullOrEmpty(r.AdminReply));
-        }
-
-        if (starFilter.HasValue)
-        {
-            if (starFilter.Value == 5) result = result.Where(r => r.Rating >= 9);
-            else if (starFilter.Value == 1) result = result.Where(r => r.Rating < 7);
-        }
-        if (!string.IsNullOrWhiteSpace(searchQuery))
-        {
-            result = result.Where(r => r.MovieTitle.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)
-                                    || r.UserFullName.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)
-                                    || r.Comment.Contains(searchQuery, StringComparison.OrdinalIgnoreCase));
-        }
-        filteredReviews = result.ToList();
-        currentPage = 1;
-    }
-
-    private void FilterByStar(int? star)
+    private async Task FilterByStar(int? star)
     {
         starFilter = star;
-        ApplyFilters();
+        currentPage = 1;
+        await LoadReviews();
     }
 
-    private void FilterByStatus(string? status)
+    private async Task FilterByStatus(string? status)
     {
-        statusFilter = status;
-        ApplyFilters();
+        if (status == null)
+        {
+            // "Tất cả" phải xóa BỌ lọc trạng thái lẫn bộ lọc điểm, nếu không tab "Tất cả"
+            // sẽ không bao giờ hiển thị đúng toàn bộ danh sách.
+            statusFilter = null;
+            starFilter = null;
+        }
+        else
+        {
+            statusFilter = status;
+        }
+
+        currentPage = 1;
+        await LoadReviews();
+    }
+
+    private async Task ClearStatusFilter()
+    {
+        statusFilter = null;
+        currentPage = 1;
+        await LoadReviews();
+    }
+
+    private async Task ClearSearchQuery()
+    {
+        searchQuery = "";
+        currentPage = 1;
+        await LoadReviews();
+    }
+
+    private async Task ResetAllReviewFilters()
+    {
+        statusFilter = null;
+        starFilter = null;
+        searchQuery = "";
+        currentPage = 1;
+        await LoadReviews();
+    }
+
+    // ---------- Tùy chỉnh bộ lọc ----------
+
+    private async Task OnReviewStatusChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        statusFilter = string.IsNullOrEmpty(value) ? null : value;
+        currentPage = 1;
+        await LoadReviews();
+    }
+
+    private async Task OnReviewStarChanged(ChangeEventArgs e)
+    {
+        starFilter = int.TryParse(e.Value?.ToString(), out var star) ? star : null;
+        currentPage = 1;
+        await LoadReviews();
+    }
+
+    private void ToggleFilterSettings()
+    {
+        showFilterSettings = !showFilterSettings;
+    }
+
+    private void CloseFilterSettings()
+    {
+        showFilterSettings = false;
+    }
+
+    private void OnFilterSettingsKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") showFilterSettings = false;
+    }
+
+    private async Task ToggleFilterCollapse()
+    {
+        filtersCollapsed = !filtersCollapsed;
+        await SaveFilterPrefsAsync();
+    }
+
+    /// <summary>Bật/tắt một ô lọc. Ẩn ô lọc sẽ xóa luôn giá trị đang chọn để tránh lọc ngầm.</summary>
+    private async Task SetFilterVisibility(string key, bool visible)
+    {
+        // Bỏ qua sự kiện phát sinh khi popover đã đóng.
+        if (!showFilterSettings) return;
+
+        if (visible) hiddenFilters.Remove(key);
+        else hiddenFilters.Add(key);
+
+        var cleared = !visible && ClearFilterValue(key);
+        await SaveFilterPrefsAsync();
+
+        if (cleared)
+        {
+            currentPage = 1;
+            await LoadReviews();
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>Xóa giá trị của bộ lọc vừa bị ẩn. Trả về true nếu thực sự có thay đổi.</summary>
+    private bool ClearFilterValue(string key)
+    {
+        switch (key)
+        {
+            case "status" when statusFilter != null:
+                statusFilter = null;
+                return true;
+            case "stars" when starFilter.HasValue:
+                starFilter = null;
+                return true;
+            case "search" when !string.IsNullOrWhiteSpace(searchQuery):
+                searchQuery = "";
+                reviewSearchDebouncer.Cancel();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private async Task ShowAllFiltersAsync()
+    {
+        if (hiddenFilters.Count == 0) return;
+        hiddenFilters.Clear();
+        await SaveFilterPrefsAsync();
+    }
+
+    /// <summary>Đọc lại lựa chọn ẩn/hiện bộ lọc đã lưu trong localStorage của trình duyệt.</summary>
+    private async Task LoadFilterPrefsAsync()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("adminTools.getStoredJson", FilterPrefsStorageKey);
+            if (string.IsNullOrWhiteSpace(json)) return;
+
+            var prefs = System.Text.Json.JsonSerializer.Deserialize<ReviewFilterPrefs>(json);
+            if (prefs is null) return;
+
+            hiddenFilters.Clear();
+            foreach (var key in prefs.Hidden.Where(k => FilterOptions.Any(o => o.Key == k)))
+            {
+                hiddenFilters.Add(key);
+            }
+            filtersCollapsed = prefs.Collapsed;
+        }
+        catch
+        {
+            // Tùy chọn hiển thị chỉ là tiện ích: localStorage bị chặn hoặc dữ liệu hỏng thì dùng mặc định.
+        }
+    }
+
+    private async Task SaveFilterPrefsAsync()
+    {
+        try
+        {
+            var prefs = new ReviewFilterPrefs(hiddenFilters.ToList(), filtersCollapsed);
+            var json = System.Text.Json.JsonSerializer.Serialize(prefs);
+            await JS.InvokeVoidAsync("adminTools.setStoredJson", FilterPrefsStorageKey, json);
+        }
+        catch
+        {
+            // Không lưu được thì thôi, không chặn thao tác của admin.
+        }
+    }
+
+    private sealed record ReviewFilterPrefs(List<string> Hidden, bool Collapsed);
+
+    private async Task HandlePageChanged(int page)
+    {
+        currentPage = page;
+        await LoadReviews();
+    }
+
+    private async Task HandlePageSizeChanged(int size)
+    {
+        pageSize = size;
+        currentPage = 1;
+        await LoadReviews();
     }
 
     private void HandleSearchKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter")
         {
-            ApplyFilters();
+            reviewSearchDebouncer.Cancel();
+            _ = ApplyReviewSearchAsync();
         }
+    }
+
+    /// <summary>Gõ tới đâu tìm tới đó nhưng chỉ gọi API sau khi người dùng ngừng gõ 400ms.</summary>
+    private void ScheduleReviewSearch()
+    {
+        reviewSearchDebouncer.Schedule(ApplyReviewSearchAsync);
+    }
+
+    private async Task ApplyReviewSearchAsync()
+    {
+        currentPage = 1;
+        await LoadReviews();
     }
 
     private void OpenReplyModal(AdminReviewDto rev)
     {
         replyingReview = rev;
         adminReplyText = rev.AdminReply ?? "";
+        replyFormError = null;
     }
 
     private void CloseReplyModal()
     {
         replyingReview = null;
         adminReplyText = "";
+        replyFormError = null;
     }
 
     private async Task SubmitReply()
     {
         if (replyingReview == null || string.IsNullOrWhiteSpace(adminReplyText))
         {
-            actionError = "Vui lòng nhập nội dung phản hồi.";
+            replyFormError = "Vui lòng nhập nội dung phản hồi.";
             return;
         }
 
         isSubmittingReply = true;
+        replyFormError = null;
         actionAlert = null;
         actionError = null;
 
@@ -303,16 +673,16 @@
             {
                 actionAlert = "Đã lưu phản hồi chính thức thành công!";
                 CloseReplyModal();
-                await LoadReviews();
+                await LoadReviews(showLoading: false);
             }
             else
             {
-                actionError = res?.Message ?? "Không thể lưu phản hồi.";
+                replyFormError = res?.Message ?? "Không thể lưu phản hồi.";
             }
         }
         catch (Exception ex)
         {
-            actionError = "Lỗi khi lưu phản hồi: " + ex.Message;
+            replyFormError = "Lỗi khi lưu phản hồi: " + ex.Message;
         }
         finally
         {
@@ -336,6 +706,8 @@
         {
             rev.IsReported = newFlag;
             actionAlert = $"Đã cập nhật trạng thái báo cáo: {(newFlag ? "Bị báo cáo" : "Bình thường")}.";
+            // Nạp lại để danh sách khớp với bộ lọc hiện tại (vd: tab "Bị báo cáo vi phạm").
+            await LoadReviews(showLoading: false);
         }
         else
         {
@@ -344,25 +716,51 @@
         StateHasChanged();
     }
 
-    private async Task DeleteReview(Guid reviewId)
+    private void RequestDeleteReview(AdminReviewDto rev)
     {
+        reviewPendingDelete = rev;
+    }
+
+    private void CancelDeleteReview()
+    {
+        reviewPendingDelete = null;
+    }
+
+    private async Task ConfirmDeleteReview()
+    {
+        if (reviewPendingDelete == null) return;
+
+        var target = reviewPendingDelete;
+        reviewPendingDelete = null;
         actionAlert = null;
         actionError = null;
 
-        if (await AdminApi.DeleteReviewAsync(reviewId))
+        try
         {
-            actionAlert = "Đã xóa bình luận thành công.";
-            await LoadReviews();
+            if (await AdminApi.DeleteReviewAsync(target.Id))
+            {
+                actionAlert = "Đã xóa bình luận thành công.";
+                // Nếu vừa xóa món cuối của trang cuối thì lùi về trang trước.
+                if (reviewsList.Count <= 1 && currentPage > 1) currentPage--;
+                await LoadReviews(showLoading: false);
+            }
+            else
+            {
+                actionError = "Không thể xóa bình luận này.";
+            }
         }
-        else
+        catch (Exception ex)
         {
-            actionError = "Không thể xóa bình luận này.";
+            actionError = "Lỗi khi xóa đánh giá: " + ex.Message;
+        }
+        finally
+        {
             StateHasChanged();
         }
     }
 
     public void Dispose()
     {
+        reviewSearchDebouncer.Dispose();
     }
 }
-

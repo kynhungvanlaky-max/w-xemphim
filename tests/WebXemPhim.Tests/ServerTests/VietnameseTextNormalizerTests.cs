@@ -1,11 +1,21 @@
+using Npgsql;
 using WebXemPhim.Server.Services;
 using WebXemPhim.Shared.Utils;
 using Xunit;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public class VietnameseTextNormalizerTests
+public class VietnameseTextNormalizerTests : IClassFixture<PostgresTestDatabaseFixture>
 {
+    private readonly PostgresTestDatabaseFixture _fixture;
+
+    public VietnameseTextNormalizerTests(PostgresTestDatabaseFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    private PostgresTestDatabase Database => _fixture.Database;
+
     [Theory]
     [InlineData(null, "")]
     [InlineData("", "")]
@@ -34,41 +44,73 @@ public class VietnameseTextNormalizerTests
     }
 
     [Fact]
-    public void BuildFts5Query_EmptyOrWhitespace_ReturnsEmptyString()
+    public void BuildPostgresTsQuery_EmptyOrWhitespace_ReturnsEmptyString()
     {
-        Assert.Equal(string.Empty, DatabaseMovieService.BuildFts5Query(null));
-        Assert.Equal(string.Empty, DatabaseMovieService.BuildFts5Query(""));
-        Assert.Equal(string.Empty, DatabaseMovieService.BuildFts5Query("   "));
-        Assert.Equal(string.Empty, DatabaseMovieService.BuildFts5Query("!@#$%^&*()_+"));
+        Assert.Equal(string.Empty, DatabaseMovieService.BuildPostgresTsQuery(null));
+        Assert.Equal(string.Empty, DatabaseMovieService.BuildPostgresTsQuery(""));
+        Assert.Equal(string.Empty, DatabaseMovieService.BuildPostgresTsQuery("   "));
+        Assert.Equal(string.Empty, DatabaseMovieService.BuildPostgresTsQuery("!@#$%^&*()_+"));
     }
 
     [Fact]
-    public void BuildFts5Query_SingleAsciiWord_QuotesWithPrefix()
+    public void BuildPostgresTsQuery_SingleAsciiWord_QuotesWithPrefix()
     {
-        var query = DatabaseMovieService.BuildFts5Query("Avatar");
-        Assert.Equal("\"Avatar\"*", query);
+        var query = DatabaseMovieService.BuildPostgresTsQuery("Avatar");
+        Assert.Equal("'avatar':*", query);
     }
 
     [Fact]
-    public void BuildFts5Query_VietnameseAccentedPhrase_ExpandsWithNormalizedAlternative()
+    public void BuildPostgresTsQuery_VietnameseAccentedPhrase_NormalizesToAccentFreeTokens()
     {
-        var query = DatabaseMovieService.BuildFts5Query("Bố Già");
-        Assert.Contains("\"Bố\"*", query);
-        Assert.Contains("\"bo\"*", query);
-        Assert.Contains(" OR ", query);
+        var query = DatabaseMovieService.BuildPostgresTsQuery("Bố Già");
+        // Token đã được normalize nên không còn ký tự tiếng Việt có dấu
+        Assert.Equal("'bo':* & 'gia':*", query);
+        Assert.DoesNotContain("Bố", query);
+        Assert.DoesNotContain("Già", query);
     }
 
     [Fact]
-    public void BuildFts5Query_WithPunctuationAndOperators_SanitizesSafely()
+    public void BuildPostgresTsQuery_WithPunctuationAndOperators_SanitizesSafely()
     {
-        var query = DatabaseMovieService.BuildFts5Query("John Wick: Chapter 4 (AND NOT OR)");
-        Assert.Contains("\"John\"*", query);
-        Assert.Contains("\"Wick\"*", query);
-        Assert.Contains("\"Chapter\"*", query);
-        Assert.Contains("\"4\"*", query);
-        // Quoted operator terms prevent FTS5 syntax errors
-        Assert.Contains("\"AND\"*", query);
-        Assert.Contains("\"NOT\"*", query);
-        Assert.Contains("\"OR\"*", query);
+        var query = DatabaseMovieService.BuildPostgresTsQuery("John Wick: Chapter 4 (AND NOT OR)");
+        Assert.Contains("'john':*", query);
+        Assert.Contains("'wick':*", query);
+        Assert.Contains("'chapter':*", query);
+        Assert.Contains("'4':*", query);
+        // Quoted operator terms prevent tsquery syntax errors
+        Assert.Contains("'and':*", query);
+        Assert.Contains("'not':*", query);
+        Assert.Contains("'or':*", query);
+        // Các token được nối bằng toán tử AND của tsquery
+        Assert.Contains(" & ", query);
+    }
+
+    [Theory]
+    [InlineData("Bố Già")]
+    [InlineData("' OR 1=1 --")]
+    [InlineData("Title: Subtitle")]
+    [InlineData("AND OR NOT")]
+    [InlineData("1' OR '1'='1")]
+    [InlineData("Xứ Cát: Phần Hai")]
+    public async Task BuildPostgresTsQuery_AdversarialKeywords_AreAcceptedByPostgresToTsQuery(string keyword)
+    {
+        var query = DatabaseMovieService.BuildPostgresTsQuery(keyword);
+        Assert.NotEmpty(query);
+
+        var (connection, context, _) = await Database.CreateOpenContextAsync();
+        await using (connection)
+        await using (context)
+        {
+            // tsquery dựng ở .NET phải được PostgreSQL parse được, không gây lỗi cú pháp
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT to_tsquery('simple', @q)";
+            var p = cmd.CreateParameter();
+            p.ParameterName = "@q";
+            p.Value = query;
+            cmd.Parameters.Add(p);
+
+            var parsed = await cmd.ExecuteScalarAsync();
+            Assert.NotNull(parsed);
+        }
     }
 }

@@ -1,4 +1,5 @@
 @page "/watch/{MovieId:int}"
+@using WebXemPhim.Client.Services
 @using WebXemPhim.Shared.Models
 @using WebXemPhim.Shared.Requests
 @using WebXemPhim.Client.Components.Player
@@ -12,7 +13,7 @@
 @implements IDisposable
 @implements IAsyncDisposable
 
-<PageTitle>@(movie is null ? "Xem phim" : $"{movie.Title} - Tập {playback.Current?.EpisodeNumber}") - CinemaFlow</PageTitle>
+<CinemaPageTitle>@(movie is null ? "Xem phim" : $"{movie.Title} - Tập {playback.Current?.EpisodeNumber}") - CinemaFlow</CinemaPageTitle>
 
 
 <RouteStylesheet Files="@WatchStyles" />
@@ -63,7 +64,7 @@
                                       OnPause="HandlePlayerPause"
                                       OnProgress="HandlePlayerProgress" />
                     }
-                    else if (playback.Source is not null && (WatchPlaybackState.IsVipStream(playback.Source) || string.IsNullOrEmpty(playback.Source.StreamUrl)))
+                    else if (playback.Source is not null && !playback.IsVipUser && WatchPlaybackState.IsVipStream(playback.Source))
                     {
                         <div class="wv-no-stream wv-vip-gated">
                             <img src="@PlayerPoster" alt="" />
@@ -80,7 +81,7 @@
                     }
                     else
                     {
-                        <div class="wv-no-stream"><img src="@PlayerPoster" alt="" /><div><CinemaIcon Name="CinemaIconName.Film" Size="32" /><h2>Chưa có nguồn phát</h2><p>@(playback.Current is null ? "Phim chưa có tập được phát hành." : "Tập này chưa có nguồn phát khả dụng. Bạn có thể chọn tập khác.")</p></div></div>
+                        <div class="wv-no-stream"><img src="@PlayerPoster" alt="" /><div><CinemaIcon Name="CinemaIconName.Film" Size="32" /><h2>@(loading || (playback.Source is not null && string.IsNullOrEmpty(playback.Source.StreamUrl)) ? "Đang chuẩn bị luồng phát..." : "Chưa có nguồn phát")</h2><p>@(loading || (playback.Source is not null && string.IsNullOrEmpty(playback.Source.StreamUrl)) ? "Đang thiết lập phiên phát bảo mật, vui lòng chờ trong giây lát." : playback.Current is null ? "Phim chưa có tập được phát hành." : "Tập này chưa có nguồn phát khả dụng. Bạn có thể chọn tập khác.")</p></div></div>
                     }
                 </section>
                 <!-- Thanh chọn nguồn phát siêu gọn tối giản (Minimalist Stream Bar) -->
@@ -141,7 +142,8 @@
                     <div class="wv-share"><label for="watch-share-link">Liên kết đến tập này</label><input id="watch-share-link" value="@Nav.Uri" readonly @onclick="SelectShare" /><button class="wv-text-button" @onclick="() => showShare = false">Đóng</button></div>
                 }
             </div>
-            <aside class="wv-rail" aria-labelledby="episode-list-heading">
+            <aside class="wv-rail" aria-label="Danh sách tập và phim gợi ý">
+                <div class="wv-rail-block wv-rail-episodes">
                 <header>
                     <div class="wv-rail-header-title">
                         <h2 id="episode-list-heading">Danh sách tập</h2>
@@ -170,7 +172,7 @@
                             var active = episode == playback.Current;
                             <button class="wv-episode @(active ? "active" : "")" aria-current="@(active ? "true" : null)" @onclick="() => GoTo(episode)">
                                 <div class="wv-episode-image">
-                                    <img src="@(string.IsNullOrWhiteSpace(episode.ThumbnailUrl) ? PlayerPoster : episode.ThumbnailUrl)" alt="" loading="lazy" />
+                                    <img src="@(string.IsNullOrWhiteSpace(episode.ThumbnailUrl) ? PlayerPoster : episode.ThumbnailUrl)" alt="" decoding="async" />
                                     <span>@episode.DurationMinutes phút</span>
                                     <div class="wv-episode-overlay" aria-hidden="true">
                                         <CinemaIcon Name="CinemaIconName.Play" Size="16" Filled="true" />
@@ -227,8 +229,32 @@
                         }
                     </div>
                 }
+                </div>
+
+                @if (similarMovies.Count > 0)
+                {
+                    @* Khối riêng: phim tương tự đặt dưới danh sách tập, 2 phim 1 dòng, dùng
+                       đúng kiểu thẻ như dải "phim tương tự" ở trang thông tin phim. Có nút
+                       "Xem thêm" để mở rộng danh sách gợi ý. *@
+                    <div class="wv-rail-block wv-rail-similar">
+                        <section class="wv-similar" aria-labelledby="watch-similar-title">
+                            <div class="related-strip-heading">
+                                <h2 id="watch-similar-title" class="wv-similar-title">Phim tương tự</h2>
+                            </div>
+                            <RelatedMovieList Movies="@(showAllSimilar ? similarMovies : similarMovies.Take(SimilarCollapsedCount))"
+                                              HrefTemplate="/watch/{0}" />
+                        </section>
+                        @if (similarMovies.Count > SimilarCollapsedCount)
+                        {
+                            <button type="button" class="wv-similar-more @(showAllSimilar ? "is-open" : "")" @onclick="() => showAllSimilar = !showAllSimilar" aria-expanded="@(showAllSimilar ? "true" : "false")">
+                                <span>@(showAllSimilar ? "Thu gọn" : $"Xem thêm {similarMovies.Count - SimilarCollapsedCount} phim")</span>
+                                <CinemaIcon Name="CinemaIconName.ChevronDown" Size="15" />
+                            </button>
+                        }
+                    </div>
+                }
             </aside>
-        </div>
+        <div class="wv-content">
         <nav class="wv-section-links" aria-label="Nội dung trang"><a href="@(ReturnUrl + "#watch-information")">Thông tin phim</a><a href="@(ReturnUrl + "#watch-discussion")">Thảo luận</a></nav>
         <section id="watch-information" class="wv-information" aria-labelledby="watch-film-title">
             <img class="wv-poster" src="@movie.PosterUrl" alt="Poster @movie.Title" loading="lazy" />
@@ -239,6 +265,8 @@
             </div>
         </section>
         <section id="watch-discussion" class="wv-discussion"><WatchDiscussion @key="MovieId" MovieId="MovieId" ReturnUrl="@ReturnUrl" /></section>
+        </div>
+    </div>
     }
 </div>
 @if (reportOpen && playback.Current is not null)
@@ -297,12 +325,13 @@
     </div>
 }
 @code {
-    private static readonly string[] WatchStyles = ["css/watch-workspace.css"];
+    private static readonly string[] WatchStyles = RouteStylesheetCatalog.Watch;
 
     [Parameter] public int MovieId { get; set; }
     [SupplyParameterFromQuery(Name = "ep")] public int? EpQuery { get; set; }
     private readonly WatchPlaybackState playback = new();
     private MovieDetailDto? movie;
+    private List<MovieDto> similarMovies = [];
     private int loadedMovieId, loadVersion;
     private int? autoPlayEpisodeId;
     private double resumeSeconds;
@@ -311,6 +340,12 @@
     private CinemaPlayer? player;
     private bool loading = true, lightsOff, savingFilm, showShare, reportOpen, reportSending, focusReport;
     private bool isGridView;
+    private bool showAllSimilar;
+
+    /// <summary>
+    /// Số phim hiển thị khi chưa mở rộng — tối đa 5 phim, phần còn lại ẩn sau nút "Xem thêm".
+    /// </summary>
+    private const int SimilarCollapsedCount = 5;
     private bool vipPromptOpen;
     private string? vipPromptMessage;
     private string search = string.Empty;
@@ -321,6 +356,8 @@
     private PeriodicTimer? heartbeatTimer;
     private CancellationTokenSource? heartbeatCts;
     private Task? heartbeatTask;
+    private CancellationTokenSource? tokenRefreshCts;
+    private Task? tokenRefreshTask;
     private string? currentStreamSessionId;
     private bool isEvicted;
     private ForceDisconnectNotice? evictionNotice;
@@ -396,6 +433,10 @@
             movie = result; loadedMovieId = id;
             if (movie is not null)
             {
+                // Danh sách "phim tương tự" để người xem chuyển phim ngay trên trang, không
+                // phải rời trang đi tìm phim mới.
+                similarMovies = (movie.SimilarMovies ?? []).ToList();
+                showAllSimilar = false;
                 // Increment view count reliably when movie playback begins
                 _ = Api.IncrementViewCountAsync(id);
 
@@ -428,7 +469,7 @@
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
             if (version != loadVersion) return;
-            movie = null; loadError = "Kết nối tới thư viện phim đang gián đoạn. Vui lòng thử lại.";
+            movie = null; similarMovies = []; loadError = "Kết nối tới thư viện phim đang gián đoạn. Vui lòng thử lại.";
         }
         finally { if (version == loadVersion) loading = false; }
     }
@@ -523,43 +564,30 @@
         }
         await PreserveCursor();
         playback.SetQuality(quality);
+        await AcquireLeaseAndStartHeartbeatAsync();
     }
 
-    private void SelectFreeStream()
+    private async Task SelectFreeStream()
     {
         var nonVip = playback.Sources.FirstOrDefault(s => !WatchPlaybackState.IsVipStream(s) && !string.IsNullOrEmpty(s.StreamUrl));
         if (nonVip is not null)
         {
             playback.SetServer(nonVip.ServerName);
             playback.SetQuality(nonVip.Quality);
+            await AcquireLeaseAndStartHeartbeatAsync();
         }
     }
 
     private async Task ChangeServer(ChangeEventArgs e)
     {
         var server = e.Value?.ToString() ?? "";
-        var sInfo = playback.GetServerInfo(server);
-        if (sInfo.IsVip && !playback.IsVipUser)
-        {
-            vipPromptMessage = "Nguồn phát VIP Fast Server yêu cầu tài khoản VIP CinemaFlow để trải nghiệm tốc độ cao.";
-            vipPromptOpen = true;
-            return;
-        }
-        await PreserveCursor();
-        playback.SetServer(server);
+        await SelectServer(server);
     }
 
     private async Task ChangeQuality(ChangeEventArgs e)
     {
         var quality = e.Value?.ToString() ?? "";
-        if (quality.Contains("4K", StringComparison.OrdinalIgnoreCase) && !playback.IsVipUser)
-        {
-            vipPromptMessage = "Độ phân giải 4K Ultra HD yêu cầu gói thành viên VIP.";
-            vipPromptOpen = true;
-            return;
-        }
-        await PreserveCursor();
-        playback.SetQuality(quality);
+        await SelectQuality(quality);
     }
 
     private void OnVideoEnded() { _ = GoTo(playback.OnEnded()); }
@@ -654,6 +682,11 @@
         if (result is not null && result.Success)
         {
             StartHeartbeatTimer(sessionId);
+            var signed = await ApplySessionSignedUrlAsync(sessionId);
+            if (signed is not null)
+            {
+                StartTokenRefreshLoop(signed, sessionId);
+            }
         }
         else if (result is not null && !result.Success)
         {
@@ -664,6 +697,111 @@
                 DisconnectedAtUtc = DateTime.UtcNow
             });
         }
+    }
+
+    private async Task<SignedStreamDto?> ApplySessionSignedUrlAsync(string sessionId)
+    {
+        var episode = playback.Current;
+        var source = playback.Source;
+        if (episode is null || source is null) return null;
+
+        var signed = await Api.SignStreamAsync(episode.Id, source.Position, sessionId);
+        if (signed is null || string.IsNullOrWhiteSpace(signed.StreamUrl)) return null;
+
+        // Cập nhật URL ngay trên đối tượng nguồn đang chọn; PlayerKey sẽ đổi và player
+        // nạp lại đúng một lần với URL gắn lease thay vì URL không có phiên.
+        source.StreamUrl = signed.StreamUrl;
+        return signed;
+    }
+
+    /// <summary>
+    /// Refresh token ở 70% TTL. Bình thường chỉ cần một Range request rất nhỏ để
+    /// trình duyệt gia hạn cookie HttpOnly, không đổi src của video. Nếu trình duyệt
+    /// chặn cookie (cross-site), fallback sang cập nhật URL và resume đúng vị trí.
+    /// </summary>
+    private void StartTokenRefreshLoop(SignedStreamDto signed, string sessionId)
+    {
+        StopTokenRefreshLoop();
+        tokenRefreshCts = new CancellationTokenSource();
+        tokenRefreshTask = RunTokenRefreshLoopAsync(signed, sessionId, tokenRefreshCts.Token);
+    }
+
+    private async Task RunTokenRefreshLoopAsync(SignedStreamDto signed, string sessionId, CancellationToken ct)
+    {
+        var delay = TimeSpan.FromSeconds(Math.Max(30, signed.ExpiresInSeconds * 0.7));
+        var consecutiveFailures = 0;
+
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(delay, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
+            if (!Auth.IsAuthenticated || currentStreamSessionId != sessionId || isEvicted)
+            {
+                break;
+            }
+
+            var episode = playback.Current;
+            var source = playback.Source;
+            if (episode is null || source is null)
+            {
+                break;
+            }
+
+            var refreshed = await Api.RefreshStreamAsync(episode.Id, source.Position, sessionId, ct);
+            if (refreshed is null || string.IsNullOrWhiteSpace(refreshed.StreamUrl))
+            {
+                if (++consecutiveFailures >= 3)
+                {
+                    break;
+                }
+
+                delay = TimeSpan.FromSeconds(30);
+                continue;
+            }
+
+            consecutiveFailures = 0;
+            var cookieRefreshed = await TryRefreshPlaybackCookieAsync(refreshed.StreamUrl);
+            if (!cookieRefreshed)
+            {
+                // Cookie bị chặn hoặc lỗi CORS: đổi URL và resume tại đúng vị trí hiện tại.
+                await InvokeAsync(async () =>
+                {
+                    await PreserveCursor();
+                    source.StreamUrl = refreshed.StreamUrl;
+                    StateHasChanged();
+                });
+            }
+
+            delay = TimeSpan.FromSeconds(Math.Max(30, refreshed.ExpiresInSeconds * 0.7));
+        }
+    }
+
+    private async Task<bool> TryRefreshPlaybackCookieAsync(string streamUrl)
+    {
+        try
+        {
+            return await JS.InvokeAsync<bool>("CinemaPlayer.refreshPlaybackCookie", streamUrl);
+        }
+        catch (JSException ex)
+        {
+            Logger.LogDebug(ex, "Không thể gia hạn cookie phiên phát.");
+            return false;
+        }
+    }
+
+    private void StopTokenRefreshLoop()
+    {
+        tokenRefreshCts?.Cancel();
+        tokenRefreshCts?.Dispose();
+        tokenRefreshCts = null;
+        tokenRefreshTask = null;
     }
 
     private void StartHeartbeatTimer(string sessionId)
@@ -708,6 +846,7 @@
 
     private void StopHeartbeatTimer()
     {
+        StopTokenRefreshLoop();
         heartbeatCts?.Cancel();
         heartbeatTimer?.Dispose();
         heartbeatCts?.Dispose();
@@ -751,6 +890,19 @@
         StateHasChanged();
     }
 
+    /// <summary>
+    /// Thu hồi phiên phát khi rời trang: ưu tiên API để máy chủ xoá cookie phiên,
+    /// nếu lỗi mạng hoặc token đã hết hạn thì fallback về SignalR.
+    /// </summary>
+    private async Task RevokeSessionOnExitAsync(string sessionId)
+    {
+        var revoked = await Api.RevokeStreamAsync(sessionId);
+        if (!revoked)
+        {
+            await HubClient.ReleaseStreamLeaseAsync(sessionId);
+        }
+    }
+
     public void Dispose()
     {
         ++loadVersion;
@@ -760,7 +912,7 @@
         StopHeartbeatTimer();
         if (!string.IsNullOrEmpty(currentStreamSessionId))
         {
-            _ = HubClient.ReleaseStreamLeaseAsync(currentStreamSessionId);
+            _ = RevokeSessionOnExitAsync(currentStreamSessionId);
         }
         if (Auth.IsAuthenticated && movie is not null && playback.Current is not null && currentCursorSeconds > 0)
         {
@@ -777,7 +929,7 @@
         StopHeartbeatTimer();
         if (!string.IsNullOrEmpty(currentStreamSessionId))
         {
-            await HubClient.ReleaseStreamLeaseAsync(currentStreamSessionId);
+            await RevokeSessionOnExitAsync(currentStreamSessionId);
         }
         if (Auth.IsAuthenticated && movie is not null && playback.Current is not null && currentCursorSeconds > 0)
         {

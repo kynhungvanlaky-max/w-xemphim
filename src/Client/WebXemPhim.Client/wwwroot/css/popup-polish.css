@@ -188,29 +188,6 @@
     box-shadow: 0 4px 14px rgba(229, 9, 20, 0.4);
 }
 
-.nav-direct-logout-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.4);
-    color: #ff6b72;
-    padding: 0.45rem 0.75rem;
-    border-radius: 9999px;
-    font-size: 0.78rem;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    margin-left: 0.5rem;
-}
-
-.nav-direct-logout-btn:hover {
-    background: #e50914;
-    color: #ffffff;
-    border-color: #e50914;
-    box-shadow: 0 2px 10px rgba(229, 9, 20, 0.4);
-}
-
 .mobile-logout-wrap {
     margin-top: 1.5rem;
     padding: 1rem 0 0;
@@ -505,17 +482,16 @@
 
     body .cinema-navbar .nav-auth-actions {
         min-width: 0;
-        gap: .45rem;
+        gap: .3rem;
     }
 
-    body .cinema-navbar .nav-auth-actions .nav-signup {
-        display: none;
-    }
-
+    /* Cả "Đ�ăng nhập" và "Đăng ký" đều phải hiện — chỉ thu gọn lại cho vừa thanh
+       navbar trên màn hình hẹp, không ẩn nút nào. */
     body .cinema-navbar .nav-auth-actions a {
-        min-height: 38px;
-        padding: .55rem .7rem;
-        font-size: .74rem;
+        min-height: 34px;
+        padding: .38rem .55rem;
+        font-size: .71rem;
+        border-radius: 7px;
     }
 
     body .cinema-navbar .mobile-toggle-btn {

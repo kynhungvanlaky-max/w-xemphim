@@ -15,28 +15,74 @@ public sealed class AuthStateTests
         var auth = new AuthState(api.Object, store.Object);
         await auth.InitializeAsync();
         Assert.True(auth.IsInitialized); Assert.False(auth.IsAuthenticated);
-        api.Verify(x=>x.GetMeAsync(), Times.Never);
+        api.Verify(x=>x.GetMeResultAsync(), Times.Never);
     }
     [Fact]
     public async Task RestoreValidatesIdentityAndRunsOnce()
     {
         var api = new Mock<IAccountApiClient>(); var store = new Mock<IAuthSessionStore>();
         store.Setup(x=>x.ReadAsync()).ReturnsAsync("existing-token");
-        api.Setup(x=>x.GetMeAsync()).ReturnsAsync(new UserDto { FullName="Nguyễn An" });
+        api.Setup(x=>x.GetMeResultAsync()).ReturnsAsync(ApiResponse<UserDto>.Ok(new() { FullName="Nguyễn An" }));
         var auth = new AuthState(api.Object, store.Object);
         await Task.WhenAll(auth.InitializeAsync(), auth.InitializeAsync());
         Assert.True(auth.IsAuthenticated); Assert.Equal("Nguyễn An",auth.User!.FullName);
+        Assert.False(auth.ApiUnavailable);
         api.Verify(x=>x.SetAccessToken("existing-token"),Times.Once);
-        api.Verify(x=>x.GetMeAsync(),Times.Once);
+        api.Verify(x=>x.GetMeResultAsync(),Times.Once);
     }
     [Fact]
     public async Task InvalidSessionIsCleared()
     {
         var api = new Mock<IAccountApiClient>(); var store = new Mock<IAuthSessionStore>();
         store.Setup(x=>x.ReadAsync()).ReturnsAsync("expired-token");
+        api.Setup(x=>x.GetMeResultAsync()).ReturnsAsync(ApiResponse<UserDto>.Fail("Token hết hạn"));
         var auth = new AuthState(api.Object, store.Object); await auth.InitializeAsync();
         Assert.False(auth.IsAuthenticated); Assert.Null(auth.AccessToken);
+        Assert.False(auth.ApiUnavailable);
         store.Verify(x=>x.ClearAsync(),Times.Once);
+    }
+
+    /// <summary>
+    /// Khi API chưa bật (lần đầu mở trang lúc stack còn đang khởi động) thì phiên đăng nhập
+    /// phải được giữ nguyên và giao diện tự thử lại — không được xoá phiên rồi đá người
+    /// dùng ra trang đăng nhập.
+    /// </summary>
+    [Fact]
+    public async Task UnreachableApiKeepsSessionAndFlagsUnavailable()
+    {
+        var api = new Mock<IAccountApiClient>(); var store = new Mock<IAuthSessionStore>();
+        store.Setup(x=>x.ReadAsync()).ReturnsAsync("still-valid-token");
+        api.Setup(x=>x.GetMeResultAsync()).ReturnsAsync((ApiResponse<UserDto>?)null);
+        var auth = new AuthState(api.Object, store.Object);
+        await auth.InitializeAsync();
+
+        Assert.True(auth.IsInitialized);
+        Assert.True(auth.ApiUnavailable);
+        Assert.Equal("still-valid-token", auth.AccessToken);
+        Assert.True(auth.HasSession);
+        store.Verify(x=>x.ClearAsync(), Times.Never);
+    }
+
+    /// <summary>
+    /// Khi API trả lời được thì trạng thái "chưa sẵn sàng" phải được gỡ bỏ và hồ sơ người
+    /// dùng phải được nạp lại.
+    /// </summary>
+    [Fact]
+    public async Task RefreshClearsUnavailableFlagWhenApiAnswers()
+    {
+        var api = new Mock<IAccountApiClient>(); var store = new Mock<IAuthSessionStore>();
+        store.Setup(x=>x.ReadAsync()).ReturnsAsync("still-valid-token");
+        api.SetupSequence(x=>x.GetMeResultAsync())
+            .ReturnsAsync((ApiResponse<UserDto>?)null)
+            .ReturnsAsync(ApiResponse<UserDto>.Ok(new() { FullName="Nguyễn An" }));
+        var auth = new AuthState(api.Object, store.Object);
+        await auth.InitializeAsync();
+        Assert.True(auth.ApiUnavailable);
+
+        await auth.RefreshAsync();
+        Assert.False(auth.ApiUnavailable);
+        Assert.True(auth.IsAuthenticated);
+        Assert.Equal("Nguyễn An", auth.User!.FullName);
     }
     [Fact]
     public async Task LoginPersistsSessionAndLogoutClearsIt()

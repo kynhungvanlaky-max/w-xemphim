@@ -541,20 +541,49 @@
 
 .cp-progress-track { touch-action:none; }
 .cp-control-btn { width:40px; height:40px; flex-shrink:0; }
-.cp-control-btn:focus-visible,.cp-progress-track:focus-visible,.cp-quality-btn:focus-visible { outline:2px solid #f0808b; outline-offset:3px; }
+.cp-control-btn:focus-visible,.cp-progress-track:focus-visible,.cp-quality-btn:focus-visible,.cp-qd-option:focus-visible,.cp-volume-slider:focus-visible,.cp-error button:focus-visible { outline:2px solid #f0808b; outline-offset:3px; }
 .cp-error { position:absolute; inset:0; z-index:12; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:24px; text-align:center; background:#101114ed; color:#f0f1f4; }
 .cp-error strong { font-size:20px; }.cp-error span { font-size:13px; color:#adb0ba; line-height:1.7; }.cp-error button { min-height:44px; padding:10px 20px; border:1px solid #3c4049; border-radius:8px; background:#252830; color:#f0f1f4; cursor:pointer; font:inherit; }
-@media(max-width:600px) { 
-    .cinema-controls { padding:32px 8px 8px; } 
-    .cp-toolbar { gap:4px; } 
-    .cp-toolbar-left,.cp-toolbar-right { gap:4px; } 
-    .cp-volume-slider,.cp-rewind-btn,.cp-forward-btn,.cp-pip-btn { display:none; } 
-    .cp-q-text { display:none; } 
-    .cp-quality-btn { padding:4px 6px; height:30px; }
-    .cp-control-btn { width:36px; height:36px; } 
-    .cp-time-display { font-size:10px; margin-left:2px; white-space:nowrap; } 
-    .cp-error strong { font-size:16px; } 
-    .cp-error span { font-size:11px; } 
+.cp-error-detail { font-size:11px; color:#7d808a; font-family:var(--admin-font-mono, ui-monospace, monospace); word-break:break-all; max-width:46ch; }
+.cp-error-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+.cp-error .cp-error-alt { background:#3a1d22; border-color:#7c2d39; color:#ffd9dd; }
+.cp-error .cp-error-alt:hover { background:#4a252c; }
+
+/* Lớp phủ đóng menu chất lượng khi bấm ra ngoài. */
+.cp-quality-backdrop { position:fixed; inset:0; z-index:45; background:transparent; cursor:default; }
+
+/* Chỉ báo nhỏ cho trình phát (ví dụ trình duyệt không hỗ trợ toàn màn hình). */
+.cp-player-notice { position:absolute; left:50%; bottom:96px; transform:translateX(-50%); z-index:14; max-width:min(90%,420px); padding:10px 16px; border-radius:8px; background:rgba(16,17,20,0.92); border:1px solid rgba(255,255,255,0.14); color:#f0f1f4; font-size:12.5px; line-height:1.5; text-align:center; }
+
+@media(max-width:600px){
+    .cinema-controls { padding:32px 8px calc(8px + env(safe-area-inset-bottom)); }
+    .cp-toolbar { gap:4px; }
+    .cp-toolbar-left,.cp-toolbar-right { gap:4px; }
+    /* Chỉ ẩn PiP và thanh âm lượng — nút tua ±10 giây là chức năng cơ bản, ẩn đi thì
+       người xem trên điện thoại mất hoàn toàn khả năng tua. */
+    .cp-volume-slider,.cp-pip-btn { display:none; }
+    .cp-rewind-btn,.cp-forward-btn { width:32px; height:32px; }
+    .cp-q-text { display:none; }
+    .cp-quality-btn { padding:4px 6px; height:32px; }
+    .cp-control-btn { width:36px; height:36px; }
+    .cp-time-display { font-size:10px; margin-left:2px; white-space:nowrap; }
+    .cp-error strong { font-size:16px; }
+    .cp-error span { font-size:11px; }
+}
+
+/* iPhone: khoảng trống an toàn (notch / home indicator). */
+@supports (padding: max(0px)) {
+    .cinema-controls {
+        padding-left: calc(1.25rem + env(safe-area-inset-left));
+        padding-right: calc(1.25rem + env(safe-area-inset-right));
+        padding-bottom: calc(0.9rem + env(safe-area-inset-bottom));
+    }
+}
+
+/* Màn hình thấp (điện thoại nằm ngang): khung phim phải vừa chiều cao thực dùng. */
+@media (orientation: landscape) and (max-height: 500px) {
+    .player-video-wrapper { aspect-ratio: auto !important; height: 100dvh; }
+    .cinema-controls { padding-top: 2rem; }
 }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; } }
 
@@ -576,6 +605,18 @@
 }
 
 /* Dynamic Video Watermarking (Anti-Leech / Anti-Screen Recording) */
+/* Watermark chống chia sẻ — vẽ trên canvas phủ lên video. Canvas không phụ thuộc theme
+   (video luôn có nền tối) nên không cần override light mode. */
+.cp-watermark-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    user-select: none;
+    z-index: 9;
+}
+
 .cp-watermark {
     position: absolute;
     pointer-events: none;

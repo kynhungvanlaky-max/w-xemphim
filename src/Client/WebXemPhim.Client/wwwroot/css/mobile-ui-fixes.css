@@ -495,8 +495,17 @@
         min-width: 0;
     }
 
+    /* Giữ cả nút "Đăng nhập" và "Đăng ký" trên màn hẹp nhất, chỉ siết lại khoảng cách. */
     body .cinema-navbar .nav-auth-actions {
-        display: none;
+        display: flex;
+        gap: .25rem;
+    }
+
+    body .cinema-navbar .nav-auth-actions a {
+        min-height: 32px;
+        padding: .3rem .45rem;
+        font-size: .68rem;
+        border-radius: 6px;
     }
 
     body .cinema-navbar .cinema-brand-title {

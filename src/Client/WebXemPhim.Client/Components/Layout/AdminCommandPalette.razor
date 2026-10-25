@@ -10,17 +10,23 @@
 @if (IsOpen)
 {
     <div class="cmd-palette-backdrop" @onclick="Close">
-        <div class="cmd-palette-dialog" @onclick:stopPropagation="true">
+        <div class="cmd-palette-dialog"
+             role="dialog"
+             aria-modal="true"
+             aria-label="Bảng lệnh nhanh"
+             @onclick:stopPropagation="true">
             <div class="cmd-palette-input-wrap">
                 <CinemaIcon Name="CinemaIconName.Search" Size="18" Class="cmd-palette-icon" />
                 <input @ref="inputElement"
                        type="text"
                        class="cmd-palette-input"
+                       aria-label="Tìm lệnh hoặc trang điều phối"
                        placeholder="Nhập lệnh hoặc tìm trang điều phối... (Gợi ý: phim, stream, vip, user)"
                        @bind="searchQuery"
                        @bind:event="oninput"
+                       @bind:after="ResetPaletteSelection"
                        @onkeydown="HandleKeyDown" />
-                <kbd class="cmd-palette-esc" @onclick="Close">ESC</kbd>
+                <button type="button" class="cmd-palette-esc" @onclick="Close">ESC</button>
             </div>
 
             <div class="cmd-palette-results">
@@ -45,6 +51,7 @@
                         }
                         <button type="button"
                                 class="cmd-palette-item @(currentIndex == selectedIndex ? "is-active" : "")"
+                                aria-selected="@(currentIndex == selectedIndex ? "true" : "false")"
                                 @onclick="() => ExecuteCommand(cmd)"
                                 @onmouseenter="() => selectedIndex = currentIndex">
                             <span class="cmd-item-icon">
@@ -166,6 +173,11 @@
         IsOpen = false;
         await IsOpenChanged.InvokeAsync(IsOpen);
         StateHasChanged();
+    }
+
+    private void ResetPaletteSelection()
+    {
+        selectedIndex = 0;
     }
 
     private void HandleKeyDown(KeyboardEventArgs e)

@@ -1,8 +1,8 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using WebXemPhim.Server.Controllers;
 using WebXemPhim.Server.Controllers.Admin;
 using WebXemPhim.Server.Data;
@@ -14,28 +14,32 @@ using WebXemPhim.Shared.Responses;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public sealed class Milestone2CoreFlowIntegrationTests(TestApiFactory factory) : IClassFixture<TestApiFactory>
+public sealed class Milestone2CoreFlowIntegrationTests : IClassFixture<TestApiFactory>, IClassFixture<PostgresTestDatabaseFixture>
 {
-    private static async Task<(SqliteConnection Connection, AppDbContext Context, IDbContextFactory<AppDbContext> Factory)> CreateSqliteContextAsync()
+    private readonly PostgresTestDatabaseFixture _fixture;
+    private readonly TestApiFactory _apiFactory;
+
+    public Milestone2CoreFlowIntegrationTests(TestApiFactory factory, PostgresTestDatabaseFixture fixture)
     {
-        var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connection)
-            .Options;
-        var context = new AppDbContext(options);
-        await context.Database.EnsureCreatedAsync();
+        _fixture = fixture;
+        _apiFactory = factory;
+    }
+
+    private PostgresTestDatabase Database => _fixture.Database;
+
+    private async Task<(NpgsqlConnection Connection, AppDbContext Context, IDbContextFactory<AppDbContext> Factory)> CreatePostgresContextAsync()
+    {
+        var (connection, context, factoryMock) = await Database.CreateOpenContextAsync();
         await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
         await DatabaseSeeder.SeedCatalogAsync(context);
 
-        var factoryMock = new TestDbContextFactory(options);
         return (connection, context, factoryMock);
     }
 
     [Fact]
     public async Task WatchProgressSingleQuery_AuthenticatedUser_ReturnsProgressAndNullForUnwatched()
     {
-        using var client = factory.CreateClient();
+        using var client = _apiFactory.CreateClient();
         var email = $"m2-progress-{Guid.NewGuid():N}@example.com";
         await RegisterAsync(client, email);
 
@@ -68,7 +72,7 @@ public sealed class Milestone2CoreFlowIntegrationTests(TestApiFactory factory) :
         Assert.Equal(25, queryRes.Data.ProgressPercent); // 750/3000 = 25%
 
         // 4. Guest cannot query progress
-        using var guestClient = factory.CreateClient();
+        using var guestClient = _apiFactory.CreateClient();
         var guestRes = await guestClient.GetAsync("/api/library/progress/1");
         Assert.Equal(HttpStatusCode.Unauthorized, guestRes.StatusCode);
     }
@@ -76,7 +80,7 @@ public sealed class Milestone2CoreFlowIntegrationTests(TestApiFactory factory) :
     [Fact]
     public async Task MovieViewCountIncrement_IncrementsCounter_AndReturnsNotFoundForMissing()
     {
-        using var client = factory.CreateClient();
+        using var client = _apiFactory.CreateClient();
 
         // 1. Get initial view count
         var movieBefore = (await client.GetFromJsonAsync<ApiResponse<MovieDetailDto>>("/api/movies/1"))!.Data!;
@@ -98,7 +102,7 @@ public sealed class Milestone2CoreFlowIntegrationTests(TestApiFactory factory) :
     [Fact]
     public async Task ReviewsRatingRecalculation_OnUpsertAndDelete_DynamicallyRecalculatesMovieStats()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -178,7 +182,7 @@ public sealed class Milestone2CoreFlowIntegrationTests(TestApiFactory factory) :
     [Fact]
     public async Task AdminMarkPaymentPaid_UsesDynamicPlanDurationDays()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -249,7 +253,7 @@ public sealed class Milestone2CoreFlowIntegrationTests(TestApiFactory factory) :
     [Fact]
     public async Task StreamingGating_ServerMasksVipAnd4KStreamsForGuestsAndFreeUsers()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -278,7 +282,7 @@ public sealed class Milestone2CoreFlowIntegrationTests(TestApiFactory factory) :
     [Fact]
     public async Task UserSettingsLanguage_PersistsAndSurvivesRetrieval()
     {
-        using var client = factory.CreateClient();
+        using var client = _apiFactory.CreateClient();
         var email = $"m2-lang-{Guid.NewGuid():N}@example.com";
         await RegisterAsync(client, email);
 

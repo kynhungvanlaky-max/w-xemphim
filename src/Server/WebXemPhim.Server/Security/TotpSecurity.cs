@@ -10,15 +10,26 @@ public static class TotpSecurity
 
     public static byte[] CreateSecret() => RandomNumberGenerator.GetBytes(20);
 
-    public static bool Verify(byte[] secret, string? code, DateTime utcNow)
+    public static bool Verify(byte[] secret, string? code, DateTime utcNow, out long matchedStep)
     {
+        matchedStep = 0;
         var normalized = NormalizeCode(code);
         if (normalized.Length != 6 || !normalized.All(char.IsDigit)) return false;
         var counter = new DateTimeOffset(DateTime.SpecifyKind(utcNow, DateTimeKind.Utc)).ToUnixTimeSeconds() / 30;
         for (var offset = -1; offset <= 1; offset++)
-            if (FixedEquals(normalized, Generate(secret, counter + offset))) return true;
+        {
+            var step = counter + offset;
+            if (FixedEquals(normalized, Generate(secret, step)))
+            {
+                matchedStep = step;
+                return true;
+            }
+        }
         return false;
     }
+
+    public static bool Verify(byte[] secret, string? code, DateTime utcNow) =>
+        Verify(secret, code, utcNow, out _);
 
     public static string ToBase32(byte[] data)
     {
@@ -41,7 +52,10 @@ public static class TotpSecurity
 
     public static string NormalizeCode(string? value) => new((value ?? string.Empty).Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 
-    private static string Generate(byte[] secret, long counter)
+    public static string GenerateCode(byte[] secret, DateTime utcNow) =>
+        Generate(secret, new DateTimeOffset(DateTime.SpecifyKind(utcNow, DateTimeKind.Utc)).ToUnixTimeSeconds() / 30);
+
+    public static string Generate(byte[] secret, long counter)
     {
         Span<byte> counterBytes = stackalloc byte[8];
         BinaryPrimitives.WriteInt64BigEndian(counterBytes, counter);

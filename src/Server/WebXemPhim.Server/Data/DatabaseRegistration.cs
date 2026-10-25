@@ -4,21 +4,31 @@ namespace WebXemPhim.Server.Data;
 
 public static class DatabaseRegistration
 {
+    /// <summary>
+    /// Registers the application database provider. PostgreSQL is the primary engine; MySQL is
+    /// kept as an optional secondary provider for deployments that already run on it.
+    /// </summary>
     public static IServiceCollection AddApplicationDatabase(
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var provider = configuration["Database:Provider"] ?? "Sqlite";
-        if (provider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase))
+        var provider = configuration["Database:Provider"] ?? "PostgreSql";
+
+        if (provider.Equals("PostgreSql", StringComparison.OrdinalIgnoreCase) ||
+            provider.Equals("Postgres", StringComparison.OrdinalIgnoreCase) ||
+            provider.Equals("Npgsql", StringComparison.OrdinalIgnoreCase))
         {
-            var connectionString = configuration.GetConnectionString("Sqlite")
-                ?? configuration.GetConnectionString("Default");
-            if (string.IsNullOrWhiteSpace(connectionString) || connectionString.Contains("Server="))
+            var connectionString = configuration.GetConnectionString("Default")
+                ?? configuration.GetConnectionString("PostgreSql");
+            if (string.IsNullOrWhiteSpace(connectionString))
             {
-                connectionString = "Data Source=webxemphim.db";
+                throw new InvalidOperationException(
+                    "Connection string 'Default' is required for the PostgreSQL provider.");
             }
 
-            services.AddDbContextFactory<AppDbContext>(options => options.UseSqlite(connectionString));
+            services.AddDbContextFactory<AppDbContext>(options => options.UseNpgsql(
+                connectionString,
+                npgsql => npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName)));
             return services;
         }
 
@@ -35,6 +45,6 @@ public static class DatabaseRegistration
         }
 
         throw new InvalidOperationException(
-            $"Database provider '{provider}' is not supported. Supported providers: Sqlite, MySql.");
+            $"Database provider '{provider}' is not supported. Supported providers: PostgreSql, MySql.");
     }
 }

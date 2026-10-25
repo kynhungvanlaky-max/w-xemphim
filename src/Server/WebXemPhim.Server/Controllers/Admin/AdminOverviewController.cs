@@ -30,6 +30,15 @@ public sealed class AdminOverviewController(
         var totalUsers = await context.Users.CountAsync();
         var activeVipUsers = await context.Users.CountAsync(u => u.Membership != MembershipTier.Free && u.VipExpiresAtUtc > now);
         var freeUsers = totalUsers - activeVipUsers;
+        var vipMembers = await context.Users.CountAsync(u => u.Membership != MembershipTier.Free);
+        var adminUsers = await context.Set<UserSecurityEntity>().CountAsync(s => s.IsAdmin);
+        var lockedUsers = await context.Set<UserSecurityEntity>()
+            .CountAsync(s => s.LockedUntilUtc.HasValue && s.LockedUntilUtc.Value > now);
+        var expiringSoonVipUsers = await context.Users.CountAsync(u =>
+            u.Membership != MembershipTier.Free
+            && u.VipExpiresAtUtc.HasValue
+            && u.VipExpiresAtUtc.Value > now
+            && u.VipExpiresAtUtc.Value <= now.AddDays(7));
 
         var totalRevenue = await context.Payments
             .Where(p => p.Status == PaymentStatus.Completed)
@@ -113,6 +122,10 @@ public sealed class AdminOverviewController(
             TotalUsers = totalUsers,
             ActiveVipUsers = activeVipUsers,
             FreeUsers = freeUsers,
+            VipMembers = vipMembers,
+            AdminUsers = adminUsers,
+            LockedUsers = lockedUsers,
+            ExpiringSoonVipUsers = expiringSoonVipUsers,
             TotalRevenue = totalRevenue,
             TotalTransactions = totalTransactions,
             TotalReviews = totalReviews,
@@ -138,15 +151,25 @@ public sealed class AdminOverviewController(
         long dbSizeBytes = 0;
         try
         {
-            var dbPath = "webxemphim.db";
-            if (System.IO.File.Exists(dbPath))
+            if (context.Database.IsNpgsql())
             {
-                dbSizeBytes = new System.IO.FileInfo(dbPath).Length;
+                // PostgreSQL reports the on-disk size of the active database.
+                dbSizeBytes = await context.Database
+                    .SqlQueryRaw<long>("SELECT pg_database_size(current_database()) AS \"Value\"")
+                    .SingleAsync();
+            }
+            else
+            {
+                var dbPath = "webxemphim.db";
+                if (System.IO.File.Exists(dbPath))
+                {
+                    dbSizeBytes = new System.IO.FileInfo(dbPath).Length;
+                }
             }
         }
         catch (Exception ex)
         {
-            logger?.LogWarning(ex, "Không thể đọc kích thước tập tin cơ sở dữ liệu webxemphim.db.");
+            logger?.LogWarning(ex, "Không thể đọc kích thước cơ sở dữ liệu.");
         }
 
         var memMb = Math.Round(GC.GetTotalMemory(false) / (1024.0 * 1024.0), 2);
@@ -165,7 +188,7 @@ public sealed class AdminOverviewController(
         var dto = new SystemHealthDto
         {
             DbSizeBytes = dbSizeBytes,
-            DbSizeFormatted = dbSizeBytes > 0 ? $"{Math.Round(dbSizeBytes / (1024.0 * 1024.0), 2)} MB" : "0.4 MB (SQLite)",
+            DbSizeFormatted = dbSizeBytes > 0 ? $"{Math.Round(dbSizeBytes / (1024.0 * 1024.0), 2)} MB" : "—",
             ServerUptime = uptimeStr,
             TotalMovies = totalMovies,
             TotalEpisodes = totalEpisodes,
@@ -203,7 +226,7 @@ public sealed class AdminOverviewController(
 
         var effectivePageSize = take > 0 ? take : pageSize;
         if (effectivePageSize <= 0) effectivePageSize = 50;
-        effectivePageSize = Math.Min(effectivePageSize, 200);
+        if (effectivePageSize > 200) effectivePageSize = 200;
 
         var totalItems = await query.CountAsync();
         var logs = await query

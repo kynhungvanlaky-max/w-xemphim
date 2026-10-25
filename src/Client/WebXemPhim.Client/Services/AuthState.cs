@@ -11,13 +11,25 @@ public sealed class AuthState(IAccountApiClient apiClient, IAuthSessionStore? se
     public UserDto? User { get; private set; }
     public string? AccessToken { get; private set; }
     public bool IsAuthenticated => User is not null && !string.IsNullOrWhiteSpace(AccessToken);
+
+    /// <summary>
+    /// True khi đã có token trong phiên, kể cả khi hồ sơ người dùng chưa tải được vì API
+    /// chưa sẵn sàng. Dùng để biết trước rằng người dùng có thể vào khu vực quản trị.
+    /// </summary>
+    public bool HasSession => !string.IsNullOrWhiteSpace(AccessToken);
     public bool IsAdmin => User?.IsAdmin == true && (User.MfaEnabled == false || User.MfaSessionVerified);
+
+    /// <summary>
+    /// True khi API chưa phản hồi được (máy chủ chưa sẵn sàng lúc mở trang lần đầu).
+    /// Trong trạng thái này phiên đăng nhập được giữ nguyên và giao diện tự thử lại,
+    /// thay vì đá người dùng ra trang đăng nhập.
+    /// </summary>
+    public bool ApiUnavailable { get; private set; }
     public event Action? Changed;
     public event Action? OnChange { add => Changed += value; remove => Changed -= value; }
 
     public async Task<ApiResponse<AuthDto>?> RegisterAsync(RegisterRequest request) =>
         await ApplySessionAsync(await apiClient.RegisterAsync(request));
-
     public async Task<ApiResponse<AuthDto>?> LoginAsync(LoginRequest request) =>
         await ApplySessionAsync(await apiClient.LoginAsync(request));
 
@@ -34,19 +46,46 @@ public sealed class AuthState(IAccountApiClient apiClient, IAuthSessionStore? se
             apiClient.SetAccessToken(AccessToken);
             if (!string.IsNullOrWhiteSpace(AccessToken))
             {
-                User = await apiClient.GetMeAsync();
-                if (User is null) await LogoutAsync();
+                await RestoreUserAsync();
             }
         }
+        catch (Exception)
+        {
+            // The session storage or the API misbehaved. The token is kept so the next
+            // attempt can still restore the session instead of forcing a new login.
+            ApiUnavailable = true;
+        }
         finally { IsInitialized = true; Changed?.Invoke(); }
+    }
+
+    /// <summary>
+    /// Lấy lại hồ sơ người dùng từ API. Chỉ xoá phiên khi API **đã trả lời** và báo token
+    /// không hợp lệ; nếu request thất bại (API chưa bật) thì phiên được giữ lại.
+    /// </summary>
+    private async Task RestoreUserAsync()
+    {
+        var response = await apiClient.GetMeResultAsync();
+        if (response is null)
+        {
+            ApiUnavailable = true;
+            return;
+        }
+
+        ApiUnavailable = false;
+        if (!response.Success || response.Data is null)
+        {
+            await LogoutAsync();
+            return;
+        }
+
+        User = response.Data;
     }
 
     public async Task RefreshAsync()
     {
         if (string.IsNullOrWhiteSpace(AccessToken)) return;
-        User = await apiClient.GetMeAsync();
-        if (User is null) await LogoutAsync();
-        else Changed?.Invoke();
+        await RestoreUserAsync();
+        Changed?.Invoke();
     }
 
     public void Logout()

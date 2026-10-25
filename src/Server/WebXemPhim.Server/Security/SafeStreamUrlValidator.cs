@@ -5,7 +5,10 @@ namespace WebXemPhim.Server.Security;
 
 public static class SafeStreamUrlValidator
 {
-    public static async Task<(bool IsSafe, string? ErrorMessage, Uri? ValidatedUri)> ValidateUrlAsync(string? streamUrl, CancellationToken cancellationToken = default)
+    public static async Task<(bool IsSafe, string? ErrorMessage, Uri? ValidatedUri)> ValidateUrlAsync(
+        string? streamUrl,
+        CancellationToken cancellationToken = default,
+        bool resolveDns = true)
     {
         if (string.IsNullOrWhiteSpace(streamUrl))
         {
@@ -30,9 +33,10 @@ public static class SafeStreamUrlValidator
         }
 
         // Block suspicious or reserved management/database ports
-        if (uri.Port is 22 or 23 or 25 or 135 or 139 or 445 or 1433 or 1521 or 3306 or 5432 or 6379 or 9200 or 11211 or 27017 or 2375 or 2376)
+        // Only allow standard HTTP/HTTPS web ports (80, 443)
+        if (uri.Port != 80 && uri.Port != 443)
         {
-            return (false, $"Cổng kết nối {uri.Port} bị cấm vì lý do an toàn mạng nội bộ.", null);
+            return (false, $"Cổng kết nối {uri.Port} bị từ chối. Chỉ cho phép các cổng web tiêu chuẩn (80, 443).", null);
         }
 
         var host = uri.DnsSafeHost;
@@ -46,13 +50,18 @@ public static class SafeStreamUrlValidator
             return (false, "Địa chỉ máy chủ cục bộ hoặc nội bộ không được phép thăm dò.", null);
         }
 
-        // Resolve DNS and inspect resolved IP addresses
+        // Resolve DNS and inspect resolved IP addresses. Khi tắt phân giải (unit test /
+        // môi trường không có DNS), vẫn kiểm tra IP literal và danh sách host bị cấm ở trên.
         IPAddress[] addresses;
         try
         {
             if (IPAddress.TryParse(host, out var parsedIp))
             {
                 addresses = [parsedIp];
+            }
+            else if (!resolveDns)
+            {
+                addresses = [];
             }
             else
             {
@@ -66,7 +75,9 @@ public static class SafeStreamUrlValidator
 
         if (addresses.Length == 0)
         {
-            return (false, $"Không tìm thấy địa chỉ IP cho máy chủ '{host}'.", null);
+            return resolveDns
+                ? (false, $"Không tìm thấy địa chỉ IP cho máy chủ '{host}'.", null)
+                : (true, null, uri);
         }
 
         foreach (var ip in addresses)
@@ -155,9 +166,85 @@ public static class SafeStreamUrlValidator
             // Discard prefix (100::/64)
             if (bytes[0] == 0x01 && bytes[1] == 0x00) return true;
 
+            // 2001:db8::/32 (Documentation) and 2001::/32 (Teredo). Neither is a legitimate
+            // public media host, and Teredo can embed an arbitrary IPv4 destination.
+            if (bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x0D && bytes[3] == 0xB8) return true;
+            if (bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x00 && bytes[3] == 0x00) return true;
+
+            // 64:ff9b::/96 (NAT64 well-known prefix) embeds an IPv4 address in the last 4 bytes.
+            if (bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xFF && bytes[3] == 0x9B &&
+                bytes[4] == 0x00 && bytes[5] == 0x00 && bytes[6] == 0x00 && bytes[7] == 0x00 &&
+                bytes[8] == 0x00 && bytes[9] == 0x00 && bytes[10] == 0x00 && bytes[11] == 0x00)
+            {
+                return IsInternalOrRestrictedIp(new IPAddress(bytes[12..16]));
+            }
+
+            // 6to4 (2002::/16) embeds the IPv4 address in bytes 2..6.
+            if (bytes[0] == 0x20 && bytes[1] == 0x02)
+            {
+                return IsInternalOrRestrictedIp(new IPAddress(bytes[2..6]));
+            }
+
             return false;
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Kết nối TCP chỉ tới địa chỉ công khai. Hàm này được gắn vào
+    /// <see cref="SocketsHttpHandler.ConnectCallback"/> để chặn DNS rebinding: kẻ tấn công
+    /// không thể trả về IP công khai lúc kiểm tra URL rồi đổi sang IP nội bộ ngay trước khi
+    /// kết nối thật.
+    /// </summary>
+    public static async ValueTask<Stream> ConnectSafeAsync(
+        SocketsHttpConnectionContext context,
+        CancellationToken cancellationToken)
+    {
+        var host = context.DnsEndPoint.Host;
+        IPAddress[] addresses;
+        if (IPAddress.TryParse(host, out var literal))
+        {
+            addresses = [literal];
+        }
+        else
+        {
+            addresses = await Dns.GetHostAddressesAsync(host, cancellationToken);
+        }
+
+        Exception? lastError = null;
+        foreach (var address in addresses)
+        {
+            if (IsInternalOrRestrictedIp(address))
+            {
+                continue;
+            }
+
+            var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
+            {
+                NoDelay = true
+            };
+            try
+            {
+                await socket.ConnectAsync(
+                    new IPEndPoint(address, context.DnsEndPoint.Port),
+                    cancellationToken);
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+            catch (OperationCanceledException)
+            {
+                socket.Dispose();
+                throw;
+            }
+            catch (SocketException ex)
+            {
+                lastError = ex;
+                socket.Dispose();
+            }
+        }
+
+        throw new HttpRequestException(
+            "Máy chủ nguồn phân giải tới địa chỉ nội bộ hoặc không thể kết nối an toàn.",
+            lastError);
     }
 }

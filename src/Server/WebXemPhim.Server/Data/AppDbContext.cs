@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WebXemPhim.Server.Security;
 using WebXemPhim.Shared.Enums;
 
@@ -7,6 +8,21 @@ namespace WebXemPhim.Server.Data;
 
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
+    /// <summary>
+    /// Npgsql maps <see cref="DateTime"/> to <c>timestamp with time zone</c> and refuses values
+    /// whose <see cref="DateTimeKind"/> is not UTC. Every timestamp in this application is stored
+    /// in UTC, so the value is tagged (never shifted) to keep the stored instant intact.
+    /// </summary>
+    private static readonly ValueConverter<DateTime, DateTime> UtcDateTimeConverter = new(
+        value => value.Kind == DateTimeKind.Local ? value.ToUniversalTime() : DateTime.SpecifyKind(value, DateTimeKind.Utc),
+        value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
+
+    private static readonly ValueConverter<DateTime?, DateTime?> NullableUtcDateTimeConverter = new(
+        value => value.HasValue
+            ? (value.Value.Kind == DateTimeKind.Local ? value.Value.ToUniversalTime() : DateTime.SpecifyKind(value.Value, DateTimeKind.Utc))
+            : value,
+        value => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc) : value);
+
     public DbSet<UserEntity> Users => Set<UserEntity>();
     public DbSet<UserSecurityEntity> UserSecurity => Set<UserSecurityEntity>();
     public DbSet<MfaCredentialEntity> MfaCredentials => Set<MfaCredentialEntity>();
@@ -34,6 +50,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<ActiveStreamEntity> ActiveStreams => Set<ActiveStreamEntity>();
     public DbSet<AppMaintenanceFlagEntity> AppMaintenanceFlags => Set<AppMaintenanceFlagEntity>();
 
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<UserSecurityEntity>(entity =>
@@ -49,6 +66,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasKey(item => item.UserId);
             entity.Property(item => item.ProtectedSecret).HasMaxLength(1000).IsRequired();
             entity.Property(item => item.RecoveryCodeHashes).HasMaxLength(2000).IsRequired();
+            entity.Property(item => item.Version).IsConcurrencyToken();
             entity.HasOne(item => item.User).WithOne().HasForeignKey<MfaCredentialEntity>(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<MfaChallengeEntity>(entity =>
@@ -56,6 +74,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.ToTable("mfa_challenges");
             entity.HasKey(item => item.TokenHash);
             entity.Property(item => item.TokenHash).HasMaxLength(64);
+            entity.Property(item => item.Version).IsConcurrencyToken();
             entity.HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<MfaVerifiedSessionEntity>(entity =>
@@ -74,6 +93,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(item => item.UserId);
             entity.Property(item => item.EventType).HasMaxLength(80).IsRequired();
             entity.Property(item => item.Detail).HasMaxLength(240).IsRequired();
+            // The audit trail survives the deletion of its user, so the reference is nulled
+            // instead of cascading. Declaring the relation here keeps the EF model in sync
+            // with the DDL of the schema helper and makes EF order the inserts correctly.
+            entity.HasOne<UserEntity>()
+                  .WithMany()
+                  .HasForeignKey(item => item.UserId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
         modelBuilder.Entity<PlaybackIssueEntity>(entity =>
         {
@@ -304,6 +330,30 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                   .HasForeignKey(item => item.EpisodeId)
                   .OnDelete(DeleteBehavior.SetNull);
         });
+
+        ApplyUtcDateTimeConversions(modelBuilder);
+    }
+
+    /// <summary>
+    /// Tags every persisted timestamp as UTC so PostgreSQL stores it in <c>timestamp with time
+    /// zone</c> without rejecting <see cref="DateTimeKind.Unspecified"/> values.
+    /// </summary>
+    private static void ApplyUtcDateTimeConversions(ModelBuilder modelBuilder)
+    {
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            foreach (var property in entityType.GetProperties())
+            {
+                if (property.ClrType == typeof(DateTime))
+                {
+                    property.SetValueConverter(UtcDateTimeConverter);
+                }
+                else if (property.ClrType == typeof(DateTime?))
+                {
+                    property.SetValueConverter(NullableUtcDateTimeConverter);
+                }
+            }
+        }
     }
 }
 
@@ -346,6 +396,8 @@ public sealed class MfaCredentialEntity
     public string RecoveryCodeHashes { get; set; } = string.Empty;
     public bool Enabled { get; set; }
     public DateTime? EnabledAtUtc { get; set; }
+    public long? LastUsedTimeStep { get; set; }
+    public long Version { get; set; }
 }
 
 public sealed class MfaChallengeEntity
@@ -355,6 +407,7 @@ public sealed class MfaChallengeEntity
     public UserEntity User { get; set; } = null!;
     public DateTime ExpiresAtUtc { get; set; }
     public int FailedAttempts { get; set; }
+    public long Version { get; set; }
 }
 
 public sealed class SecurityAuditEventEntity

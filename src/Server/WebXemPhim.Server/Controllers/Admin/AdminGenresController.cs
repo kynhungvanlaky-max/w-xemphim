@@ -7,12 +7,6 @@ using WebXemPhim.Shared.Responses;
 
 namespace WebXemPhim.Server.Controllers.Admin;
 
-public class UpsertGenreRequest
-{
-    public string Name { get; set; } = string.Empty;
-    public string? Slug { get; set; }
-}
-
 [Route("api/admin/genres")]
 public sealed class AdminGenresController(
     IDbContextFactory<AppDbContext> contextFactory,

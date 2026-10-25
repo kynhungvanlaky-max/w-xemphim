@@ -25,13 +25,20 @@
 
         @if (!string.IsNullOrWhiteSpace(UserEmail))
         {
-            <div class="cp-watermark @currentPositionClass" aria-hidden="true">
-                <span class="cp-watermark-text">@UserEmail • @currentTimestamp</span>
-            </div>
+            @* Watermark vẽ trên canvas: xoá bằng DevTools không đủ vì phải tìm đúng phần tử
+               canvas và dừng cả vòng vẽ lại. Bản text trong DOM trước đây chỉ cần xoá 1 dòng
+               là mất hoàn toàn. *@
+            <canvas class="cp-watermark-canvas"
+                    @ref="watermarkCanvasRef"
+                    data-watermark="@WatermarkText"
+                    data-watermark-zone="@currentPositionIndex"
+                    aria-hidden="true"></canvas>
         }
 
         <!-- Simple Cinema Buffering Spinner -->
-        <div class="cp-buffering-spinner" aria-label="Đang tải..." role="status" aria-hidden="true">
+        @* aria-hidden do JS bật/tắt theo trạng thái đệm: spinner chỉ được đọc khi video thực sự
+           đang tải, không phải lúc ẩn. *@
+        <div class="cp-buffering-spinner" aria-label="Đang tải video" role="status" aria-hidden="true">
             <div class="cp-spinner-ring"></div>
         </div>
 
@@ -88,7 +95,7 @@
             <div class="cp-toolbar">
                 <div class="cp-toolbar-left">
                     <!-- Play / Pause Button -->
-                    <button type="button" class="cp-control-btn cp-play-btn" title="Phát / Tạm dừng (Phím cách)">
+                    <button type="button" class="cp-control-btn cp-play-btn" title="Phát (Phím cách)" aria-label="Phát (Phím cách)" aria-pressed="false">
                         <svg class="cp-play-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                             <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z" />
                         </svg>
@@ -99,22 +106,22 @@
                     </button>
 
                     <!-- Tua lùi 10s -->
-                    <button type="button" class="cp-control-btn cp-rewind-btn" title="Lùi 10 giây (←)">
+                    <button type="button" class="cp-control-btn cp-rewind-btn" title="Lùi 10 giây (←)" aria-label="Lùi 10 giây (←)">
                         <CinemaIcon Name="CinemaIconName.Rewind10" Size="19" />
                     </button>
 
                     <!-- Tua tới 10s -->
-                    <button type="button" class="cp-control-btn cp-forward-btn" title="Tới 10 giây (→)">
+                    <button type="button" class="cp-control-btn cp-forward-btn" title="Tới 10 giây (→)" aria-label="Tới 10 giây (→)">
                         <CinemaIcon Name="CinemaIconName.Forward10" Size="19" />
                     </button>
 
                     <!-- Âm lượng -->
                     <div class="cp-volume-group">
-                        <button type="button" class="cp-control-btn cp-volume-btn" title="Tắt / Bật tiếng (M)">
+                        <button type="button" class="cp-control-btn cp-volume-btn" title="Tắt tiếng (M)" aria-label="Tắt tiếng (M)" aria-pressed="false">
                             <CinemaIcon Name="CinemaIconName.Volume" Size="18" Class="cp-vol-icon" />
                             <CinemaIcon Name="CinemaIconName.VolumeMute" Size="18" Class="cp-mute-icon" style="display: none;" />
                         </button>
-                        <input type="range" class="cp-volume-slider" min="0" max="1" step="0.05" value="1" title="Âm lượng" />
+                        <input type="range" class="cp-volume-slider" min="0" max="1" step="0.05" value="1" title="Âm lượng" aria-label="Âm lượng" />
                     </div>
 
                     <!-- Thời gian phát -->
@@ -123,13 +130,14 @@
 
                 <div class="cp-toolbar-right">
                     <!-- Đổi chất lượng video ngay trong trình phát -->
-                    <div class="cp-quality-selector @(isQualityMenuOpen ? "open" : "")">
-                        <button type="button" 
-                                class="cp-quality-btn" 
+                    <div class="cp-quality-selector @(isQualityMenuOpen ? "open" : "")" @onkeydown="HandleQualityMenuKeyDown">
+                        <button type="button"
+                                @ref="qualityTriggerRef"
+                                class="cp-quality-btn"
                                 title="Đổi chất lượng video (Hiện tại: @DisplayQualityLabel)"
                                 aria-label="Đổi chất lượng video"
                                 aria-haspopup="true"
-                                aria-expanded="@isQualityMenuOpen"
+                                aria-expanded="@(isQualityMenuOpen ? "true" : "false")"
                                 @onclick="ToggleQualityMenu"
                                 @onclick:stopPropagation="true">
                             <span class="cp-q-chip">@DisplayQualityBadge</span>
@@ -141,8 +149,11 @@
 
                         @if (isQualityMenuOpen)
                         {
+                            @* Lớp phủ trong suốt: bấm ra ngoài menu sẽ đóng menu, thay vì
+                               phải bấm lại nút. *@
+                            <div class="cp-quality-backdrop" @onclick="() => CloseQualityMenuAsync(false)"></div>
                             <div class="cp-quality-dropdown" @onclick:stopPropagation="true" role="menu" aria-label="Danh sách chất lượng">
-                                <div class="cp-qd-header">
+                                <div class="cp-qd-header" role="presentation">
                                     <CinemaIcon Name="CinemaIconName.Settings" Size="13" />
                                     <span>Chọn chất lượng</span>
                                 </div>
@@ -205,20 +216,38 @@
                     </div>
 
                     <!-- Picture in Picture -->
-                    <button type="button" class="cp-control-btn cp-pip-btn" title="Thu nhỏ hình trong hình (PiP)">
+                    <button type="button" class="cp-control-btn cp-pip-btn" title="Thu nhỏ hình trong hình (PiP)" aria-label="Thu nhỏ hình trong hình (PiP)" aria-pressed="false">
                         <CinemaIcon Name="CinemaIconName.Eye" Size="18" />
                     </button>
 
                     <!-- Toàn màn hình -->
-                    <button type="button" class="cp-control-btn cp-fullscreen-btn" title="Toàn màn hình (F)">
+                    <button type="button" class="cp-control-btn cp-fullscreen-btn" title="Toàn màn hình (F)" aria-label="Toàn màn hình (F)" aria-pressed="false">
                         <CinemaIcon Name="CinemaIconName.Maximize" Size="18" />
                     </button>
                 </div>
             </div>
         </div>
+        @if (!string.IsNullOrWhiteSpace(playerNotice))
+        {
+            <div class="cp-player-notice" role="status" aria-live="polite">@playerNotice</div>
+        }
         @if (mediaFailed)
         {
-            <div class="cp-error" role="status"><strong>Không thể phát video</strong><span>Thử nguồn phát khác hoặc kiểm tra kết nối mạng.</span><button type="button" @onclick="Retry">Thử lại</button></div>
+            <div class="cp-error" role="alert">
+                <strong>Không thể phát video</strong>
+                <span>@MediaErrorMessage</span>
+                @if (!string.IsNullOrWhiteSpace(mediaErrorDetails))
+                {
+                    <small class="cp-error-detail">Mã lỗi: @mediaErrorDetails</small>
+                }
+                <div class="cp-error-actions">
+                    <button type="button" @onclick="Retry">Thử lại</button>
+                    @if (HasAlternativeSource)
+                    {
+                        <button type="button" class="cp-error-alt" @onclick="PlayAlternativeSource">Dùng nguồn khác</button>
+                    }
+                </div>
+            </div>
         }
     </div>
 </div>
@@ -267,9 +296,13 @@
 
     private ElementReference containerRef;
     private ElementReference videoRef;
+    private ElementReference qualityTriggerRef;
+    private ElementReference watermarkCanvasRef;
     private DotNetObjectReference<CinemaPlayer>? dotNetRef;
     private bool isDrawerOpen = false;
     private bool mediaFailed;
+    private string? mediaErrorDetails;
+    private string? playerNotice;
     private bool isQualityMenuOpen;
     private bool isHlsActive;
     private List<HlsQualityLevelDto> hlsLevels = [];
@@ -277,6 +310,11 @@
     private string? previousStreamUrl;
     private bool isJsInitialized;
 
+    /// <summary>
+    /// Watermark chống chia sẻ được vẽ trên canvas bởi JS. Phía .NET chỉ giữ vị trí an toàn
+    /// (6 vùng) và mốc thời gian, rồi đẩy xuống qua thuộc tính <c>data-watermark</c> —
+    /// như vậy không phải re-render toàn bộ trình phát chỉ để đổi chữ watermark.
+    /// </summary>
     private string currentPositionClass = "wm-pos-0";
     private string currentTimestamp = string.Empty;
     private PeriodicTimer? watermarkTimer;
@@ -293,7 +331,7 @@
 
     private void UpdateWatermarkTimestamp()
     {
-        currentTimestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
+        currentTimestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
     }
 
     public void AdvanceWatermarkPositionForTesting()
@@ -318,6 +356,44 @@
         {
             // Expected during component disposal
         }
+        catch (ObjectDisposedException)
+        {
+            // The timer was disposed while the loop was waiting for the next tick.
+        }
+    }
+
+    /// <summary>
+    /// Nội dung watermark: email đã che bớt kèm mã phiên ngắn. Che bớt email vì nếu hiện
+    /// đầy đủ thì PII bị đóng khung vào video và thu được khi người xem quay màn hình.
+    /// </summary>
+    private string WatermarkText
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(UserEmail)) return string.Empty;
+            return $"{MaskEmail(UserEmail)} · {currentTimestamp}";
+        }
+    }
+
+    private string SessionCode
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(UserEmail)) return "0000";
+            var hash = System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(UserEmail.Trim().ToLowerInvariant()));
+            return Convert.ToHexString(hash)[..4].ToLowerInvariant();
+        }
+    }
+
+    private static string MaskEmail(string email)
+    {
+        var at = email.IndexOf('@');
+        if (at <= 0) return "***";
+        var name = email[..at];
+        var domain = email[(at + 1)..];
+        var visible = name.Length > 1 ? name[..1] : name;
+        return $"{visible}***@{domain}";
     }
 
     public static bool IsHls(string? url)
@@ -360,9 +436,38 @@
         isQualityMenuOpen = !isQualityMenuOpen;
     }
 
+    /// <summary>
+    /// Đóng menu chất lượng bằng phím Esc và trả focus về nút đã mở menu — nếu không, người
+    /// dùng bàn phím mất ngữ cảnh và các phím tắt của trình phát ngừng hoạt động.
+    /// </summary>
+    private async Task CloseQualityMenuAsync(bool returnFocus)
+    {
+        if (!isQualityMenuOpen) return;
+        isQualityMenuOpen = false;
+        if (returnFocus)
+        {
+            try
+            {
+                await qualityTriggerRef.FocusAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "Quality trigger could not be focused.");
+            }
+        }
+    }
+
+    private async Task HandleQualityMenuKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            await CloseQualityMenuAsync(returnFocus: true);
+        }
+    }
+
     private async Task ChooseQuality(string q)
     {
-        isQualityMenuOpen = false;
+        await CloseQualityMenuAsync(returnFocus: true);
         if (!string.Equals(q, QualityLabel, StringComparison.OrdinalIgnoreCase))
         {
             await OnQualityChanged.InvokeAsync(q);
@@ -371,7 +476,7 @@
 
     private async Task ChooseHlsQuality(int levelIndex)
     {
-        isQualityMenuOpen = false;
+        await CloseQualityMenuAsync(returnFocus: true);
         currentHlsLevel = levelIndex;
         try
         {
@@ -453,7 +558,47 @@
     public void OnHlsFatalError(string details)
     {
         mediaFailed = true;
+        mediaErrorDetails = details;
         SafeStateHasChanged();
+    }
+
+    /// <summary>
+    /// Được gọi từ JS khi thẻ video báo lỗi tải media. Sự kiện <c>error</c> của thẻ video có
+    /// thể xảy ra trước khi circuit Blazor kết nối, nên lỗi phải được báo qua JS interop
+    /// thay vì chỉ dựa vào <c>@onerror</c> — nếu không người dùng chỉ thấy màn hình đen.
+    /// </summary>
+    [JSInvokable]
+    public void OnMediaError(string details)
+    {
+        mediaFailed = true;
+        mediaErrorDetails = details;
+        SafeStateHasChanged();
+    }
+
+    /// <summary>
+    /// Được gọi từ JS khi có thông báo ngắn dành cho người xem (ví dụ trình duyệt không hỗ
+    /// trợ toàn màn hình). Thông báo tự ẩn sau vài giây.
+    /// </summary>
+    [JSInvokable]
+    public void OnPlayerNotice(string message)
+    {
+        playerNotice = message;
+        SafeStateHasChanged();
+        _ = ClearPlayerNoticeAsync();
+    }
+
+    private async Task ClearPlayerNoticeAsync()
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(6));
+            playerNotice = null;
+            SafeStateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Player notice could not be cleared.");
+        }
     }
 
     private void SafeStateHasChanged()
@@ -547,6 +692,7 @@
     private async Task Retry()
     {
         mediaFailed = false;
+        mediaErrorDetails = null;
         if (IsHls(ActiveStreamUrl))
         {
             await JS.InvokeVoidAsync("CinemaPlayer.loadSource", containerRef, videoRef, ActiveStreamUrl, AutoPlay, ResumeSeconds);
@@ -554,6 +700,53 @@
         else
         {
             await JS.InvokeVoidAsync("CinemaPlayer.reload", videoRef);
+        }
+    }
+
+    /// <summary>Các nguồn phát khác (khác server hoặc khác chất lượng) có thể thử lại.</summary>
+    private List<StreamSourceDto> AlternativeSources =>
+        (Streams ?? [])
+            .Where(source => !string.IsNullOrWhiteSpace(source.StreamUrl)
+                && !string.Equals(source.StreamUrl, ActiveStreamUrl, StringComparison.Ordinal))
+            .ToList();
+
+    private bool HasAlternativeSource => AlternativeSources.Count > 0;
+
+    /// <summary>Thông điệp lỗi nói rõ nguyên nhân và cách xử lý, không chỉ chung chung.</summary>
+    private string MediaErrorMessage
+    {
+        get
+        {
+            var details = mediaErrorDetails ?? string.Empty;
+            if (details.Contains("4", StringComparison.Ordinal) && details.Contains("MEDIA_ERR", StringComparison.OrdinalIgnoreCase))
+                return "Nguồn phát không phản hồi hoặc định dạng video không được trình duyệt hỗ trợ. Hãy thử nguồn khác hoặc báo lỗi.";
+            if (details.Contains("3", StringComparison.Ordinal) && details.Contains("MEDIA_ERR", StringComparison.OrdinalIgnoreCase))
+                return "Không tải được video do mạng bị gián đoạn. Hãy kiểm tra kết nối rồi thử lại.";
+            if (details.Contains("2", StringComparison.Ordinal) && details.Contains("MEDIA_ERR", StringComparison.OrdinalIgnoreCase))
+                return "Tải video bị lỗi mạng. Thử lại hoặc chuyển sang nguồn phát khác.";
+            if (details.Contains("4", StringComparison.Ordinal) && details.Contains("MEDIA_ERR", StringComparison.OrdinalIgnoreCase))
+                return "Định dạng video không được hỗ trợ. Hãy chọn chất lượng khác.";
+            return HasAlternativeSource
+                ? "Không phát được nguồn này. Bạn có thể thử lại hoặc dùng một nguồn phát khác."
+                : "Không phát được nguồn này. Hãy thử lại, kiểm tra kết nối mạng hoặc báo lỗi cho quản trị viên.";
+        }
+    }
+
+    /// <summary>Chuyển sang nguồn phát kế tiếp rồi phát lại.</summary>
+    private async Task PlayAlternativeSource()
+    {
+        var alternative = AlternativeSources.FirstOrDefault();
+        if (alternative is null) return;
+
+        mediaFailed = false;
+        mediaErrorDetails = null;
+        ActiveStreamUrl = alternative.StreamUrl;
+        previousStreamUrl = ActiveStreamUrl;
+
+        await JS.InvokeVoidAsync("CinemaPlayer.loadSource", containerRef, videoRef, ActiveStreamUrl, true, 0);
+        if (OnQualityChanged.HasDelegate)
+        {
+            await OnQualityChanged.InvokeAsync(alternative.Quality);
         }
     }
 

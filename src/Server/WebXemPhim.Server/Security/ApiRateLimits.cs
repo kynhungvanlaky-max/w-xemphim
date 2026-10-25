@@ -13,6 +13,8 @@ public static class ApiRateLimits
         "::1"
     };
 
+    private static readonly List<System.Net.IPNetwork> s_trustedProxyNetworks = [];
+
     public static void AddTrustedProxy(string ipOrHost)
     {
         lock (s_trustedProxies)
@@ -21,27 +23,42 @@ public static class ApiRateLimits
         }
     }
 
+    public static void AddTrustedProxyNetwork(string network)
+    {
+        var parts = network.Split('/', StringSplitOptions.TrimEntries);
+        if (parts.Length != 2 ||
+            !System.Net.IPAddress.TryParse(parts[0], out var address) ||
+            !int.TryParse(parts[1], out var prefixLength))
+        {
+            return;
+        }
+
+        var maxPrefix = address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? 32 : 128;
+        if (prefixLength < 0 || prefixLength > maxPrefix)
+        {
+            return;
+        }
+
+        lock (s_trustedProxyNetworks)
+        {
+            s_trustedProxyNetworks.Add(new System.Net.IPNetwork(address, prefixLength));
+        }
+    }
+
     public static bool IsTrustedProxy(System.Net.IPAddress? address)
     {
         if (address is null) return false;
         if (System.Net.IPAddress.IsLoopback(address)) return true;
-        if (IsPrivateNetwork(address)) return true;
+
         lock (s_trustedProxies)
         {
-            return s_trustedProxies.Contains(address.ToString());
+            if (s_trustedProxies.Contains(address.ToString())) return true;
         }
-    }
 
-    private static bool IsPrivateNetwork(System.Net.IPAddress address)
-    {
-        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        lock (s_trustedProxyNetworks)
         {
-            var bytes = address.GetAddressBytes();
-            if (bytes[0] == 10) return true;
-            if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true;
-            if (bytes[0] == 192 && bytes[1] == 168) return true;
+            return s_trustedProxyNetworks.Any(network => network.Contains(address));
         }
-        return false;
     }
 
     public static string GetClientIpAddress(HttpContext context)
@@ -89,17 +106,39 @@ public static class ApiRateLimits
         context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
         ?? GetClientIpAddress(context);
 
+    private static string GetPlaybackPartitionKey(HttpContext context)
+    {
+        var sessionId = context.Request.Query["sid"].FirstOrDefault();
+        return !string.IsNullOrWhiteSpace(sessionId)
+            ? $"sid:{sessionId.Trim()}"
+            : $"ip:{GetClientIpAddress(context)}";
+    }
+
+    private static bool IsStreamPlaybackPath(PathString path) =>
+        path.StartsWithSegments("/api/stream/play", StringComparison.OrdinalIgnoreCase);
+
     public static IServiceCollection AddApiRateLimits(this IServiceCollection services, IConfiguration config)
     {
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-                RateLimitPartition.GetFixedWindowLimiter(GetPartitionKey(context), _ => Window(config.GetValue("Security:RateLimits:ApiPerMinute", 300))));
+            {
+                // Segment/manifest HLS đi qua cùng endpoint play; chúng cần hạn mức riêng
+                // theo phiên thay vì bị đếm chung vào hạn mức API toàn cục.
+                if (IsStreamPlaybackPath(context.Request.Path))
+                {
+                    return RateLimitPartition.GetNoLimiter("stream-playback");
+                }
+
+                return RateLimitPartition.GetFixedWindowLimiter(GetPartitionKey(context), _ => Window(config.GetValue("Security:RateLimits:ApiPerMinute", 300)));
+            });
             options.AddPolicy("Authentication", context => RateLimitPartition.GetFixedWindowLimiter(GetClientIpAddress(context), _ => Window(config.GetValue("Security:RateLimits:AuthPerMinute", 15))));
             options.AddPolicy("CouponValidation", context => RateLimitPartition.GetFixedWindowLimiter(GetPartitionKey(context), _ => Window(config.GetValue("Security:RateLimits:CouponsPerMinute", 10))));
             options.AddPolicy("Checkout", context => RateLimitPartition.GetFixedWindowLimiter(GetPartitionKey(context), _ => Window(config.GetValue("Security:RateLimits:CheckoutPerMinute", 15))));
             options.AddPolicy("UserSubmissions", context => RateLimitPartition.GetFixedWindowLimiter(GetPartitionKey(context), _ => Window(config.GetValue("Security:RateLimits:SubmissionsPerMinute", 30))));
+            options.AddPolicy("StreamPlayback", context => RateLimitPartition.GetFixedWindowLimiter(GetPlaybackPartitionKey(context), _ => Window(config.GetValue("Security:RateLimits:StreamPlaybackPerMinute", 600))));
+            options.AddPolicy("StreamSign", context => RateLimitPartition.GetFixedWindowLimiter(GetPartitionKey(context), _ => Window(config.GetValue("Security:RateLimits:StreamSignPerMinute", 30))));
             options.OnRejected = async (context, token) =>
             {
                 if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retry))

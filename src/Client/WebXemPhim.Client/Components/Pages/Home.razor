@@ -3,7 +3,7 @@
 @inject ILogger<Home> Logger
 @implements IDisposable
 
-<PageTitle>CinemaFlow - Điện ảnh theo cách của bạn</PageTitle>
+<CinemaPageTitle>CinemaFlow - Điện ảnh theo cách của bạn</CinemaPageTitle>
 <RouteStylesheet Files="@HomeStyles" />
 
 @if (loading)
@@ -140,7 +140,7 @@ else if (featuredMovie is not null)
 </div>
 
 @code {
-    private static readonly string[] HomeStyles = ["css/home-expanded.css"];
+    private static readonly string[] HomeStyles = RouteStylesheetCatalog.Home;
 
     // Per-component persistent state: the value survives the prerender -> interactive
     // handover so the home aggregate is fetched only once per page load.

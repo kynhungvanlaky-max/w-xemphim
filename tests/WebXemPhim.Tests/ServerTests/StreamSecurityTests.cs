@@ -164,7 +164,7 @@ public sealed class StreamSecurityTests(TestApiFactory factory) : IClassFixture<
     }
 
     [Fact]
-    public async Task Integration_PlayStream_WithValidSignature_Returns302Redirect()
+    public async Task Integration_PlayStream_WithValidSignature_ProxiesVideoWithoutLeakingUpstreamUrl()
     {
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -192,9 +192,26 @@ public sealed class StreamSecurityTests(TestApiFactory factory) : IClassFixture<
 
         // Play stream via GET /api/stream/play
         var playRes = await client.GetAsync(relativeUrl);
-        Assert.Equal(HttpStatusCode.Found, playRes.StatusCode); // 302 Found
-        Assert.NotNull(playRes.Headers.Location);
-        Assert.StartsWith("http", playRes.Headers.Location.ToString());
+
+        // Video được PROXY qua server chứ không chuyển hướng. Nếu chuyển hướng, URL CDN gốc
+        // lộ ra trong header Location và dùng được vô thời hạn — cơ chế ký, giới hạn thời
+        // hạn và ràng buộc IP sẽ mất tác dụng.
+        Assert.NotEqual(HttpStatusCode.Found, playRes.StatusCode);
+        Assert.NotEqual(HttpStatusCode.Redirect, playRes.StatusCode);
+        Assert.Null(playRes.Headers.Location);
+
+        // Không được lộ URL máy chủ nguồn ở bất kỳ header nào.
+        foreach (var header in playRes.Headers)
+        {
+            Assert.DoesNotContain("cdn", header.Value.ToString(), StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(".mp4", header.Value.ToString(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Nội dung trả về phải là video (hoặc mã lỗi rõ ràng của máy chủ nguồn) và tuyệt đối
+        // không phải trang HTML lỗi.
+        Assert.True(playRes.StatusCode == HttpStatusCode.OK || playRes.StatusCode == HttpStatusCode.PartialContent
+            || playRes.StatusCode == HttpStatusCode.BadGateway, $"Unexpected status {(int)playRes.StatusCode}.");
+        Assert.DoesNotContain("<html", await playRes.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -321,7 +338,7 @@ public sealed class StreamSecurityTests(TestApiFactory factory) : IClassFixture<
     }
 
     [Fact]
-    public async Task Integration_MaskVipStreams_ForVipUser_ReturnsSignedUrlStartingWithHttp()
+    public async Task Integration_MaskVipStreams_ForVipUser_RequiresSignEndpointForPlaybackUrl()
     {
         using var vipClient = factory.CreateClient();
         var email = $"vip-mask-{Guid.NewGuid():N}@test.vn";
@@ -335,17 +352,27 @@ public sealed class StreamSecurityTests(TestApiFactory factory) : IClassFixture<
                                          (!string.IsNullOrEmpty(s.Quality) && s.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase))).ToList();
 
         Assert.NotEmpty(vipAnd4k);
-        // Verified: Starts with "http", points to /api/stream/play, signed and protected
-        Assert.All(vipAnd4k, s =>
+        // Verified: VIP streams do not expose pre-signed URLs without sid; they require /api/stream/sign
+        Assert.All(vipAnd4k, s => Assert.Equal(string.Empty, s.StreamUrl));
+
+        // Signing through /api/stream/sign grants the signed URL bound to a session lease
+        var firstVip = vipAnd4k.First();
+        var signRes = await vipClient.PostAsJsonAsync("/api/stream/sign", new SignStreamRequest
         {
-            Assert.StartsWith("http", s.StreamUrl);
-            Assert.Contains("/api/stream/play?", s.StreamUrl);
-            Assert.Contains("sig=", s.StreamUrl);
-            Assert.Contains("exp=", s.StreamUrl);
-            Assert.Contains("ip=", s.StreamUrl);
-            // Plaintext CDN URL is completely eliminated from response
-            Assert.DoesNotContain("cdn.plyr.io", s.StreamUrl);
+            EpisodeId = firstVip.EpisodeId,
+            Position = firstVip.Position
         });
+        signRes.EnsureSuccessStatusCode();
+        var signed = (await signRes.Content.ReadFromJsonAsync<ApiResponse<SignedStreamDto>>())!.Data!;
+        Assert.NotNull(signed);
+        Assert.False(string.IsNullOrWhiteSpace(signed.SessionId));
+        Assert.StartsWith("http", signed.StreamUrl);
+        Assert.Contains("/api/stream/play?", signed.StreamUrl);
+        Assert.Contains("sig=", signed.StreamUrl);
+        Assert.Contains("exp=", signed.StreamUrl);
+        Assert.Contains("ip=", signed.StreamUrl);
+        Assert.Contains($"sid={signed.SessionId}", signed.StreamUrl);
+        Assert.DoesNotContain("cdn.plyr.io", signed.StreamUrl);
     }
 
     [Fact]

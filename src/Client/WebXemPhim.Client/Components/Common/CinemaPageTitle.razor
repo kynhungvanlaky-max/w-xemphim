@@ -1,0 +1,18 @@
+@using Microsoft.AspNetCore.Components.Web
+@*
+    Document title of the current page.
+
+    The built-in title component only updates the title when it is rendered inside a
+    HeadContent block, and the head outlet is not refreshed on a client side navigation.
+    Rendering the title through the head outlet keeps the browser tab in sync with the page
+    the visitor is on.
+*@
+
+<HeadContent>
+    <title>@ChildContent</title>
+</HeadContent>
+
+@code {
+    [Parameter, EditorRequired]
+    public RenderFragment? ChildContent { get; set; }
+}

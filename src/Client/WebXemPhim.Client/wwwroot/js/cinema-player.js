@@ -39,6 +39,9 @@
             let pulseTimer = null;
             let disposed = false;
             let lastProgressReportTime = 0;
+            let startTime = null;
+            let firstFrameReported = false;
+            let rebufferCount = 0;
 
             function formatTime(seconds) {
                 if (isNaN(seconds) || seconds < 0) return '00:00';
@@ -52,17 +55,37 @@
                 return `${pad(m)}:${pad(s)}`;
             }
 
+            function sendTelemetry(eventType, value, errorCode) {
+                if (!dotNetHelper) return;
+                try {
+                    dotNetHelper.invokeMethodAsync('OnPlaybackTelemetry', eventType, value, errorCode);
+                } catch (e) { }
+            }
+
+            function reportStartup() {
+                if (firstFrameReported || !startTime) return;
+                firstFrameReported = true;
+                sendTelemetry('startup', Date.now() - startTime);
+            }
+
             function setBuffering(buffering) {
                 clearTimeout(bufferDebounce);
                 if (buffering) {
                     bufferDebounce = setTimeout(() => {
                         isBuffering = true;
-                        if (bufferingSpinner) bufferingSpinner.classList.add('is-active');
+                        if (bufferingSpinner) {
+                            bufferingSpinner.classList.add('is-active');
+                            // Chỉ đọc được khi video thực sự đang tải.
+                            bufferingSpinner.setAttribute('aria-hidden', 'false');
+                        }
                         containerEl.classList.add('is-buffering');
                     }, 140);
                 } else {
                     isBuffering = false;
-                    if (bufferingSpinner) bufferingSpinner.classList.remove('is-active');
+                    if (bufferingSpinner) {
+                        bufferingSpinner.classList.remove('is-active');
+                        bufferingSpinner.setAttribute('aria-hidden', 'true');
+                    }
                     containerEl.classList.remove('is-buffering');
                 }
             }
@@ -72,7 +95,11 @@
                 const cur = videoEl.currentTime;
                 const dur = videoEl.duration || 0;
                 const pct = dur > 0 ? (cur / dur) * 100 : 0;
-                if (progressTrack) progressTrack.setAttribute('aria-valuenow', Math.round(pct).toString());
+                if (progressTrack) {
+                    progressTrack.setAttribute('aria-valuenow', Math.round(pct).toString());
+                    // Trình đọc màn hình cần thời gian thật, không phải phần trăm.
+                    progressTrack.setAttribute('aria-valuetext', formatTime(cur) + ' / ' + formatTime(dur));
+                }
 
                 if (progressPlayed) progressPlayed.style.width = pct + '%';
                 if (progressHandle) progressHandle.style.left = pct + '%';
@@ -127,6 +154,14 @@
                 containerEl.classList.toggle('is-paused', isPaused);
                 if (playIcon) playIcon.style.display = isPaused ? 'block' : 'none';
                 if (pauseIcon) pauseIcon.style.display = isPaused ? 'none' : 'block';
+                if (playBtn) {
+                    // Nhãn của nút phải phản ánh trạng thái thật, nếu không trình đọc màn
+                    // hình không biết đang phát hay đang tạm dừng.
+                    const label = isPaused ? 'Phát (Phím cách)' : 'Tạm dừng (Phím cách)';
+                    playBtn.setAttribute('aria-label', label);
+                    playBtn.setAttribute('aria-pressed', isPaused ? 'false' : 'true');
+                    playBtn.setAttribute('title', label);
+                }
                 if (isPaused) {
                     showControls();
                     if (dotNetHelper) {
@@ -218,7 +253,20 @@
                 if (videoEl.readyState >= 3) setBuffering(false);
             });
             videoEl.addEventListener('pause', () => setBuffering(false));
-            videoEl.addEventListener('error', () => setBuffering(false));
+            videoEl.addEventListener('error', () => {
+                setBuffering(false);
+                // The media error can fire before the Blazor circuit is connected, so the
+                // @onerror attribute of the <video> element would be lost. Reporting it over
+                // JS interop guarantees the operator sees the error panel instead of a black
+                // screen.
+                const code = videoEl.error ? videoEl.error.code : 0;
+                const message = videoEl.error && videoEl.error.message ? videoEl.error.message : 'MEDIA_ERR_UNKNOWN';
+                if (dotNetHelper) {
+                    try {
+                        dotNetHelper.invokeMethodAsync('OnMediaError', 'MEDIA_ERR_' + code + ' ' + message);
+                    } catch (_) {}
+                }
+            });
 
             // Progress track interaction
             if (progressTrack) {
@@ -283,6 +331,9 @@
             }
 
             // Volume
+            const VOLUME_STORAGE_KEY = 'cinemaflow.volume';
+            let lastNonZeroVolume = 0.6;
+
             function updateVolumeUI() {
                 const muted = videoEl.muted || videoEl.volume === 0;
                 const volIcon = containerEl.querySelector('.cp-vol-icon');
@@ -292,11 +343,46 @@
                 if (volumeSlider) {
                     volumeSlider.value = muted ? 0 : videoEl.volume;
                 }
+                if (volumeBtn) {
+                    const label = muted ? 'Bật tiếng (M)' : 'Tắt tiếng (M)';
+                    volumeBtn.setAttribute('aria-label', label);
+                    volumeBtn.setAttribute('aria-pressed', muted ? 'true' : 'false');
+                    volumeBtn.setAttribute('title', label);
+                }
             }
+
+            // Nhớ mức âm lượng giữa các lần mở trang.
+            function persistVolume() {
+                try {
+                    if (videoEl.muted || videoEl.volume === 0) return;
+                    lastNonZeroVolume = videoEl.volume;
+                    localStorage.setItem(VOLUME_STORAGE_KEY, String(videoEl.volume));
+                } catch (_) {}
+            }
+
+            function restoreVolume() {
+                try {
+                    const saved = parseFloat(localStorage.getItem(VOLUME_STORAGE_KEY) || '');
+                    if (!isNaN(saved) && saved > 0) {
+                        videoEl.volume = saved;
+                        lastNonZeroVolume = saved;
+                    }
+                } catch (_) {}
+            }
+
+            restoreVolume();
+            videoEl.addEventListener('volumechange', persistVolume);
 
             if (volumeBtn) {
                 volumeBtn.addEventListener('click', () => {
-                    videoEl.muted = !videoEl.muted;
+                    if (videoEl.muted || videoEl.volume === 0) {
+                        // Bật tiếng phải khôi phục mức âm lượng thật, nếu không nút báo "có
+                        // tiếng" trong khi âm lượng vẫn bằng 0.
+                        videoEl.muted = false;
+                        if (videoEl.volume === 0) videoEl.volume = lastNonZeroVolume || 0.6;
+                    } else {
+                        videoEl.muted = true;
+                    }
                     updateVolumeUI();
                 });
             }
@@ -315,16 +401,52 @@
             function toggleFullscreen() {
                 if (!document.fullscreenElement) {
                     if (containerEl.requestFullscreen) {
-                        containerEl.requestFullscreen();
+                        // Promise bị từ chối khi trình duyệt không cho phép — nếu bỏ qua,
+                        // nút toàn màn hình im lặng không làm gì và console có lỗi chưa xử lý.
+                        const request = containerEl.requestFullscreen();
+                        if (request && typeof request.catch === 'function') {
+                            request.catch(() => { reportUnsupportedFullscreen(); });
+                        }
                     } else if (containerEl.webkitRequestFullscreen) {
                         containerEl.webkitRequestFullscreen();
+                    } else {
+                        // iOS Safari không hỗ trợ toàn màn hình cho khung phim — chỉ hỗ trợ
+                        // cho chính thẻ video.
+                        if (videoEl.webkitEnterFullscreen) {
+                            videoEl.webkitEnterFullscreen();
+                        } else {
+                            reportUnsupportedFullscreen();
+                        }
                     }
                 } else {
                     if (document.exitFullscreen) {
-                        document.exitFullscreen();
+                        const exit = document.exitFullscreen();
+                        if (exit && typeof exit.catch === 'function') exit.catch(() => {});
                     }
                 }
             }
+
+            function reportUnsupportedFullscreen() {
+                console.warn('[CinemaPlayer] Fullscreen is not available in this browser.');
+                if (dotNetHelper) {
+                    try {
+                        dotNetHelper.invokeMethodAsync('OnPlayerNotice', 'Trình duyệt này không hỗ trợ toàn màn hình cho khung phim. Hãy xoay ngang máy.');
+                    } catch (_) {}
+                }
+            }
+
+            // Theo dõi trạng thái toàn màn hình để icon, nhãn và bộ đếm ẩn controls đều
+            // được cập nhật khi vào/ra toàn màn hình.
+            document.addEventListener('fullscreenchange', () => {
+                const isFullscreen = !!document.fullscreenElement;
+                if (fullscreenBtn) {
+                    const label = isFullscreen ? 'Thoát toàn màn hình (F)' : 'Toàn màn hình (F)';
+                    fullscreenBtn.setAttribute('aria-label', label);
+                    fullscreenBtn.setAttribute('aria-pressed', isFullscreen ? 'true' : 'false');
+                    fullscreenBtn.setAttribute('title', label);
+                }
+                resetHideTimer();
+            });
 
             if (fullscreenBtn) fullscreenBtn.addEventListener('click', toggleFullscreen);
 
@@ -404,12 +526,18 @@
             updatePlayState();
             updateVolumeUI();
             updateTime();
+            window.CinemaPlayer.setupWatermark(containerEl);
             containerEl._cinemaDispose = () => {
                 disposed = true;
                 clearTimeout(hideTimeout);
                 clearTimeout(bufferDebounce);
                 clearTimeout(pulseTimer);
                 if (cancelScrub) cancelScrub();
+                if (containerEl._cinemaWatermark) {
+                    try { clearInterval(containerEl._cinemaWatermark.interval); } catch (_) {}
+                    try { window.removeEventListener('resize', containerEl._cinemaWatermark.onResize); } catch (_) {}
+                    containerEl._cinemaWatermark = null;
+                }
                 if (containerEl._cinemaHls) {
                     try { containerEl._cinemaHls.destroy(); } catch (_) {}
                     containerEl._cinemaHls = null;
@@ -429,6 +557,79 @@
                 try { containerEl._cinemaHls.destroy(); } catch (_) {}
                 delete containerEl._cinemaHls;
             }
+            if (containerEl && containerEl._cinemaWatermark) {
+                try { clearInterval(containerEl._cinemaWatermark.interval); } catch (_) {}
+                try { window.removeEventListener('resize', containerEl._cinemaWatermark.onResize); } catch (_) {}
+                delete containerEl._cinemaWatermark;
+            }
+        },
+        /**
+         * Vẽ watermark chống chia sẻ trên một canvas phủ lên video.
+         * Vẽ bằng canvas khiến việc gỡ watermark bằng DevTools khó hơn nhiều so với một
+         * đoạn text trong DOM (chỉ cần xoá node là mất), và vị trí đổi ngẫu nhiên liên tục.
+         */
+        setupWatermark: function (containerEl) {
+            if (!containerEl) return;
+            const canvas = containerEl.querySelector('.cp-watermark-canvas');
+            if (!canvas) return;
+            const text = canvas.getAttribute('data-watermark') || '';
+            if (!text) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            const draw = function () {
+                const video = containerEl.querySelector('video');
+                const rect = video ? video.getBoundingClientRect() : containerEl.getBoundingClientRect();
+                const width = Math.max(1, Math.round(rect.width));
+                const height = Math.max(1, Math.round(rect.height));
+                const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+                canvas.width = width * dpr;
+                canvas.height = height * dpr;
+                canvas.style.width = width + 'px';
+                canvas.style.height = height + 'px';
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                ctx.clearRect(0, 0, width, height);
+
+                const fontSize = Math.max(13, Math.min(22, Math.round(width / 34)));
+                ctx.font = '600 ' + fontSize + 'px "Be Vietnam Pro", system-ui, -apple-system, sans-serif';
+                ctx.textBaseline = 'middle';
+
+                const textWidth = ctx.measureText(text).width;
+                const padding = fontSize * 1.2;
+                // 6 vùng an toàn, khớp với các class .wm-pos-* của CSS.
+                const zone = parseInt(canvas.getAttribute('data-watermark-zone') || '0', 10) || 0;
+                const zones = [
+                    { x: 0.06, y: 0.08, align: 'left' },
+                    { x: 0.94, y: 0.08, align: 'right' },
+                    { x: 0.08, y: 0.42, align: 'left' },
+                    { x: 0.92, y: 0.42, align: 'right' },
+                    { x: 0.06, y: 0.82, align: 'left' },
+                    { x: 0.94, y: 0.82, align: 'right' }
+                ];
+                const spot = zones[Math.min(Math.max(zone, 0), zones.length - 1)];
+                const x = spot.align === 'right'
+                    ? Math.max(padding, width * spot.x - textWidth)
+                    : Math.max(padding, width * spot.x);
+                const y = Math.max(padding + fontSize, Math.min(height - padding, height * spot.y));
+                const angle = (Math.random() * 0.24) - 0.12;
+
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(angle);
+                // Bóng đen + chữ trắng mờ: đọc được trên cả nền sáng lẫn nền tối của video.
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.38)';
+                ctx.fillText(text, 1, 1);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.fillText(text, 0, 0);
+                ctx.restore();
+            };
+
+            draw();
+            const interval = setInterval(draw, 12000);
+            const onResize = function () { draw(); };
+            window.addEventListener('resize', onResize);
+            containerEl._cinemaWatermark = { interval: interval, onResize: onResize };
         },
         isHlsStream: isHlsStream,
         loadSource: function (containerEl, videoEl, streamUrl, autoPlay, resumeSeconds) {
@@ -447,14 +648,35 @@
                 return;
             }
 
+            // Đánh dấu thời điểm bắt đầu tải để đo startup time.
+            startTime = Date.now();
+            firstFrameReported = false;
+            rebufferCount = 0;
+
             if (isHlsStream(streamUrl)) {
                 if (window.Hls && window.Hls.isSupported()) {
                     const hls = new window.Hls({
                         enableWorker: true,
-                        lowLatencyMode: true,
-                        backBufferLength: 90
+                        backBufferLength: 30,
+                        maxBufferLength: 30,
+                        maxMaxBufferLength: 60,
+                        liveSyncDurationCount: 2,
+                        liveMaxLatencyDurationCount: 5,
+                        maxLiveSyncPlaybackRate: 1.5,
+                        startLevel: -1,
+                        capLevelToPlayerSize: true,
+                        abrEwmaDefaultEstimate: 800000,
+                        abrBandWidthFactor: 0.7,
+                        abrBandWidthUpFactor: 0.7,
+                        lowLatencyMode: false,
+                        debug: false
                     });
                     containerEl._cinemaHls = hls;
+
+                    // Bộ đếm số lần thử lại — không có nó, một lỗi mạng fatal sẽ gọi
+                    // startLoad() liên tục và quay vòng lặp busy không dừng.
+                    let hlsNetworkRetries = 0;
+                    let hlsMediaRetries = 0;
 
                     hls.attachMedia(videoEl);
 
@@ -478,6 +700,8 @@
                             } catch (_) {}
                         }
 
+                        reportStartup();
+
                         if (resumeSeconds > 0) {
                             videoEl.currentTime = resumeSeconds;
                         }
@@ -497,23 +721,57 @@
 
                     hls.on(window.Hls.Events.ERROR, function (event, data) {
                         if (!data.fatal) return;
+                        if (hls.destroyed) return;
+
+                        // KHÔNG log toàn bộ `data`: hls.js đặt URL manifest/segment (tức là URL
+                        // stream đã ký kèm chữ ký) vào data.url — log ra là lộ token trong
+                        // console của người xem.
+                        const errorType = data.type || 'unknown';
+                        const errorDetails = data.details || '';
 
                         switch (data.type) {
                             case window.Hls.ErrorTypes.NETWORK_ERROR:
-                                console.warn('[CinemaPlayer] HLS network error, attempting startLoad recovery...', data);
-                                hls.startLoad();
+                                console.warn('[CinemaPlayer] HLS network error (' + errorDetails + '), retrying...');
+                                hlsNetworkRetries += 1;
+                                if (hlsNetworkRetries > 3) {
+                                    console.error('[CinemaPlayer] HLS network error kept failing, giving up.');
+                                    try { hls.destroy(); } catch (_) {}
+                                    containerEl._cinemaHls = null;
+                                    if (dotNetHelper) {
+                                        try {
+                                            dotNetHelper.invokeMethodAsync('OnHlsFatalError', 'NETWORK ' + errorDetails);
+                                        } catch (_) {}
+                                    }
+                                    return;
+                                }
+                                // Backoff để không quay vòng lặp busy khi mạng vẫn lỗi.
+                                setTimeout(() => {
+                                    if (!hls.destroyed) hls.startLoad();
+                                }, Math.min(1000 * Math.pow(2, hlsNetworkRetries - 1), 8000));
                                 break;
                             case window.Hls.ErrorTypes.MEDIA_ERROR:
-                                console.warn('[CinemaPlayer] HLS media error, attempting recoverMediaError...', data);
+                                console.warn('[CinemaPlayer] HLS media error (' + errorDetails + '), recovering...');
+                                hlsMediaRetries += 1;
+                                if (hlsMediaRetries > 2) {
+                                    console.error('[CinemaPlayer] HLS media error kept failing, giving up.');
+                                    try { hls.destroy(); } catch (_) {}
+                                    containerEl._cinemaHls = null;
+                                    if (dotNetHelper) {
+                                        try {
+                                            dotNetHelper.invokeMethodAsync('OnHlsFatalError', 'MEDIA ' + errorDetails);
+                                        } catch (_) {}
+                                    }
+                                    return;
+                                }
                                 hls.recoverMediaError();
                                 break;
                             default:
-                                console.error('[CinemaPlayer] Unrecoverable HLS fatal error:', data);
+                                console.error('[CinemaPlayer] Unrecoverable HLS fatal error (' + errorDetails + ').');
                                 try { hls.destroy(); } catch (_) {}
                                 containerEl._cinemaHls = null;
                                 if (dotNetHelper) {
                                     try {
-                                        dotNetHelper.invokeMethodAsync('OnHlsFatalError', data.details || 'HLS fatal error');
+                                        dotNetHelper.invokeMethodAsync('OnHlsFatalError', errorDetails || 'HLS fatal error');
                                     } catch (_) {}
                                 }
                                 break;
@@ -537,7 +795,11 @@
                     videoEl.load();
                 }
             } else {
-                videoEl.src = streamUrl;
+                // Nếu thẻ video đang mang đúng URL này thì không gán lại — tránh tải lại
+                // tài nguyên lần thứ hai (Razor đã render src, JS lại set src).
+                if (videoEl.getAttribute('src') !== streamUrl) {
+                    videoEl.src = streamUrl;
+                }
                 if (resumeSeconds > 0) {
                     const onLoaded = function () {
                         videoEl.removeEventListener('loadedmetadata', onLoaded);
@@ -559,6 +821,23 @@
                 return true;
             }
             return false;
+        },
+        // Gọi một Range request rất nhỏ bằng fetch để trình duyệt nhận/gia hạn
+        // cookie phiên phát (HttpOnly). Không đổi src của <video>, nên không giật hình.
+        refreshPlaybackCookie: async function (streamUrl) {
+            if (!streamUrl) return false;
+            try {
+                const response = await fetch(streamUrl, {
+                    method: 'GET',
+                    headers: { 'Range': 'bytes=0-0' },
+                    credentials: 'include',
+                    cache: 'no-store'
+                });
+                try { await response.body?.cancel(); } catch (_) { /* ignore */ }
+                return response.ok || response.status === 206;
+            } catch (_) {
+                return false;
+            }
         },
         reload: function (videoEl) { videoEl.load(); },
         pause: function (videoEl) { if (videoEl && !videoEl.paused) { videoEl.pause(); } },

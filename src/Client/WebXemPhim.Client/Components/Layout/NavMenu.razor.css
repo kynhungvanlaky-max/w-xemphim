@@ -638,7 +638,6 @@
 }
 
 @media (max-width: 768px) {
-    .nav-direct-logout-btn,
     .nav-user-label {
         display: none !important;
     }
@@ -689,6 +688,85 @@
 :global([data-theme="light"]) .nav-auth-skeleton {
     background: rgba(0, 0, 0, 0.04);
     border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.nav-auth-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: 0.25rem;
+}
+
+.nav-signin,
+.nav-signup {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding: 0 0.95rem;
+    /* Bo góc vừa phải thay vì pill tròn: đồng bộ với các thẻ/nút khác trong thanh navbar. */
+    border-radius: 7px;
+    font-size: 0.86rem;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.nav-signin {
+    color: rgba(255, 255, 255, 0.88);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.nav-signin:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.24);
+}
+
+.nav-signup {
+    color: #ffffff;
+    background: #e50914;
+    border: 1px solid #e50914;
+    box-shadow: 0 4px 12px rgba(229, 9, 20, 0.25);
+}
+
+.nav-signup:hover {
+    background: #cf0812;
+    border-color: #cf0812;
+    transform: translateY(-1px);
+}
+
+@media (max-width: 768px) {
+    .nav-auth-actions {
+        gap: 0.35rem;
+    }
+
+    .nav-signin,
+    .nav-signup {
+        min-height: 30px;
+        padding: 0 0.7rem;
+        font-size: 0.78rem;
+    }
+}
+
+:global([data-theme="light"]) .nav-signin {
+    color: #0f172a;
+    background: rgba(15, 23, 42, 0.05);
+    border-color: rgba(15, 23, 42, 0.16);
+}
+
+:global([data-theme="light"]) .nav-signin:hover {
+    color: #000000;
+    background: rgba(15, 23, 42, 0.1);
+    border-color: rgba(15, 23, 42, 0.24);
+}
+
+:global([data-theme="light"]) .nav-signup {
+    color: #ffffff;
+    background: #e50914;
+    border-color: #e50914;
 }
 
 @keyframes navPulse {

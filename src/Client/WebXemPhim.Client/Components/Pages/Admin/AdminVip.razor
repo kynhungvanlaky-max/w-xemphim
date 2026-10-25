@@ -10,7 +10,7 @@
 @inject IJSRuntime JS
 @implements IDisposable
 
-<PageTitle>Quản trị Gói VIP &amp; Tài chính - CinemaFlow Admin</PageTitle>
+<CinemaPageTitle>Quản trị Gói VIP &amp; Tài chính - CinemaFlow Admin</CinemaPageTitle>
 
 <!-- Topbar -->
 <header class="admin-topbar">
@@ -44,7 +44,7 @@
         {
             <div class="topbar-search-pill">
                 <CinemaIcon Name="CinemaIconName.Search" Size="16" Class="search-icon" />
-                <input type="text" placeholder="Tìm theo mã đơn, email, họ tên..." @bind="searchQuery" @bind:event="oninput" @onkeydown="HandleSearchKeyDown" />
+                <input type="text" aria-label="Tìm theo mã đơn, email, họ tên" placeholder="Tìm theo mã đơn, email, họ tên..." @bind="searchQuery" @bind:event="oninput" @bind:after="SchedulePaymentSearch" @onkeydown="HandleSearchKeyDown" />
             </div>
         }
     </div>
@@ -69,7 +69,7 @@
     <button type="button" class="vip-tab-pill @(activeTab == AdminVipTab.Transactions ? "active" : "")" @onclick="() => SwitchTab(AdminVipTab.Transactions)">
         <CinemaIcon Name="CinemaIconName.Dashboard" Size="16" />
         <span>Lịch sử Giao dịch &amp; Đối soát</span>
-        <span class="tab-badge">@paymentsList.Count</span>
+        <span class="tab-badge">@countAll</span>
     </button>
     <button type="button" class="vip-tab-pill @(activeTab == AdminVipTab.Plans ? "active" : "")" @onclick="() => SwitchTab(AdminVipTab.Plans)">
         <CinemaIcon Name="CinemaIconName.Crown" Size="16" />
@@ -90,16 +90,16 @@
         <div class="kpi-card">
             <div class="kpi-icon-wrap gold"><CinemaIcon Name="CinemaIconName.Crown" Size="24" /></div>
             <div class="kpi-body">
-                <span class="kpi-value font-mono-num">@(paymentsList.Where(p => p.Status == PaymentStatus.Completed).Sum(p => p.Amount).ToString("N0"))đ</span>
+                <span class="kpi-value font-mono-num" title="Tổng doanh thu của các giao dịch đã hoàn tất, lấy từ số liệu dashboard.">@(stats != null ? stats.TotalRevenue.ToString("N0") : "—")</span>
                 <span class="kpi-label">Doanh thu thực nhận</span>
-                <span class="kpi-change up font-mono-num">▲ @(paymentsList.Count(p => p.Status == PaymentStatus.Completed)) đơn hoàn tất</span>
+                <span class="kpi-change font-mono-num">@countCompleted đơn hoàn tất</span>
             </div>
         </div>
 
         <div class="kpi-card">
             <div class="kpi-icon-wrap green"><CinemaIcon Name="CinemaIconName.Check" Size="24" /></div>
             <div class="kpi-body">
-                <span class="kpi-value font-mono-num">@paymentsList.Count(p => p.Status == PaymentStatus.Completed)</span>
+                <span class="kpi-value font-mono-num">@countCompleted</span>
                 <span class="kpi-label">Đơn thành công</span>
                 <span class="kpi-change up">CinemaFlow VIP</span>
             </div>
@@ -108,47 +108,209 @@
         <div class="kpi-card">
             <div class="kpi-icon-wrap amber"><CinemaIcon Name="CinemaIconName.TrendingUp" Size="24" /></div>
             <div class="kpi-body">
-                <span class="kpi-value font-mono-num">@paymentsList.Count(p => p.Status == PaymentStatus.Pending)</span>
+                <span class="kpi-value font-mono-num">@countPending</span>
                 <span class="kpi-label">Đơn chờ duyệt</span>
-                <span class="kpi-change up">Cần đối soát</span>
+                <span class="kpi-change warn">Cần đối soát</span>
             </div>
         </div>
 
         <div class="kpi-card">
             <div class="kpi-icon-wrap cyan"><CinemaIcon Name="CinemaIconName.Users" Size="24" /></div>
             <div class="kpi-body">
-                <span class="kpi-value font-mono-num">@(paymentsList.Count > 0 ? (paymentsList.Count(p => p.Status == PaymentStatus.Completed) * 100 / paymentsList.Count) : 100)%</span>
+                <span class="kpi-value font-mono-num">@(countAll > 0 ? (countCompleted * 100 / countAll) : 0)%</span>
                 <span class="kpi-label">Tỷ lệ thanh toán</span>
-                <span class="kpi-change up font-mono-num">@paymentsList.Count tổng đơn</span>
+                <span class="kpi-change up font-mono-num">@countAll tổng đơn</span>
             </div>
         </div>
     </section>
 
-    <!-- Filter Bar -->
-    <div class="filter-controls-row">
-        <div class="filter-left-group">
-            <button type="button" class="status-tab-btn @(statusFilter == null ? "active" : "")" @onclick="() => FilterByStatus(null)">
-                Tất cả (@paymentsList.Count)
-            </button>
-            <button type="button" class="status-tab-btn @(statusFilter == PaymentStatus.Pending ? "active" : "")" @onclick="() => FilterByStatus(PaymentStatus.Pending)">
-                <span class="status-dot amber"></span> Chờ duyệt (@paymentsList.Count(p => p.Status == PaymentStatus.Pending))
-            </button>
-            <button type="button" class="status-tab-btn @(statusFilter == PaymentStatus.Completed ? "active" : "")" @onclick="() => FilterByStatus(PaymentStatus.Completed)">
-                <span class="status-dot green"></span> Hoàn tất (@paymentsList.Count(p => p.Status == PaymentStatus.Completed))
-            </button>
-            <button type="button" class="status-tab-btn @(statusFilter == PaymentStatus.Failed ? "active" : "")" @onclick="() => FilterByStatus(PaymentStatus.Failed)">
-                <span class="status-dot gray"></span> Từ chối/Hủy (@paymentsList.Count(p => p.Status == PaymentStatus.Failed))
-            </button>
+    <!-- Filter Suite: quick status tabs + tuỳ chỉnh ẩn/hiện bộ lọc -->
+    <div class="cockpit-filter-suite">
+        <div class="filter-suite-top">
+            <div class="status-tabs-row" style="margin-bottom: 0; flex-wrap: wrap; gap: 0.45rem;">
+                <button type="button" class="status-tab-btn @(statusFilter == null ? "active" : "")" @onclick="() => FilterByStatus(null)">
+                    Tất cả (@countAll)
+                </button>
+                <button type="button" class="status-tab-btn @(statusFilter == PaymentStatus.Pending ? "active" : "")" @onclick="() => FilterByStatus(PaymentStatus.Pending)">
+                    <span class="status-dot amber"></span> Chờ duyệt (@countPending)
+                </button>
+                <button type="button" class="status-tab-btn @(statusFilter == PaymentStatus.Completed ? "active" : "")" @onclick="() => FilterByStatus(PaymentStatus.Completed)">
+                    <span class="status-dot green"></span> Hoàn tất (@countCompleted)
+                </button>
+                <button type="button" class="status-tab-btn @(statusFilter == PaymentStatus.Failed ? "active" : "")" @onclick="() => FilterByStatus(PaymentStatus.Failed)">
+                    <span class="status-dot gray"></span> Từ chối/Hủy (@countFailed)
+                </button>
+            </div>
+
+            <div class="filter-suite-tools">
+                <div class="filter-count-chip">
+                    <span>Tổng khớp bộ lọc: <strong>@totalItems</strong> giao dịch</span>
+                </div>
+
+                <div class="filter-settings-anchor">
+                    <button type="button"
+                            class="btn-filter-util @(showFilterSettings ? "is-active" : "")"
+                            aria-haspopup="true"
+                            aria-expanded="@(showFilterSettings ? "true" : "false")"
+                            title="Chọn bộ lọc muốn hiển thị"
+                            @onclick="ToggleFilterSettings">
+                        <CinemaIcon Name="CinemaIconName.Settings" Size="13" />
+                        <span>Bộ lọc</span>
+                        @if (hiddenFilters.Count > 0 && hiddenFilters.Count < FilterOptions.Length)
+                        {
+                            <span class="filter-util-badge" title="@($"{hiddenFilters.Count} bộ lọc đang ẩn")">@hiddenFilters.Count</span>
+                        }
+                    </button>
+
+                    @if (showFilterSettings)
+                    {
+                        <div class="filter-settings-backdrop" @onclick="CloseFilterSettings"></div>
+                        <div class="filter-settings-panel" role="group" aria-label="Tùy chỉnh bộ lọc hiển thị" @onkeydown="OnFilterSettingsKeyDown">
+                            <div class="filter-settings-head">
+                                <strong>Hiển thị bộ lọc</strong>
+                                <button type="button" class="btn-filter-util-reset" disabled="@(hiddenFilters.Count == 0)" @onclick="ShowAllFiltersAsync">
+                                    Hiện tất cả
+                                </button>
+                            </div>
+                            <p class="filter-settings-hint">Bỏ tick để ẩn bộ lọc không dùng. Giá trị đang chọn của bộ lọc bị ẩn sẽ được xóa để danh sách không bị lọc ngầm.</p>
+                            <div class="filter-settings-list">
+                                @foreach (var option in FilterOptions)
+                                {
+                                    <label class="filter-settings-item">
+                                        <input type="checkbox"
+                                               checked="@(!hiddenFilters.Contains(option.Key))"
+                                               @onclick="() => SetFilterVisibility(option.Key, hiddenFilters.Contains(option.Key))" />
+                                        <span>@option.Label</span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <button type="button"
+                        class="btn-filter-util"
+                        title="@(filtersCollapsed ? "Mở rộng khối bộ lọc" : "Thu gọn khối bộ lọc")"
+                        aria-expanded="@(filtersCollapsed ? "false" : "true")"
+                        @onclick="ToggleFilterCollapse">
+                    <CinemaIcon Name="@(filtersCollapsed ? CinemaIconName.ChevronRight : CinemaIconName.ChevronDown)" Size="13" />
+                    <span>@(filtersCollapsed ? "Mở rộng" : "Thu gọn")</span>
+                </button>
+            </div>
         </div>
 
-        <div class="filter-right-group">
-            <select class="filter-select" @bind="methodFilter" @bind:after="ApplyFilters">
-                <option value="">Tất cả phương thức</option>
-                <option value="@((int)PaymentMethod.BankTransfer)">Chuyển khoản VietQR</option>
-                <option value="@((int)PaymentMethod.Momo)">Ví MoMo</option>
-                <option value="@((int)PaymentMethod.Visa)">Thẻ Quốc tế</option>
-            </select>
-        </div>
+        <!-- Filter Controls Grid (từng ô có thể bật/tắt) -->
+        @if (!filtersCollapsed)
+        {
+            <div class="filter-controls-grid">
+                @if (hiddenFilters.Count == FilterOptions.Length)
+                {
+                    <p class="filter-all-hidden-note">
+                        Chưa bật ô lọc nào. Mở <strong>Bộ lọc</strong> và tick những ô bạn cần dùng.
+                    </p>
+                }
+
+                @if (!hiddenFilters.Contains("status"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Trạng thái giao dịch</label>
+                        <select class="admin-select-picker" value="@(statusFilter?.ToString() ?? "")" @onchange="OnStatusSelectChanged">
+                            <option value="">Tất cả trạng thái</option>
+                            <option value="@nameof(PaymentStatus.Pending)">⏳ Chờ duyệt</option>
+                            <option value="@nameof(PaymentStatus.Completed)">✓ Hoàn tất</option>
+                            <option value="@nameof(PaymentStatus.Failed)">✕ Từ chối / Hủy</option>
+                        </select>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("method"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Phương thức thanh toán</label>
+                        <select class="admin-select-picker" value="@(methodFilter ?? "")" @onchange="OnMethodFilterChanged">
+                            <option value="">Tất cả phương thức</option>
+                            <option value="banktransfer">Chuyển khoản VietQR</option>
+                            <option value="momo">Ví MoMo</option>
+                            <option value="visa">Thẻ Quốc tế</option>
+                        </select>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("sort"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Sắp xếp theo</label>
+                        <select class="admin-select-picker" value="@(sortBy ?? "")" @onchange="OnSortByChanged">
+                            <option value="">Mới nhất</option>
+                            <option value="oldest">Cũ nhất</option>
+                            <option value="amount_desc">Số tiền giảm dần</option>
+                            <option value="amount_asc">Số tiền tăng dần</option>
+                        </select>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("search"))
+                {
+                    <div class="filter-control-item filter-control-search">
+                        <label class="filter-label" for="payment-search">Tìm kiếm giao dịch</label>
+                        <div class="filter-search-box">
+                            <CinemaIcon Name="CinemaIconName.Search" Size="14" Class="filter-search-icon" />
+                            <input id="payment-search"
+                                   type="text"
+                                   placeholder="Mã đơn, email, họ tên..."
+                                   @bind="searchQuery"
+                                   @bind:event="oninput"
+                                   @bind:after="SchedulePaymentSearch"
+                                   @onkeydown="HandleSearchKeyDown" />
+                            @if (!string.IsNullOrWhiteSpace(searchQuery))
+                            {
+                                <button type="button" class="filter-search-clear" title="Xóa từ khóa tìm kiếm" aria-label="Xóa từ khóa tìm kiếm" @onclick="ClearSearchQuery">&times;</button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <!-- Active Filters Strip & Clear All -->
+        @if (HasActivePaymentFilters)
+        {
+            <div class="filter-active-strip">
+                <span class="active-filter-title">Bộ lọc đang áp dụng:</span>
+                @if (statusFilter.HasValue)
+                {
+                    <span class="filter-pill-tag">
+                        <span>Trạng thái: @(statusFilter == PaymentStatus.Pending ? "Chờ duyệt" : statusFilter == PaymentStatus.Completed ? "Hoàn tất" : "Từ chối/Hủy")</span>
+                        <button type="button" @onclick="ClearStatusFilter">&times;</button>
+                    </span>
+                }
+                @if (!string.IsNullOrEmpty(methodFilter))
+                {
+                    <span class="filter-pill-tag">
+                        <span>Phương thức: @(methodFilter == "momo" ? "Ví MoMo" : methodFilter == "visa" ? "Thẻ Quốc tế" : "Chuyển khoản VietQR")</span>
+                        <button type="button" @onclick="ClearMethodFilter">&times;</button>
+                    </span>
+                }
+                @if (!string.IsNullOrEmpty(sortBy))
+                {
+                    <span class="filter-pill-tag">
+                        <span>Sắp xếp: @(sortBy == "oldest" ? "Cũ nhất" : sortBy == "amount_desc" ? "Số tiền giảm dần" : "Số tiền tăng dần")</span>
+                        <button type="button" @onclick="ClearSortBy">&times;</button>
+                    </span>
+                }
+                @if (!string.IsNullOrWhiteSpace(searchQuery))
+                {
+                    <span class="filter-pill-tag">
+                        <span>Tìm kiếm: "@searchQuery"</span>
+                        <button type="button" @onclick="ClearSearchQuery">&times;</button>
+                    </span>
+                }
+
+                <button type="button" class="btn-clear-all-filters" @onclick="ResetAllPaymentFilters">
+                    Xóa tất cả bộ lọc
+                </button>
+            </div>
+        }
     </div>
 
     <!-- Table -->
@@ -158,7 +320,7 @@
             {
                 <div class="admin-table-state-msg">Đang tải lịch sử giao dịch...</div>
             }
-            else if (filteredPayments.Count == 0)
+            else if (paymentsList.Count == 0)
             {
                 <div class="admin-table-state-msg">Không tìm thấy giao dịch nào phù hợp với điều kiện tìm kiếm.</div>
             }
@@ -178,7 +340,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var p in filteredPayments.Skip((currentPage - 1) * pageSize).Take(pageSize))
+                        @foreach (var p in paymentsList)
                         {
                             <tr>
                                 <td>
@@ -199,7 +361,7 @@
                                     <strong>@p.PlanName</strong>
                                 </td>
                                 <td>
-                                    <strong class="font-mono-num" style="color: @(p.Status == PaymentStatus.Completed ? "#34d399" : "#f59e0b");">
+                                    <strong class="font-mono-num" style="color: @(p.Status == PaymentStatus.Completed ? "var(--admin-accent-green)" : "var(--admin-accent-amber)");">
                                         @p.Amount.ToString("N0")đ
                                     </strong>
                                 </td>
@@ -232,7 +394,7 @@
                                     }
                                 </td>
                                 <td>
-                                    <span class="font-mono-num" style="font-size: 0.78rem; color: rgba(255,255,255,0.65);">
+                                    <span class="font-mono-num" style="font-size: 0.78rem; color: var(--admin-text-body);">
                                         @p.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
                                     </span>
                                 </td>
@@ -263,8 +425,10 @@
 
                 <AdminPagination CurrentPage="@currentPage"
                                  PageSize="@pageSize"
-                                 TotalItems="@filteredPayments.Count"
-                                 OnPageChanged="page => { currentPage = page; StateHasChanged(); }" />
+                                 TotalItems="@totalItems"
+                                 PageSizeOptions="@(new[] { 10, 20, 50 })"
+                                 OnPageChanged="HandlePageChanged"
+                                 OnPageSizeChanged="HandlePageSizeChanged" />
             }
         </div>
     </section>
@@ -315,7 +479,7 @@
                             <span class="plan-duration-tag">(@plan.DurationDays ngày)</span>
                         </div>
 
-                        <p style="font-size: 0.82rem; color: rgba(255,255,255,0.7); margin-bottom: 0.8rem;">
+                        <p style="font-size: 0.82rem; color: var(--admin-text-body); margin-bottom: 0.8rem;">
                             @(string.IsNullOrWhiteSpace(plan.Description) ? "Chưa có mô tả" : plan.Description)
                         </p>
 
@@ -353,14 +517,14 @@
             </div>
             <div class="grant-header-text">
                 <h2>Cấp quyền VIP trực tiếp cho Thành viên</h2>
-                <p>Cấp ngày VIP đặc cách cho người dùng để tri ân, tài trợ hoặc bồi thường sự cố mà không cần qua cổng thanh toán.</p>
+                <p>Cấp ngày VIP đặc cách cho người dùng để tri âu, tài trợ hoặc bồi thường sự cố mà không cần qua cổng thanh toán.</p>
             </div>
         </div>
 
         <div class="admin-form-group" style="margin-bottom: 1.25rem;">
             <label>Email hoặc Tên tài khoản thành viên *</label>
             <input type="text" @bind="grantTargetUser" placeholder="Ví dụ: user@example.com hoặc Nguyễn Văn A" />
-            <small style="color: rgba(255,255,255,0.45); font-size: 0.76rem; margin-top: 0.25rem; display: block;">
+            <small style="color: var(--admin-text-muted); font-size: 0.76rem; margin-top: 0.25rem; display: block;">
                 Hệ thống sẽ tra cứu chính xác theo địa chỉ Email hoặc Họ tên người dùng trong cơ sở dữ liệu.
             </small>
         </div>
@@ -375,9 +539,9 @@
                 <button type="button" class="days-pill-btn @(grantDays == 365 ? "active" : "")" @onclick="() => grantDays = 365">365 ngày (1 năm)</button>
             </div>
             <div style="margin-top: 0.6rem; display: flex; align-items: center; gap: 0.6rem;">
-                <span style="font-size: 0.82rem; color: rgba(255,255,255,0.6);">Hoặc tùy chỉnh:</span>
+                <span style="font-size: 0.82rem; color: var(--admin-text-body);">Hoặc tùy chỉnh:</span>
                 <input type="number" style="max-width: 120px;" min="1" max="3650" @bind="grantDays" />
-                <span style="font-size: 0.82rem; color: rgba(255,255,255,0.6);">ngày</span>
+                <span style="font-size: 0.82rem; color: var(--admin-text-body);">ngày</span>
             </div>
         </div>
 
@@ -385,7 +549,7 @@
             <label>Lý do cấp quyền VIP (Bắt buộc ghi nhận kiểm toán) *</label>
             <input type="text" @bind="grantReason" placeholder="Ví dụ: Bồi thường sự cố giật lag buổi tối ngày 22/09" />
             <div class="reason-suggestions-row">
-                <span class="suggestion-chip" @onclick='() => grantReason = "Tri ân thành viên tích cực đóng góp đánh giá phim"'>+ Tri ân đóng góp</span>
+                <span class="suggestion-chip" @onclick='() => grantReason = "Tri âu thành viên tích cực đóng góp đánh giá phim"'>+ Tri âu đóng góp</span>
                 <span class="suggestion-chip" @onclick='() => grantReason = "Bồi thường sự cố đường truyền mạng gián đoạn"'>+ Bồi thường sự cố</span>
                 <span class="suggestion-chip" @onclick='() => grantReason = "Tặng VIP đối tác & KOL trải nghiệm CinemaFlow"'>+ Tặng đối tác</span>
                 <span class="suggestion-chip" @onclick='() => grantReason = "Hỗ trợ khách hàng nâng cấp gói thử nghiệm"'>+ Hỗ trợ kỹ thuật</span>
@@ -393,7 +557,7 @@
         </div>
 
         <div style="display: flex; justify-content: flex-end; margin-top: 1.5rem;">
-            <button type="button" class="btn-primary-action" style="padding: 0.75rem 1.6rem; font-size: 0.9rem;" @onclick="SubmitManualVipGrant" disabled="@isSubmittingGrant">
+            <button type="button" class="btn-primary-action" style="padding: 0.75rem 1.6rem; font-size: 0.9rem;" @onclick="RequestManualVipGrant" disabled="@isSubmittingGrant">
                 <CinemaIcon Name="CinemaIconName.Crown" Size="16" />
                 <span>@(isSubmittingGrant ? "Đang xử lý cấp VIP..." : $"Xác nhận cấp {grantDays} ngày VIP")</span>
             </button>
@@ -418,11 +582,15 @@
                 <button type="button" class="btn-close-modal" @onclick="CloseApprovalModal">&times;</button>
             </div>
             <div class="admin-modal-body">
+                @if (!string.IsNullOrEmpty(approvalError))
+                {
+                    <div class="form-alert error" style="margin-bottom: 1rem;" role="alert">@approvalError</div>
+                }
                 <div style="padding: 0.85rem; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); margin-bottom: 1rem; font-size: 0.85rem;">
                     <div>Đơn hàng: <strong class="font-mono-num">@approvingPayment.OrderCode</strong></div>
                     <div>Khách hàng: <strong>@(approvingPayment.UserFullName ?? approvingPayment.UserEmail ?? "Khách hàng")</strong></div>
                     <div>Gói nâng cấp: <strong>@approvingPayment.PlanName</strong></div>
-                    <div>Số tiền nhận: <strong style="color: #34d399;" class="font-mono-num">@approvingPayment.Amount.ToString("N0")đ</strong></div>
+                    <div>Số tiền nhận: <strong style="color: var(--admin-accent-green);" class="font-mono-num">@approvingPayment.Amount.ToString("N0")đ</strong></div>
                 </div>
 
                 <div class="admin-form-group">
@@ -455,7 +623,11 @@
                 <button type="button" class="btn-close-modal" @onclick="CloseRejectionModal">&times;</button>
             </div>
             <div class="admin-modal-body">
-                <p style="font-size: 0.88rem; color: rgba(255,255,255,0.7); margin: 0 0 1rem;">
+                @if (!string.IsNullOrEmpty(rejectionError))
+                {
+                    <div class="form-alert error" style="margin-bottom: 1rem;" role="alert">@rejectionError</div>
+                }
+                <p style="font-size: 0.88rem; color: var(--admin-text-body); margin: 0 0 1rem;">
                     Bạn đang từ chối đơn hàng <strong class="font-mono-num">@rejectingPayment.OrderCode</strong> của khách hàng <strong>@(rejectingPayment.UserFullName ?? rejectingPayment.UserEmail)</strong>.
                 </p>
 
@@ -495,7 +667,7 @@
                     <span>@detailPayment.PlanName (<code>@detailPayment.PlanId</code>)</span>
 
                     <span style="color: rgba(255,255,255,0.5);">Số tiền:</span>
-                    <strong class="font-mono-num" style="color: #34d399; font-size: 1.05rem;">@detailPayment.Amount.ToString("N0")đ</strong>
+                    <strong class="font-mono-num" style="color: var(--admin-accent-green); font-size: 1.05rem;">@detailPayment.Amount.ToString("N0")đ</strong>
 
                     <span style="color: rgba(255,255,255,0.5);">Phương thức:</span>
                     <span>
@@ -543,12 +715,16 @@
 @if (isEditingPlanModal && editingPlan != null)
 {
     <div class="admin-modal-backdrop" @onclick="ClosePlanModal">
-        <div class="admin-modal-card" style="max-width: 620px;" role="dialog" aria-modal="true" @onclick:stopPropagation>
+        <div class="admin-modal-card" style="max-width: 620px;" role="dialog" aria-modal="true" aria-labelledby="vip-plan-modal-title" @onclick:stopPropagation>
             <div class="admin-modal-header">
-                <h3>@(isNewPlan ? "Thêm gói VIP mới" : $"Cấu hình gói {editingPlan.Name}")</h3>
+                <h3 id="vip-plan-modal-title">@(isNewPlan ? "Thêm gói VIP mới" : $"Cấu hình gói {editingPlan.Name}")</h3>
                 <button type="button" class="btn-close-modal" @onclick="ClosePlanModal">&times;</button>
             </div>
             <div class="admin-modal-body">
+                @if (!string.IsNullOrEmpty(planFormError))
+                {
+                    <div class="form-alert error" style="margin-bottom: 1rem;" role="alert">@planFormError</div>
+                }
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div class="admin-form-group">
                         <label>Mã định danh (ID) *</label>
@@ -610,32 +786,68 @@
     </div>
 }
 
+<!-- HỘP THOẠI XÁC NHẬN CẤP QUYỀN VIP TRỰC TIẾP -->
+<AdminConfirmDialog IsOpen="@showGrantConfirm"
+                    Title="Xác nhận cấp quyền VIP"
+                    Message="@GrantConfirmMessage"
+                    ConfirmText="Cấp VIP"
+                    CancelText="Huỷ"
+                    Variant="warning"
+                    ConfirmPhrase="Cấp VIP"
+                    OnConfirm="ConfirmManualVipGrant"
+                    OnCancel="CancelManualVipGrant" />
+
 @code {
     private enum AdminVipTab { Transactions, Plans, ManualGrant }
     private AdminVipTab activeTab = AdminVipTab.Transactions;
 
-    // Payments data
+    // Payments data (server-side paging)
     private List<PaymentDto> paymentsList = [];
-    private List<PaymentDto> filteredPayments = [];
     private List<VipPlanDto> vipPlans = [];
     private string searchQuery = "";
+    private readonly SearchDebouncer paymentSearchDebouncer = new();
     private PaymentStatus? statusFilter = null;
-    private int? methodFilter = null;
+    private string? methodFilter = null;
+    private string? sortBy = null;
     private bool isLoadingPayments = true;
     private string? actionAlert;
     private string? actionError;
     private int currentPage = 1;
-    private int pageSize = 12;
+    private int pageSize = 10;
+
+    // Tùy chỉnh bộ lọc: ẩn/hiện từng ô lọc, lưu lại theo trình duyệt.
+    private const string FilterPrefsStorageKey = "cinemaflow_admin_vip_filter_prefs_v2";
+    private static readonly (string Key, string Label)[] FilterOptions =
+    [
+        ("status", "Trạng thái giao dịch"),
+        ("method", "Phương thức thanh toán"),
+        ("sort", "Sắp xếp"),
+        ("search", "Tìm kiếm giao dịch")
+    ];
+    // Mặc định ban đầu: chưa bật ô lọc nào (tick trống) — admin tự chọn ô cần dùng.
+    private readonly HashSet<string> hiddenFilters = [.. FilterOptions.Select(o => o.Key)];
+    private bool showFilterSettings;
+    private bool filtersCollapsed;
+
+    // Totals returned by the server
+    private int totalItems = 0;          // tổng bản ghi khớp bộ lọc hiện tại (PagedResult.TotalItems)
+    private int countAll = 0;            // tổng đơn trong phạm vi tìm kiếm + phương thức
+    private int countPending = 0;        // số đơn chờ duyệt trong phạm vi
+    private int countCompleted = 0;
+    private AdminDashboardDto? stats;      // số đơn hoàn tất trong phạm vi
+    private int countFailed = 0;         // số đơn từ chối/hủy trong phạm vi
 
     // Approval modal
     private PaymentDto? approvingPayment;
     private string approvalReference = "";
     private string approvalNote = "";
+    private string? approvalError;
     private bool isSubmittingApproval = false;
 
     // Rejection modal
     private PaymentDto? rejectingPayment;
     private string rejectionReason = "";
+    private string? rejectionError;
     private bool isSubmittingRejection = false;
 
     // Detail modal
@@ -647,6 +859,7 @@
     private UpsertVipPlanRequest? editingPlan;
     private string editingPlanDiscountBadge = "";
     private string editingPlanBenefitsText = "";
+    private string? planFormError;
     private bool isSubmittingPlan;
 
     // Manual VIP Grant
@@ -654,16 +867,41 @@
     private int grantDays = 30;
     private string grantReason = "";
     private bool isSubmittingGrant;
+    private bool showGrantConfirm;
     private UserDto? lastGrantedUser;
+
+    private bool HasActivePaymentFilters =>
+        statusFilter.HasValue ||
+        !string.IsNullOrEmpty(methodFilter) ||
+        !string.IsNullOrEmpty(sortBy) ||
+        !string.IsNullOrWhiteSpace(searchQuery);
+
+    private string GrantConfirmMessage =>
+        $"Bạn sắp cấp quyền VIP {grantDays} ngày cho thành viên \"{grantTargetUser}\" với lý do: \"{grantReason}\". " +
+        "Thao tác này sẽ ghi thẳng vào hồ sơ thành viên và KHÔNG THỂ HOÀN TÁC trên hệ thống.";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             await Auth.InitializeAsync();
+            await LoadFilterPrefsAsync();
             await LoadData();
+
+            // Lệnh tắt nhanh trong Command Palette mở thẳng tab giao dịch chờ duyệt.
+            if (string.Equals(RouteFilter, "pending", StringComparison.OrdinalIgnoreCase))
+            {
+                statusFilter = PaymentStatus.Pending;
+                currentPage = 1;
+                await ReloadPaymentsAsync();
+            }
         }
     }
+
+    /// <summary>Được nạp từ query string, ví dụ /admin/vip?filter=pending.</summary>
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "filter")]
+    public string? RouteFilter { get; set; }
 
     private void SwitchTab(AdminVipTab tab)
     {
@@ -678,9 +916,11 @@
         isLoadingPayments = true;
         try
         {
-            paymentsList = await AdminApi.GetPaymentsAsync();
-            vipPlans = await AdminApi.GetVipPlansAsync();
-            ApplyFilters();
+            var plansTask = AdminApi.GetVipPlansAsync();
+            var statsTask = AdminApi.GetStatsAsync();
+            await Task.WhenAll(plansTask, statsTask, LoadPaymentsAsync(), LoadScopeCountsAsync());
+            vipPlans = await plansTask;
+            stats = await statsTask;
         }
         catch (Exception ex)
         {
@@ -693,49 +933,300 @@
         }
     }
 
-    private void ApplyFilters()
+    /// <summary>Nạp trang hiện tại của danh sách giao dịch từ server.</summary>
+    private async Task LoadPaymentsAsync()
     {
-        var result = paymentsList.AsEnumerable();
-        if (statusFilter.HasValue)
-        {
-            result = result.Where(p => p.Status == statusFilter.Value);
-        }
-        if (methodFilter.HasValue)
-        {
-            result = result.Where(p => (int)p.Method == methodFilter.Value);
-        }
-        if (!string.IsNullOrWhiteSpace(searchQuery))
-        {
-            var q = searchQuery.Trim();
-            result = result.Where(p => p.OrderCode.Contains(q, StringComparison.OrdinalIgnoreCase)
-                                    || p.PlanName.Contains(q, StringComparison.OrdinalIgnoreCase)
-                                    || (p.UserEmail != null && p.UserEmail.Contains(q, StringComparison.OrdinalIgnoreCase))
-                                    || (p.UserFullName != null && p.UserFullName.Contains(q, StringComparison.OrdinalIgnoreCase)));
-        }
-        filteredPayments = result.ToList();
-        currentPage = 1;
+        var result = await AdminApi.GetPaymentsPagedAsync(
+            page: currentPage,
+            pageSize: pageSize,
+            query: NormalizedQuery,
+            status: statusFilter,
+            method: methodFilter,
+            sortBy: sortBy);
+
+        paymentsList = result.Items;
+        totalItems = result.TotalItems;
     }
 
-    private void FilterByStatus(PaymentStatus? status)
+    /// <summary>
+    /// Đếm số đơn theo từng trạng thái (phạm vi = từ khoá tìm kiếm + phương thức thanh toán)
+    /// để các thẻ KPI và tab hiển thị đúng số liệu toàn hệ thống thay vì số liệu của trang hiện tại.
+    /// </summary>
+    private async Task LoadScopeCountsAsync()
     {
+        var pendingTask = AdminApi.GetPaymentsPagedAsync(page: 1, pageSize: 1, query: NormalizedQuery, status: PaymentStatus.Pending, method: methodFilter);
+        var completedTask = AdminApi.GetPaymentsPagedAsync(page: 1, pageSize: 1, query: NormalizedQuery, status: PaymentStatus.Completed, method: methodFilter);
+        var failedTask = AdminApi.GetPaymentsPagedAsync(page: 1, pageSize: 1, query: NormalizedQuery, status: PaymentStatus.Failed, method: methodFilter);
+        var allTask = AdminApi.GetPaymentsPagedAsync(page: 1, pageSize: 1, query: NormalizedQuery, method: methodFilter);
+
+        await Task.WhenAll(pendingTask, completedTask, failedTask, allTask);
+
+        countPending = pendingTask.Result.TotalItems;
+        countCompleted = completedTask.Result.TotalItems;
+        countFailed = failedTask.Result.TotalItems;
+        countAll = allTask.Result.TotalItems;
+    }
+
+    private string? NormalizedQuery => string.IsNullOrWhiteSpace(searchQuery) ? null : searchQuery.Trim();
+
+    /// <summary>Nạp lại danh sách (kèm số liệu đếm) sau khi bộ lọc thay đổi.</summary>
+    private async Task ReloadPaymentsAsync(bool reloadScopeCounts = false)
+    {
+        if (!Auth.IsAdmin) return;
+        isLoadingPayments = true;
+        try
+        {
+            await Task.WhenAll(
+                LoadPaymentsAsync(),
+                reloadScopeCounts ? LoadScopeCountsAsync() : Task.CompletedTask);
+        }
+        catch (Exception ex)
+        {
+            actionError = "Không thể tải dữ liệu: " + ex.Message;
+        }
+        finally
+        {
+            isLoadingPayments = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task FilterByStatus(PaymentStatus? status)
+    {
+        if (status == null)
+        {
+            // "Tất cả" phải xóa TOÀN BỘ bộ lọc (trạng thái + phương thức + sắp xếp + tìm kiếm).
+            statusFilter = null;
+            methodFilter = null;
+            sortBy = null;
+            searchQuery = "";
+            currentPage = 1;
+            await ReloadPaymentsAsync(reloadScopeCounts: true);
+            return;
+        }
+
         statusFilter = status;
-        ApplyFilters();
+        currentPage = 1;
+        await ReloadPaymentsAsync();
     }
 
-    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    private async Task ClearStatusFilter()
+    {
+        statusFilter = null;
+        currentPage = 1;
+        await ReloadPaymentsAsync();
+    }
+
+    private async Task OnMethodFilterChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        methodFilter = string.IsNullOrWhiteSpace(value) ? null : value;
+        currentPage = 1;
+        await ReloadPaymentsAsync(reloadScopeCounts: true);
+    }
+
+    private async Task ClearMethodFilter()
+    {
+        methodFilter = null;
+        currentPage = 1;
+        await ReloadPaymentsAsync(reloadScopeCounts: true);
+    }
+
+    private async Task OnSortByChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        sortBy = string.IsNullOrWhiteSpace(value) ? null : value;
+        currentPage = 1;
+        await ReloadPaymentsAsync();
+    }
+
+    private async Task ClearSortBy()
+    {
+        sortBy = null;
+        currentPage = 1;
+        await ReloadPaymentsAsync();
+    }
+
+    private async Task ClearSearchQuery()
+    {
+        searchQuery = "";
+        currentPage = 1;
+        await ReloadPaymentsAsync(reloadScopeCounts: true);
+    }
+
+    private async Task ResetAllPaymentFilters()
+    {
+        statusFilter = null;
+        methodFilter = null;
+        sortBy = null;
+        searchQuery = "";
+        currentPage = 1;
+        await ReloadPaymentsAsync(reloadScopeCounts: true);
+    }
+
+    // ---------- Tùy chỉnh bộ lọc ----------
+
+    private async Task OnStatusSelectChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        statusFilter = Enum.TryParse<PaymentStatus>(value, out var status) ? status : null;
+        currentPage = 1;
+        await ReloadPaymentsAsync();
+    }
+
+    private void ToggleFilterSettings()
+    {
+        showFilterSettings = !showFilterSettings;
+    }
+
+    private void CloseFilterSettings()
+    {
+        showFilterSettings = false;
+    }
+
+    private void OnFilterSettingsKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") showFilterSettings = false;
+    }
+
+    private async Task ToggleFilterCollapse()
+    {
+        filtersCollapsed = !filtersCollapsed;
+        await SaveFilterPrefsAsync();
+    }
+
+    /// <summary>Bật/tắt một ô lọc. Ẩn ô lọc sẽ xóa luôn giá trị đang chọn để tránh lọc ngầm.</summary>
+    private async Task SetFilterVisibility(string key, bool visible)
+    {
+        // Bỏ qua sự kiện phát sinh khi popover đã đóng.
+        if (!showFilterSettings) return;
+
+        if (visible) hiddenFilters.Remove(key);
+        else hiddenFilters.Add(key);
+
+        var cleared = !visible && ClearFilterValue(key);
+        await SaveFilterPrefsAsync();
+
+        if (cleared)
+        {
+            currentPage = 1;
+            await ReloadPaymentsAsync(reloadScopeCounts: key is "method" or "search");
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>Xóa giá trị của bộ lọc vừa bị ẩn. Trả về true nếu thực sự có thay đổi.</summary>
+    private bool ClearFilterValue(string key)
+    {
+        switch (key)
+        {
+            case "status" when statusFilter.HasValue:
+                statusFilter = null;
+                return true;
+            case "method" when !string.IsNullOrEmpty(methodFilter):
+                methodFilter = null;
+                return true;
+            case "sort" when !string.IsNullOrEmpty(sortBy):
+                sortBy = null;
+                return true;
+            case "search" when !string.IsNullOrWhiteSpace(searchQuery):
+                searchQuery = "";
+                paymentSearchDebouncer.Cancel();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private async Task ShowAllFiltersAsync()
+    {
+        if (hiddenFilters.Count == 0) return;
+        hiddenFilters.Clear();
+        await SaveFilterPrefsAsync();
+    }
+
+    /// <summary>Đọc lại lựa chọn ẩn/hiện bộ lọc đã lưu trong localStorage của trình duyệt.</summary>
+    private async Task LoadFilterPrefsAsync()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("adminTools.getStoredJson", FilterPrefsStorageKey);
+            if (string.IsNullOrWhiteSpace(json)) return;
+
+            var prefs = System.Text.Json.JsonSerializer.Deserialize<PaymentFilterPrefs>(json);
+            if (prefs is null) return;
+
+            hiddenFilters.Clear();
+            foreach (var key in prefs.Hidden.Where(k => FilterOptions.Any(o => o.Key == k)))
+            {
+                hiddenFilters.Add(key);
+            }
+            filtersCollapsed = prefs.Collapsed;
+        }
+        catch
+        {
+            // Tùy chọn hiển thị chỉ là tiện ích: localStorage bị chặn hoặc dữ liệu hỏng thì dùng mặc định.
+        }
+    }
+
+    private async Task SaveFilterPrefsAsync()
+    {
+        try
+        {
+            var prefs = new PaymentFilterPrefs(hiddenFilters.ToList(), filtersCollapsed);
+            var json = System.Text.Json.JsonSerializer.Serialize(prefs);
+            await JS.InvokeVoidAsync("adminTools.setStoredJson", FilterPrefsStorageKey, json);
+        }
+        catch
+        {
+            // Không lưu được thì thôi, không chặn thao tác của admin.
+        }
+    }
+
+    private sealed record PaymentFilterPrefs(List<string> Hidden, bool Collapsed);
+
+    private async Task HandlePageChanged(int page)
+    {
+        currentPage = page;
+        await ReloadPaymentsAsync();
+    }
+
+    private async Task HandlePageSizeChanged(int size)
+    {
+        pageSize = size;
+        currentPage = 1;
+        await ReloadPaymentsAsync();
+    }
+
+    private async Task HandleSearchKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter")
         {
-            ApplyFilters();
+            paymentSearchDebouncer.Cancel();
+            await ApplyPaymentSearchAsync();
         }
+    }
+
+    /// <summary>Gõ tới đâu tìm tới đó nhưng chỉ gọi API sau khi người dùng ngừng gõ 400ms.</summary>
+    private void SchedulePaymentSearch()
+    {
+        paymentSearchDebouncer.Schedule(ApplyPaymentSearchAsync);
+    }
+
+    private async Task ApplyPaymentSearchAsync()
+    {
+        currentPage = 1;
+        await ReloadPaymentsAsync(reloadScopeCounts: true);
     }
 
     // Modal Handlers
     private void OpenApprovalModal(PaymentDto payment)
     {
         approvingPayment = payment;
-        approvalReference = $"REF-{DateTime.UtcNow:yyMMddHHmm}";
-        approvalNote = "Duyệt thủ công từ cổng Admin VIP Cockpit";
+        approvalReference = "";
+        approvalNote = "";
+        approvalError = null;
     }
 
     private void CloseApprovalModal()
@@ -743,17 +1234,19 @@
         approvingPayment = null;
         approvalReference = "";
         approvalNote = "";
+        approvalError = null;
     }
 
     private async Task SubmitPaymentApproval()
     {
         if (approvingPayment == null || string.IsNullOrWhiteSpace(approvalReference))
         {
-            actionError = "Vui lòng nhập mã tham chiếu giao dịch ngân hàng.";
+            approvalError = "Vui lòng nhập mã tham chiếu giao dịch ngân hàng thật do ngân hàng cung cấp.";
             return;
         }
 
         isSubmittingApproval = true;
+        approvalError = null;
         actionAlert = null;
         actionError = null;
 
@@ -773,12 +1266,12 @@
             }
             else
             {
-                actionError = res?.Message ?? "Không thể duyệt thanh toán.";
+                approvalError = res?.Message ?? "Không thể duyệt thanh toán.";
             }
         }
         catch (Exception ex)
         {
-            actionError = "Lỗi khi duyệt thanh toán: " + ex.Message;
+            approvalError = "Lỗi khi duyệt thanh toán: " + ex.Message;
         }
         finally
         {
@@ -790,24 +1283,27 @@
     private void OpenRejectionModal(PaymentDto payment)
     {
         rejectingPayment = payment;
-        rejectionReason = "Không nhận được giao dịch chuyển khoản sau thời gian chờ";
+        rejectionReason = "";
+        rejectionError = null;
     }
 
     private void CloseRejectionModal()
     {
         rejectingPayment = null;
         rejectionReason = "";
+        rejectionError = null;
     }
 
     private async Task SubmitPaymentRejection()
     {
         if (rejectingPayment == null || string.IsNullOrWhiteSpace(rejectionReason))
         {
-            actionError = "Vui lòng nhập lý do từ chối đơn.";
+            rejectionError = "Vui lòng nhập lý do từ chối đơn.";
             return;
         }
 
         isSubmittingRejection = true;
+        rejectionError = null;
         actionAlert = null;
         actionError = null;
 
@@ -826,12 +1322,12 @@
             }
             else
             {
-                actionError = res?.Message ?? "Không thể từ chối đơn thanh toán.";
+                rejectionError = res?.Message ?? "Không thể từ chối đơn thanh toán.";
             }
         }
         catch (Exception ex)
         {
-            actionError = "Lỗi khi từ chối đơn: " + ex.Message;
+            rejectionError = "Lỗi khi từ chối đơn: " + ex.Message;
         }
         finally
         {
@@ -867,6 +1363,7 @@
         };
         editingPlanDiscountBadge = "";
         editingPlanBenefitsText = string.Join(", ", editingPlan.Benefits);
+        planFormError = null;
         isEditingPlanModal = true;
     }
 
@@ -885,7 +1382,8 @@
             IsActive = plan.IsActive
         };
         editingPlanDiscountBadge = plan.DiscountBadge ?? "";
-        editingPlanBenefitsText = string.Join(", ", plan.Benefits);
+        editingPlanBenefitsText = string.Join(", ", editingPlan.Benefits);
+        planFormError = null;
         isEditingPlanModal = true;
     }
 
@@ -893,17 +1391,19 @@
     {
         isEditingPlanModal = false;
         editingPlan = null;
+        planFormError = null;
     }
 
     private async Task SubmitSavePlan()
     {
         if (editingPlan == null || string.IsNullOrWhiteSpace(editingPlan.Name))
         {
-            actionError = "Vui lòng nhập tên gói hợp lệ.";
+            planFormError = "Vui lòng nhập tên gói hợp lệ.";
             return;
         }
 
         isSubmittingPlan = true;
+        planFormError = null;
         actionAlert = null;
         actionError = null;
 
@@ -924,12 +1424,12 @@
             }
             else
             {
-                actionError = res?.Message ?? "Không thể lưu cấu hình gói VIP.";
+                planFormError = res?.Message ?? "Không thể cập nhật cấu hình gói VIP.";
             }
         }
         catch (Exception ex)
         {
-            actionError = "Lỗi khi lưu gói VIP: " + ex.Message;
+            planFormError = "Lỗi khi lưu gói VIP: " + ex.Message;
         }
         finally
         {
@@ -939,6 +1439,35 @@
     }
 
     // Direct VIP Grant
+    private void RequestManualVipGrant()
+    {
+        if (string.IsNullOrWhiteSpace(grantTargetUser))
+        {
+            actionError = "Vui lòng nhập Email hoặc Họ tên người dùng.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(grantReason))
+        {
+            actionError = "Vui lòng nhập lý do cấp VIP để lưu vết kiểm toán.";
+            return;
+        }
+
+        actionError = null;
+        showGrantConfirm = true;
+    }
+
+    private void CancelManualVipGrant()
+    {
+        showGrantConfirm = false;
+    }
+
+    private async Task ConfirmManualVipGrant()
+    {
+        showGrantConfirm = false;
+        await SubmitManualVipGrant();
+    }
+
     private async Task SubmitManualVipGrant()
     {
         if (string.IsNullOrWhiteSpace(grantTargetUser))
@@ -997,7 +1526,8 @@
         {
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("Id,OrderCode,UserEmail,UserFullName,PlanName,Amount,Method,Status,CreatedAt,PaidAt,TransactionRef,Note");
-            foreach (var p in filteredPayments)
+            var exportRows = await FetchAllFilteredPaymentsAsync();
+            foreach (var p in exportRows)
             {
                 sb.AppendLine(CsvSecurity.FormatRow(
                     p.Id, p.OrderCode, p.UserEmail, p.UserFullName, p.PlanName, p.Amount, p.Method, p.Status,
@@ -1006,7 +1536,7 @@
                     p.TransactionReference, p.Note));
             }
             await JS.InvokeVoidAsync("adminTools.downloadCsv", $"cinemaflow_finance_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv", sb.ToString());
-            actionAlert = $"Đã xuất {filteredPayments.Count} giao dịch ra file CSV thành công!";
+            actionAlert = $"Đã xuất {exportRows.Count} giao dịch ra file CSV thành công!";
         }
         catch (Exception ex)
         {
@@ -1014,10 +1544,42 @@
         }
     }
 
+    /// <summary>
+    /// Gộp toàn bộ các trang khớp bộ lọc hiện tại từ server để xuất CSV không bị thiếu dữ liệu.
+    /// </summary>
+    private async Task<List<PaymentDto>> FetchAllFilteredPaymentsAsync()
+    {
+        var all = new List<PaymentDto>();
+        var page = 1;
+
+        while (true)
+        {
+            var result = await AdminApi.GetPaymentsPagedAsync(
+                page: page,
+                pageSize: 200,
+                query: NormalizedQuery,
+                status: statusFilter,
+                method: methodFilter,
+                sortBy: sortBy);
+
+            all.AddRange(result.Items);
+
+            if (!result.HasNextPage || all.Count >= 5000) break;
+            page++;
+        }
+
+        return all;
+    }
+
     private async Task RefreshData()
     {
-        actionAlert = "Đã làm mới dữ liệu hệ thống!";
+        actionAlert = null;
+        actionError = null;
         await LoadData();
+        if (string.IsNullOrEmpty(actionError))
+        {
+            actionAlert = "Đã làm mới dữ liệu hệ thống!";
+        }
     }
 
     private static string GetInitials(string name)
@@ -1030,5 +1592,6 @@
 
     public void Dispose()
     {
+        paymentSearchDebouncer.Dispose();
     }
 }

@@ -1,9 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Server.Services;
 using WebXemPhim.Shared.Enums;
@@ -12,295 +12,238 @@ using WebXemPhim.Shared.Responses;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public sealed class ChallengerM2AtomicViewCounterStressTests(TestApiFactory factory) : IClassFixture<TestApiFactory>
+public sealed class ChallengerM2AtomicViewCounterStressTests(TestApiFactory factory, PostgresTestDatabaseFixture fixture)
+    : IClassFixture<TestApiFactory>, IClassFixture<PostgresTestDatabaseFixture>
 {
-    private sealed class SqliteDbContextFactory(DbContextOptions<AppDbContext> options) : IDbContextFactory<AppDbContext>
+    private readonly PostgresTestDatabaseFixture _fixture = fixture;
+
+    private PostgresTestDatabase Database => _fixture.Database;
+
+    /// <summary>
+    /// Dọn sạch database PostgreSQL thật rồi trả về factory + service trỏ tới chính server đó.
+    /// Không còn file SQLite tạm hay ClearAllPools(): PostgreSQL hỗ trợ ghi đồng thời thật sự.
+    /// </summary>
+    private async Task<(IDbContextFactory<AppDbContext> Factory, DatabaseMovieService Service)> CreatePostgresServiceAsync()
     {
-        public AppDbContext CreateDbContext() => new(options);
-        public Task<AppDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(new AppDbContext(options));
+        var database = Database;
+        await database.ResetAsync();
+
+        var dbFactory = database.CreateFactory();
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        return (dbFactory, new DatabaseMovieService(dbFactory, cache: cache));
     }
 
-    private static (SqliteDbContextFactory Factory, string DbPath, Action Cleanup) CreateFileSqliteFactory()
+    [Fact]
+    public async Task Empirical_RelationalPostgreSql_AtomicIncrement_100ConcurrentDistinctIps_NoLostUpdatesOrDeadlocks()
     {
-        var dbPath = Path.Combine(Path.GetTempPath(), $"webxemphim_view_stress_{Guid.NewGuid():N}.db");
-        var connectionString = $"Data Source={dbPath};Cache=Shared;Default Timeout=10";
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connectionString)
-            .Options;
+        var (dbFactory, service) = await CreatePostgresServiceAsync();
 
-        using (var initContext = new AppDbContext(options))
+        const int initialViewCount = 50;
+        const int concurrentCount = 100;
+
+        await using (var seedContext = await dbFactory.CreateDbContextAsync())
         {
-            initContext.Database.EnsureCreated();
+            seedContext.Movies.Add(new MovieEntity
+            {
+                Id = 101,
+                Title = "Phim Concurrency Relational PostgreSQL Test",
+                Slug = "phim-concurrency-relational-postgresql-test",
+                PosterUrl = "https://example.com/p.jpg",
+                BackdropUrl = "https://example.com/b.jpg",
+                Type = MovieType.Movie,
+                ViewCount = initialViewCount
+            });
+            await seedContext.SaveChangesAsync();
         }
 
-        var dbFactory = new SqliteDbContextFactory(options);
-        void Cleanup()
+        // Launch 100 concurrent increments with distinct client IPs
+        var tasks = Enumerable.Range(1, concurrentCount).Select(async i =>
         {
-            try
+            await Task.Yield(); // ensure thread hop
+            var ip = $"10.1.{i / 256}.{i % 256}";
+            return await service.IncrementViewCountAsync(101, ip);
+        }).ToArray();
+
+        var results = await Task.WhenAll(tasks);
+
+        // Assert that every single concurrent call succeeded without deadlock or lock timeout
+        Assert.All(results, Assert.True);
+
+        // Verify final ViewCount in the PostgreSQL database
+        await using (var verifyContext = await dbFactory.CreateDbContextAsync())
+        {
+            var movie = await verifyContext.Movies.FindAsync(101);
+            Assert.NotNull(movie);
+            // Zero lost updates: ViewCount must be exactly 50 + 100 = 150
+            Assert.Equal(initialViewCount + concurrentCount, movie.ViewCount);
+        }
+    }
+
+    [Fact]
+    public async Task Empirical_RelationalPostgreSql_DeduplicationWindow_SameIpThrottled()
+    {
+        var (dbFactory, service) = await CreatePostgresServiceAsync();
+
+        await using (var seedContext = await dbFactory.CreateDbContextAsync())
+        {
+            seedContext.Movies.Add(new MovieEntity
             {
-                SqliteConnection.ClearAllPools();
-                if (File.Exists(dbPath))
+                Id = 201,
+                Title = "Phim Dedup Relational Test",
+                Slug = "phim-dedup-relational-test",
+                PosterUrl = "https://example.com/p.jpg",
+                BackdropUrl = "https://example.com/b.jpg",
+                Type = MovieType.Movie,
+                ViewCount = 0
+            });
+            await seedContext.SaveChangesAsync();
+        }
+
+        const string clientIp1 = "192.168.1.10";
+        const string clientIp2 = "192.168.1.20";
+        const string clientIp3 = "192.168.1.30";
+
+        // 1. Initial hit from IP 1
+        var hit1 = await service.IncrementViewCountAsync(201, clientIp1);
+        Assert.True(hit1);
+
+        // 2. 20 consecutive rapid hits from IP 1 -> all must return true but not increment
+        for (var i = 0; i < 20; i++)
+        {
+            var throttled = await service.IncrementViewCountAsync(201, clientIp1);
+            Assert.True(throttled);
+        }
+
+        await using (var check1 = await dbFactory.CreateDbContextAsync())
+        {
+            var m = await check1.Movies.FindAsync(201);
+            Assert.NotNull(m);
+            Assert.Equal(1, m.ViewCount);
+        }
+
+        // 3. Hit from IP 2 -> must increment
+        var hit2 = await service.IncrementViewCountAsync(201, clientIp2);
+        Assert.True(hit2);
+
+        // 4. Hit from IP 3 -> must increment
+        var hit3 = await service.IncrementViewCountAsync(201, clientIp3);
+        Assert.True(hit3);
+
+        // 5. Repeated hit from IP 2 -> throttled
+        var hit2Repeated = await service.IncrementViewCountAsync(201, clientIp2);
+        Assert.True(hit2Repeated);
+
+        await using (var checkFinal = await dbFactory.CreateDbContextAsync())
+        {
+            var m = await checkFinal.Movies.FindAsync(201);
+            Assert.NotNull(m);
+            Assert.Equal(3, m.ViewCount); // exactly 3: IP1 (1), IP2 (1), IP3 (1)
+        }
+    }
+
+    [Fact]
+    public async Task Empirical_RelationalPostgreSql_MultiMovieIsolation_DeduplicationKeySeparation()
+    {
+        var (dbFactory, service) = await CreatePostgresServiceAsync();
+
+        await using (var seedContext = await dbFactory.CreateDbContextAsync())
+        {
+            seedContext.Movies.AddRange(
+                new MovieEntity
                 {
-                    File.Delete(dbPath);
+                    Id = 301,
+                    Title = "Phim A",
+                    Slug = "phim-a",
+                    PosterUrl = "https://example.com/a.jpg",
+                    BackdropUrl = "https://example.com/ba.jpg",
+                    Type = MovieType.Movie,
+                    ViewCount = 10
+                },
+                new MovieEntity
+                {
+                    Id = 302,
+                    Title = "Phim B",
+                    Slug = "phim-b",
+                    PosterUrl = "https://example.com/b.jpg",
+                    BackdropUrl = "https://example.com/bb.jpg",
+                    Type = MovieType.Movie,
+                    ViewCount = 20
                 }
-            }
-            catch
-            {
-                // Best-effort cleanup
-            }
+            );
+            await seedContext.SaveChangesAsync();
         }
 
-        return (dbFactory, dbPath, Cleanup);
-    }
+        const string sharedIp = "172.16.0.50";
 
-    [Fact]
-    public async Task Empirical_RelationalSqlite_AtomicIncrement_100ConcurrentDistinctIps_NoLostUpdatesOrDeadlocks()
-    {
-        var (dbFactory, _, cleanup) = CreateFileSqliteFactory();
-        var cache = new MemoryCache(new MemoryCacheOptions());
-        var service = new DatabaseMovieService(dbFactory, cache: cache);
+        // View Movie A
+        Assert.True(await service.IncrementViewCountAsync(301, sharedIp));
 
-        try
+        // View Movie B (same IP, different movie -> MUST increment Movie B, NOT be blocked by Movie A's cooldown)
+        Assert.True(await service.IncrementViewCountAsync(302, sharedIp));
+
+        // View Movie A again (same IP, same movie -> throttled)
+        Assert.True(await service.IncrementViewCountAsync(301, sharedIp));
+
+        // View Movie B again (same IP, same movie -> throttled)
+        Assert.True(await service.IncrementViewCountAsync(302, sharedIp));
+
+        await using (var check = await dbFactory.CreateDbContextAsync())
         {
-            const int initialViewCount = 50;
-            const int concurrentCount = 100;
-
-            await using (var seedContext = await dbFactory.CreateDbContextAsync())
-            {
-                seedContext.Movies.Add(new MovieEntity
-                {
-                    Id = 101,
-                    Title = "Phim Concurrency Relational SQLite Test",
-                    Slug = "phim-concurrency-relational-sqlite-test",
-                    PosterUrl = "https://example.com/p.jpg",
-                    BackdropUrl = "https://example.com/b.jpg",
-                    Type = MovieType.Movie,
-                    ViewCount = initialViewCount
-                });
-                await seedContext.SaveChangesAsync();
-            }
-
-            // Launch 100 concurrent increments with distinct client IPs
-            var tasks = Enumerable.Range(1, concurrentCount).Select(async i =>
-            {
-                await Task.Yield(); // ensure thread hop
-                var ip = $"10.1.{i / 256}.{i % 256}";
-                return await service.IncrementViewCountAsync(101, ip);
-            }).ToArray();
-
-            var results = await Task.WhenAll(tasks);
-
-            // Assert that every single concurrent call succeeded without deadlock or lock timeout
-            Assert.All(results, Assert.True);
-
-            // Verify final ViewCount in the SQLite database
-            await using (var verifyContext = await dbFactory.CreateDbContextAsync())
-            {
-                var movie = await verifyContext.Movies.FindAsync(101);
-                Assert.NotNull(movie);
-                // Zero lost updates: ViewCount must be exactly 50 + 100 = 150
-                Assert.Equal(initialViewCount + concurrentCount, movie.ViewCount);
-            }
-        }
-        finally
-        {
-            cleanup();
+            var a = await check.Movies.FindAsync(301);
+            var b = await check.Movies.FindAsync(302);
+            Assert.NotNull(a);
+            Assert.NotNull(b);
+            Assert.Equal(11, a.ViewCount);
+            Assert.Equal(21, b.ViewCount);
         }
     }
 
     [Fact]
-    public async Task Empirical_RelationalSqlite_DeduplicationWindow_SameIpThrottled()
+    public async Task Empirical_RelationalPostgreSql_EdgeCases_NonExistentAndNullIp()
     {
-        var (dbFactory, _, cleanup) = CreateFileSqliteFactory();
-        var cache = new MemoryCache(new MemoryCacheOptions());
-        var service = new DatabaseMovieService(dbFactory, cache: cache);
+        var (dbFactory, service) = await CreatePostgresServiceAsync();
 
-        try
+        await using (var seedContext = await dbFactory.CreateDbContextAsync())
         {
-            await using (var seedContext = await dbFactory.CreateDbContextAsync())
+            seedContext.Movies.Add(new MovieEntity
             {
-                seedContext.Movies.Add(new MovieEntity
-                {
-                    Id = 201,
-                    Title = "Phim Dedup Relational Test",
-                    Slug = "phim-dedup-relational-test",
-                    PosterUrl = "https://example.com/p.jpg",
-                    BackdropUrl = "https://example.com/b.jpg",
-                    Type = MovieType.Movie,
-                    ViewCount = 0
-                });
-                await seedContext.SaveChangesAsync();
-            }
-
-            const string clientIp1 = "192.168.1.10";
-            const string clientIp2 = "192.168.1.20";
-            const string clientIp3 = "192.168.1.30";
-
-            // 1. Initial hit from IP 1
-            var hit1 = await service.IncrementViewCountAsync(201, clientIp1);
-            Assert.True(hit1);
-
-            // 2. 20 consecutive rapid hits from IP 1 -> all must return true but not increment
-            for (var i = 0; i < 20; i++)
-            {
-                var throttled = await service.IncrementViewCountAsync(201, clientIp1);
-                Assert.True(throttled);
-            }
-
-            await using (var check1 = await dbFactory.CreateDbContextAsync())
-            {
-                var m = await check1.Movies.FindAsync(201);
-                Assert.NotNull(m);
-                Assert.Equal(1, m.ViewCount);
-            }
-
-            // 3. Hit from IP 2 -> must increment
-            var hit2 = await service.IncrementViewCountAsync(201, clientIp2);
-            Assert.True(hit2);
-
-            // 4. Hit from IP 3 -> must increment
-            var hit3 = await service.IncrementViewCountAsync(201, clientIp3);
-            Assert.True(hit3);
-
-            // 5. Repeated hit from IP 2 -> throttled
-            var hit2Repeated = await service.IncrementViewCountAsync(201, clientIp2);
-            Assert.True(hit2Repeated);
-
-            await using (var checkFinal = await dbFactory.CreateDbContextAsync())
-            {
-                var m = await checkFinal.Movies.FindAsync(201);
-                Assert.NotNull(m);
-                Assert.Equal(3, m.ViewCount); // exactly 3: IP1 (1), IP2 (1), IP3 (1)
-            }
+                Id = 401,
+                Title = "Phim Edge Cases",
+                Slug = "phim-edge-cases",
+                PosterUrl = "https://example.com/p.jpg",
+                BackdropUrl = "https://example.com/b.jpg",
+                Type = MovieType.Movie,
+                ViewCount = 0
+            });
+            await seedContext.SaveChangesAsync();
         }
-        finally
+
+        // Non-existent movie IDs return false without throwing
+        Assert.False(await service.IncrementViewCountAsync(999999, "1.2.3.4"));
+        Assert.False(await service.IncrementViewCountAsync(-1, "1.2.3.4"));
+
+        // Null, empty, and whitespace client IPs increment safely without throwing
+        Assert.True(await service.IncrementViewCountAsync(401, null));
+        Assert.True(await service.IncrementViewCountAsync(401, ""));
+        Assert.True(await service.IncrementViewCountAsync(401, "   "));
+
+        await using (var check = await dbFactory.CreateDbContextAsync())
         {
-            cleanup();
+            var m = await check.Movies.FindAsync(401);
+            Assert.NotNull(m);
+            Assert.Equal(3, m.ViewCount);
         }
-    }
 
-    [Fact]
-    public async Task Empirical_RelationalSqlite_MultiMovieIsolation_DeduplicationKeySeparation()
-    {
-        var (dbFactory, _, cleanup) = CreateFileSqliteFactory();
-        var cache = new MemoryCache(new MemoryCacheOptions());
-        var service = new DatabaseMovieService(dbFactory, cache: cache);
+        // IPv6 address support
+        const string ipv6 = "2001:0db8:85a3:0000:0000:8a2e:0370:7334";
+        Assert.True(await service.IncrementViewCountAsync(401, ipv6));
+        Assert.True(await service.IncrementViewCountAsync(401, ipv6)); // throttled
 
-        try
+        await using (var check2 = await dbFactory.CreateDbContextAsync())
         {
-            await using (var seedContext = await dbFactory.CreateDbContextAsync())
-            {
-                seedContext.Movies.AddRange(
-                    new MovieEntity
-                    {
-                        Id = 301,
-                        Title = "Phim A",
-                        Slug = "phim-a",
-                        PosterUrl = "https://example.com/a.jpg",
-                        BackdropUrl = "https://example.com/ba.jpg",
-                        Type = MovieType.Movie,
-                        ViewCount = 10
-                    },
-                    new MovieEntity
-                    {
-                        Id = 302,
-                        Title = "Phim B",
-                        Slug = "phim-b",
-                        PosterUrl = "https://example.com/b.jpg",
-                        BackdropUrl = "https://example.com/bb.jpg",
-                        Type = MovieType.Movie,
-                        ViewCount = 20
-                    }
-                );
-                await seedContext.SaveChangesAsync();
-            }
-
-            const string sharedIp = "172.16.0.50";
-
-            // View Movie A
-            Assert.True(await service.IncrementViewCountAsync(301, sharedIp));
-
-            // View Movie B (same IP, different movie -> MUST increment Movie B, NOT be blocked by Movie A's cooldown)
-            Assert.True(await service.IncrementViewCountAsync(302, sharedIp));
-
-            // View Movie A again (same IP, same movie -> throttled)
-            Assert.True(await service.IncrementViewCountAsync(301, sharedIp));
-
-            // View Movie B again (same IP, same movie -> throttled)
-            Assert.True(await service.IncrementViewCountAsync(302, sharedIp));
-
-            await using (var check = await dbFactory.CreateDbContextAsync())
-            {
-                var a = await check.Movies.FindAsync(301);
-                var b = await check.Movies.FindAsync(302);
-                Assert.NotNull(a);
-                Assert.NotNull(b);
-                Assert.Equal(11, a.ViewCount);
-                Assert.Equal(21, b.ViewCount);
-            }
-        }
-        finally
-        {
-            cleanup();
-        }
-    }
-
-    [Fact]
-    public async Task Empirical_RelationalSqlite_EdgeCases_NonExistentAndNullIp()
-    {
-        var (dbFactory, _, cleanup) = CreateFileSqliteFactory();
-        var cache = new MemoryCache(new MemoryCacheOptions());
-        var service = new DatabaseMovieService(dbFactory, cache: cache);
-
-        try
-        {
-            await using (var seedContext = await dbFactory.CreateDbContextAsync())
-            {
-                seedContext.Movies.Add(new MovieEntity
-                {
-                    Id = 401,
-                    Title = "Phim Edge Cases",
-                    Slug = "phim-edge-cases",
-                    PosterUrl = "https://example.com/p.jpg",
-                    BackdropUrl = "https://example.com/b.jpg",
-                    Type = MovieType.Movie,
-                    ViewCount = 0
-                });
-                await seedContext.SaveChangesAsync();
-            }
-
-            // Non-existent movie IDs return false without throwing
-            Assert.False(await service.IncrementViewCountAsync(999999, "1.2.3.4"));
-            Assert.False(await service.IncrementViewCountAsync(-1, "1.2.3.4"));
-
-            // Null, empty, and whitespace client IPs increment safely without throwing
-            Assert.True(await service.IncrementViewCountAsync(401, null));
-            Assert.True(await service.IncrementViewCountAsync(401, ""));
-            Assert.True(await service.IncrementViewCountAsync(401, "   "));
-
-            await using (var check = await dbFactory.CreateDbContextAsync())
-            {
-                var m = await check.Movies.FindAsync(401);
-                Assert.NotNull(m);
-                Assert.Equal(3, m.ViewCount);
-            }
-
-            // IPv6 address support
-            const string ipv6 = "2001:0db8:85a3:0000:0000:8a2e:0370:7334";
-            Assert.True(await service.IncrementViewCountAsync(401, ipv6));
-            Assert.True(await service.IncrementViewCountAsync(401, ipv6)); // throttled
-
-            await using (var check2 = await dbFactory.CreateDbContextAsync())
-            {
-                var m = await check2.Movies.FindAsync(401);
-                Assert.NotNull(m);
-                Assert.Equal(4, m.ViewCount); // exactly 1 additional view from IPv6
-            }
-        }
-        finally
-        {
-            cleanup();
+            var m = await check2.Movies.FindAsync(401);
+            Assert.NotNull(m);
+            Assert.Equal(4, m.ViewCount); // exactly 1 additional view from IPv6
         }
     }
 
@@ -411,121 +354,103 @@ public sealed class ChallengerM2AtomicViewCounterStressTests(TestApiFactory fact
     }
 
     [Fact]
-    public async Task Empirical_RelationalSqlite_200ConcurrentDistinctIps_HighVolume_Stress()
+    public async Task Empirical_RelationalPostgreSql_200ConcurrentDistinctIps_HighVolume_Stress()
     {
-        var (dbFactory, _, cleanup) = CreateFileSqliteFactory();
-        var cache = new MemoryCache(new MemoryCacheOptions());
-        var service = new DatabaseMovieService(dbFactory, cache: cache);
+        var (dbFactory, service) = await CreatePostgresServiceAsync();
 
-        try
+        const int initialCount = 1000;
+        const int concurrentCount = 200;
+
+        await using (var seedContext = await dbFactory.CreateDbContextAsync())
         {
-            const int initialCount = 1000;
-            const int concurrentCount = 200;
-
-            await using (var seedContext = await dbFactory.CreateDbContextAsync())
+            seedContext.Movies.Add(new MovieEntity
             {
-                seedContext.Movies.Add(new MovieEntity
-                {
-                    Id = 501,
-                    Title = "Phim 200 Concurrent High Volume Stress",
-                    Slug = "phim-200-concurrent-high-volume-stress",
-                    PosterUrl = "https://example.com/p.jpg",
-                    BackdropUrl = "https://example.com/b.jpg",
-                    Type = MovieType.Movie,
-                    ViewCount = initialCount
-                });
-                await seedContext.SaveChangesAsync();
-            }
-
-            var tasks = Enumerable.Range(1, concurrentCount).Select(async i =>
-            {
-                await Task.Yield();
-                var ip = $"172.20.{i / 256}.{i % 256}";
-                return await service.IncrementViewCountAsync(501, ip);
-            }).ToArray();
-
-            var results = await Task.WhenAll(tasks);
-            Assert.All(results, Assert.True);
-
-            await using (var verifyContext = await dbFactory.CreateDbContextAsync())
-            {
-                var movie = await verifyContext.Movies.FindAsync(501);
-                Assert.NotNull(movie);
-                Assert.Equal(initialCount + concurrentCount, movie.ViewCount);
-            }
+                Id = 501,
+                Title = "Phim 200 Concurrent High Volume Stress",
+                Slug = "phim-200-concurrent-high-volume-stress",
+                PosterUrl = "https://example.com/p.jpg",
+                BackdropUrl = "https://example.com/b.jpg",
+                Type = MovieType.Movie,
+                ViewCount = initialCount
+            });
+            await seedContext.SaveChangesAsync();
         }
-        finally
+
+        var tasks = Enumerable.Range(1, concurrentCount).Select(async i =>
         {
-            cleanup();
+            await Task.Yield();
+            var ip = $"172.20.{i / 256}.{i % 256}";
+            return await service.IncrementViewCountAsync(501, ip);
+        }).ToArray();
+
+        var results = await Task.WhenAll(tasks);
+        Assert.All(results, Assert.True);
+
+        await using (var verifyContext = await dbFactory.CreateDbContextAsync())
+        {
+            var movie = await verifyContext.Movies.FindAsync(501);
+            Assert.NotNull(movie);
+            Assert.Equal(initialCount + concurrentCount, movie.ViewCount);
         }
     }
 
     [Fact]
-    public async Task Empirical_RelationalSqlite_SameIpConcurrentBurst_ThrottlingEfficacy()
+    public async Task Empirical_RelationalPostgreSql_SameIpConcurrentBurst_ThrottlingEfficacy()
     {
-        var (dbFactory, _, cleanup) = CreateFileSqliteFactory();
-        var cache = new MemoryCache(new MemoryCacheOptions());
-        var service = new DatabaseMovieService(dbFactory, cache: cache);
+        var (dbFactory, service) = await CreatePostgresServiceAsync();
 
-        try
+        await using (var seedContext = await dbFactory.CreateDbContextAsync())
         {
-            await using (var seedContext = await dbFactory.CreateDbContextAsync())
+            seedContext.Movies.Add(new MovieEntity
             {
-                seedContext.Movies.Add(new MovieEntity
-                {
-                    Id = 601,
-                    Title = "Phim Same IP Concurrent Burst",
-                    Slug = "phim-same-ip-concurrent-burst",
-                    PosterUrl = "https://example.com/p.jpg",
-                    BackdropUrl = "https://example.com/b.jpg",
-                    Type = MovieType.Movie,
-                    ViewCount = 0
-                });
-                await seedContext.SaveChangesAsync();
-            }
-
-            const string attackerIp = "203.0.113.88";
-            const int burstRequests = 30;
-
-            // Fire 30 concurrent requests from the exact same IP
-            var tasks = Enumerable.Range(1, burstRequests).Select(async _ =>
-            {
-                await Task.Yield();
-                return await service.IncrementViewCountAsync(601, attackerIp);
-            }).ToArray();
-
-            var results = await Task.WhenAll(tasks);
-            Assert.All(results, Assert.True);
-
-            // All requests complete successfully without deadlocks
-            Assert.All(results, Assert.True);
-
-            long burstRecordedCount;
-            await using (var verifyContext = await dbFactory.CreateDbContextAsync())
-            {
-                var movie = await verifyContext.Movies.FindAsync(601);
-                Assert.NotNull(movie);
-                Assert.True(movie.ViewCount > 0, "At least 1 view must be recorded.");
-                burstRecordedCount = movie.ViewCount;
-            }
-
-            // Immediately following requests from the same IP must be strictly throttled (0 additional increments)
-            for (var i = 0; i < 10; i++)
-            {
-                Assert.True(await service.IncrementViewCountAsync(601, attackerIp));
-            }
-
-            await using (var verifyContext2 = await dbFactory.CreateDbContextAsync())
-            {
-                var movie = await verifyContext2.Movies.FindAsync(601);
-                Assert.NotNull(movie);
-                // Zero additional increments from sequential requests: ViewCount remains identical
-                Assert.Equal(burstRecordedCount, movie.ViewCount);
-            }
+                Id = 601,
+                Title = "Phim Same IP Concurrent Burst",
+                Slug = "phim-same-ip-concurrent-burst",
+                PosterUrl = "https://example.com/p.jpg",
+                BackdropUrl = "https://example.com/b.jpg",
+                Type = MovieType.Movie,
+                ViewCount = 0
+            });
+            await seedContext.SaveChangesAsync();
         }
-        finally
+
+        const string attackerIp = "203.0.113.88";
+        const int burstRequests = 30;
+
+        // Fire 30 concurrent requests from the exact same IP
+        var tasks = Enumerable.Range(1, burstRequests).Select(async _ =>
         {
-            cleanup();
+            await Task.Yield();
+            return await service.IncrementViewCountAsync(601, attackerIp);
+        }).ToArray();
+
+        var results = await Task.WhenAll(tasks);
+        Assert.All(results, Assert.True);
+
+        // All requests complete successfully without deadlocks
+        Assert.All(results, Assert.True);
+
+        long burstRecordedCount;
+        await using (var verifyContext = await dbFactory.CreateDbContextAsync())
+        {
+            var movie = await verifyContext.Movies.FindAsync(601);
+            Assert.NotNull(movie);
+            Assert.True(movie.ViewCount > 0, "At least 1 view must be recorded.");
+            burstRecordedCount = movie.ViewCount;
+        }
+
+        // Immediately following requests from the same IP must be strictly throttled (0 additional increments)
+        for (var i = 0; i < 10; i++)
+        {
+            Assert.True(await service.IncrementViewCountAsync(601, attackerIp));
+        }
+
+        await using (var verifyContext2 = await dbFactory.CreateDbContextAsync())
+        {
+            var movie = await verifyContext2.Movies.FindAsync(601);
+            Assert.NotNull(movie);
+            // Zero additional increments from sequential requests: ViewCount remains identical
+            Assert.Equal(burstRecordedCount, movie.ViewCount);
         }
     }
 

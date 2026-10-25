@@ -13,6 +13,49 @@ public sealed class DatabaseModelTests
         return new AppDbContext(options);
     }
 
+    private static AppDbContext CreatePostgreSqlContext()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Database=webxemphim_model_test;Username=test;Password=test;")
+            .Options;
+        return new AppDbContext(options);
+    }
+
+    [Fact]
+    public void PostgreSqlProviderCanGenerateTheCompleteSchemaWithoutConnecting()
+    {
+        using var context = CreatePostgreSqlContext();
+
+        var script = context.Database.GenerateCreateScript();
+
+        Assert.Contains("users", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("access_tokens", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("password_reset_tokens", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("payments", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("reviews", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("movies", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("genres", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("movie_genres", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cast_members", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("episodes", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("stream_sources", script, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void PostgreSqlSchemaUsesNativeColumnTypes()
+    {
+        using var context = CreatePostgreSqlContext();
+
+        var script = context.Database.GenerateCreateScript();
+
+        // Native PostgreSQL types instead of the SQLite text/integer emulation.
+        Assert.Contains("uuid", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("timestamp with time zone", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("boolean", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("numeric(12,2)", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("bytea", script, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void MySqlProviderCanGenerateTheCompleteSchemaWithoutConnecting()
     {
@@ -65,8 +108,17 @@ public sealed class DatabaseModelTests
             .ToList();
 
         Assert.True(reviewIdentity.IsUnique);
-        Assert.Equal(14, foreignKeys.Count);
-        Assert.All(foreignKeys, key => Assert.Equal(DeleteBehavior.Cascade, key.DeleteBehavior));
+
+        var cascadeKeys = foreignKeys.Where(key => key.DeleteBehavior == DeleteBehavior.Cascade).ToList();
+        var setNullKeys = foreignKeys.Where(key => key.DeleteBehavior == DeleteBehavior.SetNull).ToList();
+
+        Assert.Equal(14, cascadeKeys.Count);
+        Assert.All(cascadeKeys, key => Assert.Equal(DeleteBehavior.Cascade, key.DeleteBehavior));
+
+        // The audit trail keeps its rows when the user is deleted, so the reference is nulled.
+        var auditKey = Assert.Single(setNullKeys);
+        Assert.Equal(typeof(SecurityAuditEventEntity), auditKey.DeclaringEntityType.ClrType);
+        Assert.Equal(DeleteBehavior.SetNull, auditKey.DeleteBehavior);
 
         var movieForeignKey = Assert.Single(reviewType.GetForeignKeys(), key =>
             key.PrincipalEntityType.ClrType == typeof(MovieEntity));

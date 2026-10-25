@@ -6,12 +6,12 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
 using Microsoft.AspNetCore.ResponseCompression;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Npgsql;
 using WebXemPhim.Client.Services;
 using WebXemPhim.Server.Controllers;
 using WebXemPhim.Server.Controllers.Admin;
@@ -24,30 +24,33 @@ using WebXemPhim.Shared.Responses;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public sealed class BackendPerformanceAndCachingTests : IClassFixture<TestApiFactory>
+public sealed class BackendPerformanceAndCachingTests : IClassFixture<TestApiFactory>, IClassFixture<PostgresTestDatabaseFixture>
 {
     private readonly TestApiFactory _factory;
+    private readonly PostgresTestDatabaseFixture _fixture;
 
-    public BackendPerformanceAndCachingTests(TestApiFactory factory)
+    public BackendPerformanceAndCachingTests(TestApiFactory factory, PostgresTestDatabaseFixture fixture)
     {
         _factory = factory;
+        _fixture = fixture;
     }
 
-    private static async Task<(SqliteConnection Connection, AppDbContext Context, IDbContextFactory<AppDbContext> Factory)> CreateSqliteContextAsync()
+    private PostgresTestDatabase Database => _fixture.Database;
+
+    /// <summary>
+    /// Mở connection PostgreSQL thật, nạp lại catalog mẫu và đồng bộ index tìm kiếm +
+    /// identity sequence để các controller sinh id tự động không đụng id đã seed.
+    /// </summary>
+    private async Task<(NpgsqlConnection Connection, AppDbContext Context, IDbContextFactory<AppDbContext> Factory)> CreatePostgresContextAsync()
     {
-        var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connection)
-            .Options;
-        var context = new AppDbContext(options);
-        await context.Database.EnsureCreatedAsync();
+        var (connection, context, dbFactory) = await Database.CreateOpenContextAsync();
+
         await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
         await DatabaseSeeder.SeedCatalogAsync(context);
-        await DatabaseSchemaHelper.SyncMoviesFtsAsync(context);
+        await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
+        await DatabaseSchemaHelper.SyncIdentitySequencesAsync(context);
 
-        var factoryMock = new TestDbContextFactory(options);
-        return (connection, context, factoryMock);
+        return (connection, context, dbFactory);
     }
 
     [Fact]
@@ -132,7 +135,7 @@ public sealed class BackendPerformanceAndCachingTests : IClassFixture<TestApiFac
     [Fact]
     public async Task AdminMoviesController_Mutations_EvictOutputCacheTags()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -207,7 +210,7 @@ public sealed class BackendPerformanceAndCachingTests : IClassFixture<TestApiFac
     [Fact]
     public async Task AdminGenresController_Mutations_EvictOutputCacheTags()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -250,7 +253,7 @@ public sealed class BackendPerformanceAndCachingTests : IClassFixture<TestApiFac
     [Fact]
     public async Task DatabaseMovieService_GetHomeAggregateAsync_ReturnsCompletePopulatedSections()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -275,7 +278,7 @@ public sealed class BackendPerformanceAndCachingTests : IClassFixture<TestApiFac
     [Fact]
     public async Task HomeController_GetHome_ReturnsSuccessEnvelope()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -342,9 +345,9 @@ public sealed class BackendPerformanceAndCachingTests : IClassFixture<TestApiFac
     }
 
     [Fact]
-    public async Task SqliteFts5_RelevanceSorting_AndVietnameseSearch_Optimized()
+    public async Task PostgreSqlFullTextSearch_RelevanceSorting_AndVietnameseSearch_Optimized()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -360,7 +363,7 @@ public sealed class BackendPerformanceAndCachingTests : IClassFixture<TestApiFac
                 DurationMinutes = 128
             });
             await context.SaveChangesAsync();
-            await DatabaseSchemaHelper.SyncMoviesFtsAsync(context);
+            await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
 
             var movieService = new DatabaseMovieService(dbFactory);
 
@@ -395,7 +398,7 @@ public sealed class BackendPerformanceAndCachingTests : IClassFixture<TestApiFac
     [Fact]
     public async Task DatabaseMovieService_GetFilterOptionsAsync_QueriesOptimizedGenresAndCountries()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {

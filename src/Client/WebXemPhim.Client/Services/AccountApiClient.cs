@@ -17,6 +17,17 @@ public interface IAccountApiClient
     Task<ApiResponse<bool>?> ResetPasswordAsync(ResetPasswordRequest request);
     Task<ApiResponse<bool>?> ChangePasswordAsync(ChangePasswordRequest request);
     Task<UserDto?> GetMeAsync();
+
+    /// <summary>
+    /// Gọi <c>/api/auth/me</c> và trả về nguyên envelope của API.
+    /// <para>
+    /// Phân biệt hai trạng thái mà <see cref="GetMeAsync"/> gộp chung: <c>null</c> nghĩa là
+    /// request thất bại (máy chủ chưa sẵn sàng / mất kết nối), còn envelope
+    /// <c>Success = false</c> nghĩa là API đã trả lời và token không còn hợp lệ. Nhờ vậy
+    /// phiên đăng nhập không bị xoá chỉ vì API chưa bật khi mở trang lần đầu.
+    /// </para>
+    /// </summary>
+    Task<ApiResponse<UserDto>?> GetMeResultAsync();
     Task<List<VipPlanDto>> GetPlansAsync();
     Task<ApiResponse<CouponValidationResultDto>?> ApplyCouponAsync(ApplyCouponRequest request);
     Task<ApiResponse<PaymentDto>?> CheckoutAsync(CreatePaymentRequest request);
@@ -65,6 +76,9 @@ public sealed class AccountApiClient(HttpClient httpClient, ILogger<AccountApiCl
 
     public async Task<UserDto?> GetMeAsync() =>
         (await SendAsync<UserDto>(HttpMethod.Get, "api/auth/me"))?.Data;
+
+    public async Task<ApiResponse<UserDto>?> GetMeResultAsync() =>
+        await SendAsync<UserDto>(HttpMethod.Get, "api/auth/me");
 
     public async Task<List<VipPlanDto>> GetPlansAsync() =>
         (await SendAsync<List<VipPlanDto>>(HttpMethod.Get, "api/payments/plans"))?.Data ?? [];

@@ -1,4 +1,4 @@
-<a href="@($"/movie/{Movie.Id}")" class="movie-card" @onclick:preventDefault="PreventDefaultClick" @onclick="HandleCardClick">
+<a href="@EffectiveHref" class="movie-card" @onclick:preventDefault="PreventDefaultClick" @onclick="HandleCardClick">
     <div class="poster-wrapper"><img src="@Movie.PosterUrl" alt="" class="poster-img" loading="lazy" /></div>
     <div class="card-info">
         <h3 class="card-title" title="@Movie.Title">@Movie.Title</h3>
@@ -9,5 +9,13 @@
     [Parameter, EditorRequired] public MovieDto Movie { get; set; } = default!;
     [Parameter] public EventCallback<MovieDto> OnSelect { get; set; }
     [Parameter] public bool PreventDefaultClick { get; set; }
+
+    /// <summary>
+    /// Đường dẫn khi bấm vào thẻ. Mặc định dẫn tới trang thông tin phim; trang xem phim dùng
+    /// biến thể /watch/{id} để người xem xem tiếp luôn mà không phải rời trang.
+    /// </summary>
+    [Parameter] public string? Href { get; set; }
+
+    private string EffectiveHref => string.IsNullOrWhiteSpace(Href) ? $"/movie/{Movie.Id}" : Href;
     private async Task HandleCardClick() { if (OnSelect.HasDelegate) await OnSelect.InvokeAsync(Movie); }
 }

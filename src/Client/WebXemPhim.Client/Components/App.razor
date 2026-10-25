@@ -1,5 +1,8 @@
 @inject IHttpContextAccessor HttpContextAccessor
+@inject AuthState Auth
 @using WebXemPhim.Shared.Security
+@using WebXemPhim.Client.Services
+@implements IDisposable
 <!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -10,19 +13,41 @@
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <base href="/" />
     <ResourcePreloader />
-    <title>CinemaFlow - Điện ảnh theo cách của bạn</title>
+    @* The document title comes from the title component of the current page. A static title
+       here would be a second <title> element and the browser would always pick the first one,
+       so the tab would keep showing the generic name instead of the page name. *@
     <!-- Typography: self hosted Vietnamese font family (no third-party render blocking request) -->
     <link rel="preload" href="@Assets["fonts/be-vietnam-pro-400-latin.woff2"]" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="@Assets["fonts/be-vietnam-pro-600-latin.woff2"]" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="@Assets["css/fonts.css"]" />
-    <!-- Global Core Theme Stylesheets (route specific sheets are injected by RouteStylesheet) -->
+    <!-- Global Core Theme Stylesheets -->
     <link rel="stylesheet" href="@Assets["css/cinema-theme.css"]" />
     <link rel="stylesheet" href="@Assets["WebXemPhim.Client.styles.css"]" />
     <link rel="stylesheet" href="@Assets["css/redesign-2026.css"]" />
+    <link rel="stylesheet" href="@Assets["css/home-expanded.css"]" />
+    <link rel="stylesheet" href="@Assets["css/library-membership.css"]" />
+    <link rel="stylesheet" href="@Assets["css/watch-workspace.css"]" />
     <link rel="stylesheet" href="@Assets["css/popup-polish.css"]" />
+    <link rel="stylesheet" href="@Assets["css/account-overview.css"]" />
+    <link rel="stylesheet" href="@Assets["css/discovery-filters.css"]" />
+    <link rel="stylesheet" href="@Assets["css/genres-page.css"]" />
+    <link rel="stylesheet" href="@Assets["css/profile-settings.css"]" />
     <link rel="stylesheet" href="@Assets["css/light-theme.css"]" />
     <link rel="stylesheet" href="@Assets["css/mobile-ui-fixes.css"]" />
     <link rel="stylesheet" href="@Assets["css/typography-polish.css"]" />
+    <link rel="stylesheet" href="@Assets["css/related-movies.css"]" />
+    @* The cockpit stylesheet is linked by the admin layout. When a session exists it is
+       preloaded in the background so a later client side navigation into /admin never paints
+       the cockpit before its sheet arrives. Public visitors without a session never pay for it. *@
+    @if (Auth.HasSession)
+    {
+        <link rel="preload" as="style" href="@Assets["css/admin-workspace.css"]" />
+    }
+    @* Route specific sheets are injected by RouteStylesheet. The map below lets the browser
+       preload the sheet of a route on intent, so a client side navigation never paints an
+       unstyled page. *@
+    <script id="route-style-map" type="application/json">@((MarkupString)RouteStyleMapJson)</script>
+    <script src="@Assets["js/route-style-preload.js"]"></script>
     <script src="@Assets["js/theme-manager.js"]"></script>
     <ImportMap AdditionalAttributes="@(new Dictionary<string, object> { ["nonce"] = HttpContextAccessor.HttpContext?.Items[WebSecurityExtensions.NonceKey]?.ToString() ?? "" })" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
@@ -37,3 +62,22 @@
     <script src="@Assets["js/cinema-navbar.js"]"></script>
 </body>
 </html>
+
+@code {
+    /// <summary>
+    /// Route to stylesheet mapping (with the fingerprinted asset URLs) used by
+    /// js/route-style-preload.js to preload the sheet of the route a visitor is about to open.
+    /// </summary>
+    private string RouteStyleMapJson => RouteStylesheetCatalog.ToJson(path => Assets[path]);
+
+    protected override void OnInitialized()
+    {
+        // The cockpit sheet is preloaded as soon as a session exists, so the head has to be
+        // refreshed once the session has been restored from the browser storage.
+        Auth.OnChange += HandleAuthChanged;
+    }
+
+    private void HandleAuthChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Auth.OnChange -= HandleAuthChanged;
+}

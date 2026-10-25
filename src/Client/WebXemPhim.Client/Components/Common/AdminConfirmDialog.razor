@@ -1,0 +1,144 @@
+@using Microsoft.AspNetCore.Components.Web
+@*
+    Reusable confirmation dialog for the destructive actions of the cockpit.
+
+    Every action that cannot be undone (delete, bulk delete, revoke VIP, lock an account,
+    grant the admin role) goes through this dialog so a misclick never destroys data.
+*@
+
+@if (IsOpen)
+{
+    <div class="admin-modal-backdrop" @onclick="HandleCancel">
+        <div class="admin-modal-card admin-confirm-dialog @VariantClass"
+             role="alertdialog"
+             aria-modal="true"
+             aria-labelledby="admin-confirm-title"
+             aria-describedby="admin-confirm-message"
+             tabindex="-1"
+             @ref="dialogElement"
+             @onclick:stopPropagation
+             @onkeydown="HandleKeyDown">
+            <div class="admin-modal-header">
+                <h3 id="admin-confirm-title">@Title</h3>
+                <button type="button" class="btn-close-modal" aria-label="Đóng hộp thoại xác nhận" @onclick="HandleCancel">&times;</button>
+            </div>
+
+            <div class="admin-modal-body">
+                <p id="admin-confirm-message" class="admin-confirm-message">@Message</p>
+
+                @if (!string.IsNullOrWhiteSpace(ConfirmPhrase))
+                {
+                    <div class="admin-form-group">
+                        <label for="admin-confirm-input">Nhập <strong>@ConfirmPhrase</strong> để xác nhận</label>
+                        <input id="admin-confirm-input"
+                               @ref="confirmInput"
+                               type="text"
+                               autocomplete="off"
+                               spellcheck="false"
+                               @bind="typedPhrase"
+                               @bind:event="oninput" />
+                    </div>
+                }
+            </div>
+
+            <div class="admin-modal-footer">
+                <button type="button" class="btn-secondary-ghost" @onclick="HandleCancel">@CancelText</button>
+                <button type="button"
+                        class="@ConfirmButtonClass"
+                        disabled="@IsConfirmDisabled"
+                        @onclick="HandleConfirm">@ConfirmText</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Whether the dialog is visible.</summary>
+    [Parameter] public bool IsOpen { get; set; }
+
+    /// <summary>Headline of the dialog.</summary>
+    [Parameter] public string Title { get; set; } = "Xác nhận";
+
+    /// <summary>Body copy explaining what is about to happen.</summary>
+    [Parameter] public string Message { get; set; } = string.Empty;
+
+    /// <summary>Label of the confirm button. Keep it to one or two words so it never wraps.</summary>
+    [Parameter] public string ConfirmText { get; set; } = "Xác nhận";
+
+    /// <summary>Label of the cancel button.</summary>
+    [Parameter] public string CancelText { get; set; } = "Huỷ";
+
+    /// <summary>"danger", "warning" or "info".</summary>
+    [Parameter] public string Variant { get; set; } = "danger";
+
+    /// <summary>When set, the operator has to type this exact phrase before the action unlocks.</summary>
+    [Parameter] public string? ConfirmPhrase { get; set; }
+
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private string typedPhrase = string.Empty;
+    private ElementReference confirmInput;
+    private ElementReference dialogElement;
+
+    private string VariantClass => Variant switch
+    {
+        "warning" => "is-warning",
+        "info" => "is-info",
+        _ => "is-danger"
+    };
+
+    private string ConfirmButtonClass => Variant switch
+    {
+        "warning" => "btn-primary-action is-warning",
+        "info" => "btn-primary-action",
+        _ => "btn-primary-action is-danger"
+    };
+
+    private bool IsConfirmDisabled => !string.IsNullOrWhiteSpace(ConfirmPhrase)
+        && !string.Equals(typedPhrase.Trim(), ConfirmPhrase.Trim(), StringComparison.Ordinal);
+
+    protected override void OnParametersSet()
+    {
+        if (IsOpen) typedPhrase = string.Empty;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!IsOpen) return;
+        if (!string.IsNullOrWhiteSpace(ConfirmPhrase))
+        {
+            await confirmInput.FocusAsync();
+        }
+        else
+        {
+            // Đưa focus vào hộp thoại để Escape/Enter luôn hoạt động dù không có ô nhập xác nhận.
+            await dialogElement.FocusAsync();
+        }
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            HandleCancel();
+        }
+        else if (args.Key == "Enter" && !IsConfirmDisabled)
+        {
+            HandleConfirm();
+        }
+    }
+
+    private void HandleCancel()
+    {
+        typedPhrase = string.Empty;
+        OnCancel.InvokeAsync();
+    }
+
+    private void HandleConfirm()
+    {
+        if (IsConfirmDisabled) return;
+        typedPhrase = string.Empty;
+        OnConfirm.InvokeAsync();
+    }
+}

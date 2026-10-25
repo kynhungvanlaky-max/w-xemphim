@@ -212,10 +212,6 @@
             <button type="button" class="user-avatar-btn" @onclick="ToggleUserMenu" aria-expanded="@showUserMenu.ToString().ToLowerInvariant()" aria-controls="account-popover" aria-label="Menu tài khoản">
                 <span class="nav-user-initials">@Auth.User!.Initials</span><span class="nav-user-label"><strong>@Auth.User.FullName</strong><small>@(Auth.User.IsVip ? "VIP đang hoạt động" : "Đã đăng nhập")</small></span>
             </button>
-            <button type="button" class="nav-direct-logout-btn" @onclick="Logout" title="Đăng xuất khỏi tài khoản (@Auth.User?.Email)">
-                <CinemaIcon Name="CinemaIconName.Logout" Size="14" />
-                <span class="direct-logout-text">Đăng xuất</span>
-            </button>
 
             @if (showUserMenu)
             {

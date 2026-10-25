@@ -19,9 +19,11 @@ public class MoviesController(
     IMovieService movieService,
     IDbContextFactory<AppDbContext>? contextFactory = null,
     IStreamUrlSigner? urlSigner = null,
-    IMemoryCache? memoryCache = null) : ControllerBase
+    IMemoryCache? memoryCache = null,
+    PublicUrlResolver? publicUrlResolver = null) : ControllerBase
 {
     private readonly IStreamUrlSigner _urlSigner = urlSigner ?? new StreamUrlSigner();
+    private readonly PublicUrlResolver _publicUrl = publicUrlResolver ?? new PublicUrlResolver(new ConfigurationBuilder().Build());
     private readonly IMemoryCache? _memoryCache = memoryCache;
     [HttpGet("filter-options")]
     [OutputCache(Duration = 120, Tags = ["movies", "genres"])]
@@ -124,7 +126,8 @@ public class MoviesController(
         if (User?.Identity?.IsAuthenticated != true) return false;
         if (User.IsInRole("Admin")) return true;
 
-        var cacheKey = _memoryCache is null ? null : $"isvip:{User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.Identity?.Name}";
+        var uidClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var cacheKey = _memoryCache is null ? null : (Guid.TryParse(uidClaim, out var uId) ? $"vip_status_{uId}" : $"vip_status_{User.Identity?.Name}");
         if (cacheKey is not null && _memoryCache!.TryGetValue(cacheKey, out bool cached))
         {
             return cached;
@@ -157,13 +160,20 @@ public class MoviesController(
     private void MaskVipStreams(MovieDetailDto? movie, bool isVip)
     {
         if (movie?.Episodes is null) return;
-        var baseUrl = Request?.Host.HasValue == true
-            ? $"{Request.Scheme}://{Request.Host}"
-            : "http://localhost";
+        var baseUrl = _publicUrl.Resolve(Request);
         var clientIp = HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? "127.0.0.1";
 
         foreach (var ep in movie.Episodes)
         {
+            // Ảnh nền tập do API sinh: đường dẫn lưu trong CSDL là tương đối, nhưng thẻ <img>
+            // của trình duyệt lại phân giải theo origin của trang web, nên phải trả về URL
+            // tuyệt đối trỏ tới API mà trình duyệt thực sự truy cập được.
+            if (!string.IsNullOrWhiteSpace(ep.ThumbnailUrl)
+                && ep.ThumbnailUrl.StartsWith("/api/episodes/", StringComparison.OrdinalIgnoreCase))
+            {
+                ep.ThumbnailUrl = $"{baseUrl}{ep.ThumbnailUrl}";
+            }
+
             foreach (var s in ep.Streams)
             {
                 var isVipStream = s.ServerType == StreamServerType.VipFastServer ||
@@ -171,15 +181,14 @@ public class MoviesController(
 
                 if (isVipStream)
                 {
-                    if (isVip)
-                    {
-                        s.StreamUrl = _urlSigner.GeneratePlaybackUrl(baseUrl, s.EpisodeId, s.Position, clientIp);
-                    }
-                    else
-                    {
-                        s.StreamUrl = string.Empty;
-                    }
+                    // Luồng VIP không bao giờ trả sẵn URL không gắn sid. Người dùng VIP phải gọi /api/stream/sign sau khi có lease.
+                    s.StreamUrl = string.Empty;
+                    continue;
                 }
+
+                // Mọi nguồn — kể cả nguồn thường — đều được ký trước khi đưa ra, nếu không
+                // URL CDN gốc của nguồn thường sẽ bị lộ nguyên vẹn.
+                s.StreamUrl = _urlSigner.GeneratePlaybackUrl(baseUrl, s.EpisodeId, s.Position, clientIp, scope: "play");
             }
         }
     }

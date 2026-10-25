@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -31,20 +30,22 @@ namespace WebXemPhim.Tests.ServerTests;
 /// Covers the follow-up hardening work: normalized search text, one-shot maintenance tasks,
 /// WebP artwork migration, client side IP forwarding and route scoped stylesheets.
 /// </summary>
-public sealed class RemainingAuditFixTests
+public sealed class RemainingAuditFixTests : IClassFixture<PostgresTestDatabaseFixture>
 {
-    private static async Task<(SqliteConnection Connection, AppDbContext Context, IDbContextFactory<AppDbContext> Factory)>
-        CreateSqliteContextAsync()
+    private readonly PostgresTestDatabaseFixture _fixture;
+
+    public RemainingAuditFixTests(PostgresTestDatabaseFixture fixture)
     {
-        var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connection)
-            .Options;
-        var context = new AppDbContext(options);
-        await context.Database.EnsureCreatedAsync();
+        _fixture = fixture;
+    }
+
+    private PostgresTestDatabase Database => _fixture.Database;
+
+    private async Task<(Npgsql.NpgsqlConnection Connection, AppDbContext Context, IDbContextFactory<AppDbContext> Factory)>
+        CreatePostgresContextAsync()
+    {
+        var (connection, context, factory) = await Database.CreateOpenContextAsync();
         await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
-        var factory = new TestDbContextFactory(options);
         return (connection, context, factory);
     }
 
@@ -75,12 +76,11 @@ public sealed class RemainingAuditFixTests
     [Fact]
     public async Task FilterMoviesAsync_FindsMovieByUnaccentedVietnameseKeyword()
     {
-        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
-        await using var context = new AppDbContext(options);
-        await context.Database.EnsureCreatedAsync();
+        var database = Database;
+        await database.ResetAsync();
+        await using var context = database.CreateContext();
         await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
+        var options = database.CreateOptions();
 
         context.Movies.Add(new MovieEntity
         {
@@ -108,12 +108,11 @@ public sealed class RemainingAuditFixTests
     [Fact]
     public async Task FilterMoviesAsync_FindsMovieByAccentedVietnameseKeyword()
     {
-        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
-        await using var context = new AppDbContext(options);
-        await context.Database.EnsureCreatedAsync();
+        var database = Database;
+        await database.ResetAsync();
+        await using var context = database.CreateContext();
         await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
+        var options = database.CreateOptions();
 
         context.Movies.Add(new MovieEntity
         {
@@ -139,12 +138,11 @@ public sealed class RemainingAuditFixTests
     [Fact]
     public async Task FilterMoviesAsync_CastMemberIsSearchableThroughSearchText()
     {
-        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
-        await using var context = new AppDbContext(options);
-        await context.Database.EnsureCreatedAsync();
+        var database = Database;
+        await database.ResetAsync();
+        await using var context = database.CreateContext();
         await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
+        var options = database.CreateOptions();
 
         var movie = new MovieEntity
         {
@@ -178,23 +176,23 @@ public sealed class RemainingAuditFixTests
     [Fact]
     public async Task EnsureTablesCreatedAsync_AddsSearchTextColumnAndIndex()
     {
-        var (connection, context, _) = await CreateSqliteContextAsync();
+        var (connection, context, _) = await CreatePostgresContextAsync();
         await using var _ = connection;
         await using var __ = context;
 
         var columns = await context.Database.SqlQueryRaw<string>(
-            "SELECT name AS \"Name\" FROM pragma_table_info('movies')").ToListAsync();
+            "SELECT column_name AS \"Value\" FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'movies'").ToListAsync();
         Assert.Contains("SearchText", columns);
 
         var indexes = await context.Database.SqlQueryRaw<string>(
-            "SELECT name AS \"Name\" FROM sqlite_master WHERE type='index' AND tbl_name='movies'").ToListAsync();
+            "SELECT indexname AS \"Value\" FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'movies'").ToListAsync();
         Assert.Contains("IX_movies_SearchText", indexes);
     }
 
     [Fact]
     public async Task EnsureTablesCreatedAsync_BackfillsSearchTextForExistingMovies()
     {
-        var (connection, context, _) = await CreateSqliteContextAsync();
+        var (connection, context, _) = await CreatePostgresContextAsync();
         await using var _ = connection;
         await using var __ = context;
 
@@ -224,7 +222,7 @@ public sealed class RemainingAuditFixTests
     [Fact]
     public async Task EnsureTablesCreatedAsync_IsIdempotent()
     {
-        var (connection, context, _) = await CreateSqliteContextAsync();
+        var (connection, context, _) = await CreatePostgresContextAsync();
         await using var _ = connection;
         await using var __ = context;
 
@@ -232,7 +230,7 @@ public sealed class RemainingAuditFixTests
         await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
 
         var indexes = await context.Database.SqlQueryRaw<string>(
-            "SELECT name AS \"Name\" FROM sqlite_master WHERE type='index' AND tbl_name='movies'").ToListAsync();
+            "SELECT indexname AS \"Value\" FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'movies'").ToListAsync();
         Assert.Single(indexes, i => i == "IX_movies_SearchText");
     }
 
@@ -241,7 +239,7 @@ public sealed class RemainingAuditFixTests
     [Fact]
     public async Task MigrateLegacyMovieImageUrlsAsync_RewritesSeededPathsOnly()
     {
-        var (connection, context, _) = await CreateSqliteContextAsync();
+        var (connection, context, _) = await CreatePostgresContextAsync();
         await using var _ = connection;
         await using var __ = context;
 
@@ -282,7 +280,7 @@ public sealed class RemainingAuditFixTests
     [Fact]
     public async Task AppMaintenanceFlags_PreventRepeatedOneShotWork()
     {
-        var (connection, context, _) = await CreateSqliteContextAsync();
+        var (connection, context, _) = await CreatePostgresContextAsync();
         await using var _ = connection;
         await using var __ = context;
 
@@ -371,16 +369,15 @@ public sealed class RemainingAuditFixTests
     // --------------------------------------------------------- client assets
 
     [Fact]
-    public async Task ClientHomePage_LoadsRouteStylesheetAndKeepsGlobalCssOutOfRoute()
+    public async Task ClientHomePage_LoadsStylesheetsSuccessfully()
     {
         await using var factory = new WebApplicationFactory<App>().WithWebHostBuilder(builder => builder.UseEnvironment("Development"));
         using var client = factory.CreateClient();
 
         var html = WebUtility.HtmlDecode(await client.GetStringAsync("/"));
 
-        // The route specific sheet is injected through the head outlet.
+        // Global and core stylesheets are loaded reliably.
         Assert.Contains("home-expanded", html);
-        // Global sheets stay global.
         Assert.Contains("light-theme", html);
     }
 
@@ -496,7 +493,7 @@ public sealed class RemainingAuditFixTests
     [Fact]
     public async Task RepairMojibakeTextAsync_FixesStoredSeedContent()
     {
-        var (connection, context, _) = await CreateSqliteContextAsync();
+        var (connection, context, _) = await CreatePostgresContextAsync();
         await using var _ = connection;
         await using var __ = context;
 
@@ -537,7 +534,7 @@ public sealed class RemainingAuditFixTests
     [Fact]
     public async Task RepairMojibakeTextAsync_IsSafeToRunOnHealthyData()
     {
-        var (connection, context, _) = await CreateSqliteContextAsync();
+        var (connection, context, _) = await CreatePostgresContextAsync();
         await using var _ = connection;
         await using var __ = context;
 

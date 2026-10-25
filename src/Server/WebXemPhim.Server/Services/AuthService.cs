@@ -159,7 +159,6 @@ public sealed class AuthService(
             await context.SaveChangesAsync();
             return new AuthResult(null, AuthFailure.InvalidCredentials);
         }
-        security.FailedLoginAttempts = 0;
         if (security.PasswordIterations < CredentialSecurity.PasswordIterations)
         {
             user.PasswordSalt = RandomNumberGenerator.GetBytes(16);
@@ -181,6 +180,7 @@ public sealed class AuthService(
                 RequiresMfa = true, MfaChallengeToken = challengeToken, ExpiresAt = UtcNow.AddMinutes(5)
             });
         }
+        security.FailedLoginAttempts = 0;
         return new AuthResult(await CreateSessionAsync(context, user));
     }
 
@@ -195,18 +195,44 @@ public sealed class AuthService(
             if (challenge is not null) { context.MfaChallenges.Remove(challenge); await context.SaveChangesAsync(); }
             return new AuthResult(null, AuthFailure.InvalidCredentials);
         }
-        var credential = await context.MfaCredentials.SingleOrDefaultAsync(item => item.UserId == challenge.UserId && item.Enabled);
-        if (credential is null) return new AuthResult(null, AuthFailure.InvalidCredentials);
-
-        var valid = VerifyMfaCode(credential, request.Code, consumeRecoveryCode: true);
-        if (!valid)
+        var security = await context.UserSecurity.SingleOrDefaultAsync(item => item.UserId == challenge.UserId);
+        if (security is null)
         {
-            challenge.FailedAttempts++;
-            if (challenge.FailedAttempts >= 5) context.MfaChallenges.Remove(challenge);
+            security = new UserSecurityEntity { UserId = challenge.UserId };
+            context.UserSecurity.Add(security);
+        }
+        if (security.LockedUntilUtc > UtcNow)
+        {
+            context.MfaChallenges.Remove(challenge);
             await context.SaveChangesAsync();
             return new AuthResult(null, AuthFailure.InvalidCredentials);
         }
 
+        var credential = await context.MfaCredentials.SingleOrDefaultAsync(item => item.UserId == challenge.UserId && item.Enabled);
+        if (credential is null) return new AuthResult(null, AuthFailure.InvalidCredentials);
+
+        var valid = VerifyMfaCode(credential, request.Code, consumeRecoveryCode: true, trackTimeStep: true);
+        if (!valid)
+        {
+            challenge.FailedAttempts++;
+            challenge.Version++;
+            security.Version++;
+            if (++security.FailedLoginAttempts >= 5)
+            {
+                security.LockedUntilUtc = UtcNow.AddMinutes(15);
+                context.MfaChallenges.Remove(challenge);
+            }
+            else if (challenge.FailedAttempts >= 5)
+            {
+                context.MfaChallenges.Remove(challenge);
+            }
+            await context.SaveChangesAsync();
+            return new AuthResult(null, AuthFailure.InvalidCredentials);
+        }
+
+        security.FailedLoginAttempts = 0;
+        security.LockedUntilUtc = null;
+        security.Version++;
         context.MfaChallenges.RemoveRange(await context.MfaChallenges.Where(item => item.UserId == challenge.UserId).ToListAsync());
         await context.SaveChangesAsync();
         return new AuthResult(await CreateSessionAsync(context, challenge.User, mfaVerified: true));
@@ -593,9 +619,29 @@ public sealed class AuthService(
         var user = await context.Users.SingleOrDefaultAsync(item => item.Id == userId);
         var security = await context.UserSecurity.SingleOrDefaultAsync(item => item.UserId == userId);
         var credential = await context.MfaCredentials.SingleOrDefaultAsync(item => item.UserId == userId && item.Enabled);
-        if (user is null || security is null || credential is null ||
-            !CredentialSecurity.Verify(currentPassword, user.PasswordSalt, user.PasswordHash, security.PasswordIterations) ||
-            !VerifyMfaCode(credential, code, consumeRecoveryCode: true)) return false;
+        if (user is null || security is null || credential is null) return false;
+        if (security.LockedUntilUtc > UtcNow) return false;
+
+        var passwordValid = CredentialSecurity.Verify(currentPassword, user.PasswordSalt, user.PasswordHash, security.PasswordIterations);
+        if (!passwordValid)
+        {
+            security.Version++;
+            if (++security.FailedLoginAttempts >= 5) security.LockedUntilUtc = UtcNow.AddMinutes(15);
+            await context.SaveChangesAsync();
+            return false;
+        }
+
+        var mfaValid = VerifyMfaCode(credential, code, consumeRecoveryCode: true, trackTimeStep: true);
+        if (!mfaValid)
+        {
+            security.Version++;
+            if (++security.FailedLoginAttempts >= 5) security.LockedUntilUtc = UtcNow.AddMinutes(15);
+            await context.SaveChangesAsync();
+            return false;
+        }
+
+        security.FailedLoginAttempts = 0;
+        security.LockedUntilUtc = null;
         context.MfaCredentials.Remove(credential);
         context.MfaChallenges.RemoveRange(await context.MfaChallenges.Where(item => item.UserId == userId).ToListAsync());
         context.MfaVerifiedSessions.RemoveRange(await context.MfaVerifiedSessions.Where(item => item.UserId == userId).ToListAsync());
@@ -604,12 +650,21 @@ public sealed class AuthService(
         return true;
     }
 
-    private bool VerifyMfaCode(MfaCredentialEntity credential, string code, bool consumeRecoveryCode)
+    private bool VerifyMfaCode(MfaCredentialEntity credential, string code, bool consumeRecoveryCode, bool trackTimeStep = false)
     {
         try
         {
             var secret = Convert.FromBase64String(mfaProtector.Unprotect(credential.ProtectedSecret));
-            if (TotpSecurity.Verify(secret, code, UtcNow)) return true;
+            if (TotpSecurity.Verify(secret, code, UtcNow, out var matchedStep))
+            {
+                if (trackTimeStep && credential.LastUsedTimeStep.HasValue && matchedStep <= credential.LastUsedTimeStep.Value)
+                {
+                    return false;
+                }
+                if (trackTimeStep) credential.LastUsedTimeStep = matchedStep;
+                if (trackTimeStep) credential.Version++;
+                return true;
+            }
         }
         catch (CryptographicException) { return false; }
         catch (FormatException) { return false; }

@@ -4,7 +4,7 @@
 @inject IAccountApiClient Api
 @implements IDisposable
 
-<PageTitle>Cài đặt hồ sơ - CinemaFlow</PageTitle>
+<CinemaPageTitle>Cài đặt hồ sơ - CinemaFlow</CinemaPageTitle>
 
 <RouteStylesheet Files="@ProfileSettingsStyles" />
 
@@ -300,7 +300,7 @@
 </AccountWorkspace>
 
 @code {
-    private static readonly string[] ProfileSettingsStyles = ["css/profile-settings.css"];
+    private static readonly string[] ProfileSettingsStyles = RouteStylesheetCatalog.Profile;
 
     private string quality = "4K khi có thể";
     private string language = "vi";

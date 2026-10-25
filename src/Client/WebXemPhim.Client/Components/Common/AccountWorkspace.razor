@@ -1,6 +1,7 @@
 @inject AuthState Auth
 @inject NavigationManager Nav
 @implements IDisposable
+@using WebXemPhim.Client.Services
 @using WebXemPhim.Client.Components.Common
 
 <RouteStylesheet Files="@AccountStyles" />
@@ -73,7 +74,7 @@
 </div>
 
 @code {
-    private static readonly string[] AccountStyles = ["css/account-overview.css"];
+    private static readonly string[] AccountStyles = RouteStylesheetCatalog.Account;
 
     [Parameter] public string ActiveSection { get; set; } = "overview";
     [Parameter] public string Eyebrow { get; set; } = "Không gian cá nhân";

@@ -40,6 +40,9 @@ public interface IStreamSessionService
 
     Task<List<ActiveStreamDto>> GetActiveLeasesAsync(Guid userId, CancellationToken cancellationToken = default);
 
+    /// <summary>Trả về lease đang hoạt động theo mã phiên, hoặc <c>null</c> nếu đã hết hạn/thu hồi.</summary>
+    Task<ActiveStreamDto?> GetActiveLeaseAsync(string sessionId, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<ActiveStreamDto>> GetActiveStreamsAsync(Guid userId, CancellationToken cancellationToken = default);
 
     Task<int> GetMaxConcurrentStreamsAsync(Guid userId, CancellationToken cancellationToken = default);

@@ -442,7 +442,7 @@ public class MovieServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetSimilarMoviesAsync_ExcludesCurrentMovieAndUsesTypeOrGenre()
+    public async Task GetSimilarMoviesAsync_ExcludesCurrentMovieAndPrefersPlayableSimilarTitles()
     {
         const int movieId = 1;
         var current = Assert.Single(DatabaseSeeder.CatalogMovies, movie => movie.Id == movieId);
@@ -452,7 +452,25 @@ public class MovieServiceTests : IAsyncLifetime
         Assert.DoesNotContain(result, movie => movie.Id == movieId);
         Assert.All(result, movie => Assert.True(
             movie.Type == current.Type || movie.Genres.Any(current.Genres.Contains)));
-        AssertOrdered(result, (left, right) => left.Rating >= right.Rating);
+
+        // Chỉ gợi ý phim đã có tập phát — bấm vào phim chưa có nguồn thì người xem sẽ gặp
+        // ngay màn hình "chưa có nguồn phát".
+        Assert.All(result, movie => Assert.True(movie.TotalEpisodes > 0,
+            $"Phim '{movie.Title}' được gợi ý nhưng chưa có tập phát."));
+
+        // Thứ tự ưu tiên mức tương đồng (số thể loại chung) trước; trong cùng nhóm thì điểm
+        // đánh giá cao hơn đứng trước.
+        var sharedGenres = result
+            .Select(movie => movie.Genres.Count(genre => current.Genres.Contains(genre)))
+            .ToList();
+
+        for (var index = 0; index < result.Count - 1; index++)
+        {
+            if (sharedGenres[index] > sharedGenres[index + 1]) continue;
+
+            Assert.True(result[index].Rating >= result[index + 1].Rating,
+                $"Phim tại vị trí {index} và {index + 1} không đúng thứ tự điểm đánh giá trong cùng nhóm tương đồng.");
+        }
     }
 
     private async Task<List<WebXemPhim.Shared.Models.MovieDto>> FilterAll(string sortBy)

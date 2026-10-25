@@ -258,7 +258,7 @@ public sealed class Milestone2AdversarialStressTests(TestApiFactory factory) : I
     }
 
     [Fact]
-    public async Task SlugRoute_VipUser_ReceivesUnmaskedStreams()
+    public async Task SlugRoute_VipUser_ReceivesMaskedStreamsUntilSigned()
     {
         using var client = factory.CreateClient();
         var email = $"m2-vip-user-{Guid.NewGuid():N}@example.com";
@@ -271,7 +271,8 @@ public sealed class Milestone2AdversarialStressTests(TestApiFactory factory) : I
         var allStreams = res.Data.Episodes.SelectMany(e => e.Streams).ToList();
         var vipStreams = allStreams.Where(s => s.ServerType == StreamServerType.VipFastServer).ToList();
         Assert.NotEmpty(vipStreams);
-        Assert.All(vipStreams, s => Assert.StartsWith("http", s.StreamUrl));
+        // Under CF-01, VIP streams require session lease and /api/stream/sign; not pre-signed without sid
+        Assert.All(vipStreams, s => Assert.Equal(string.Empty, s.StreamUrl));
     }
 
     [Fact]

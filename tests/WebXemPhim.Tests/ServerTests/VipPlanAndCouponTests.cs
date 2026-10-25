@@ -4,18 +4,22 @@ using WebXemPhim.Shared.Enums;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public sealed class VipPlanAndCouponTests
+public sealed class VipPlanAndCouponTests : IClassFixture<PostgresTestDatabaseFixture>
 {
-    private static DbContextOptions<AppDbContext> CreateInMemoryOptions() =>
-        new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase($"vip-coupon-tests-{Guid.NewGuid():N}")
-            .Options;
+    private readonly PostgresTestDatabaseFixture _fixture;
+
+    public VipPlanAndCouponTests(PostgresTestDatabaseFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    private PostgresTestDatabase Database => _fixture.Database;
 
     [Fact]
     public async Task SeedAsync_SeedsAllDefaultVipPlansAndCoupons()
     {
-        var options = CreateInMemoryOptions();
-        await using var context = new AppDbContext(options);
+        await Database.ResetAsync();
+        await using var context = Database.CreateContext();
 
         await DatabaseSeeder.SeedAsync(context);
 
@@ -48,8 +52,8 @@ public sealed class VipPlanAndCouponTests
     [Fact]
     public async Task SeedAsync_IsIdempotentAndDoesNotDuplicatePlansOrCoupons()
     {
-        var options = CreateInMemoryOptions();
-        await using var context = new AppDbContext(options);
+        await Database.ResetAsync();
+        await using var context = Database.CreateContext();
 
         await DatabaseSeeder.SeedAsync(context);
         await DatabaseSeeder.SeedAsync(context);
@@ -61,7 +65,8 @@ public sealed class VipPlanAndCouponTests
     [Fact]
     public async Task UserSettingsEntity_LanguageDefaultsToViAndPersists()
     {
-        var options = CreateInMemoryOptions();
+        await Database.ResetAsync();
+        var options = Database.CreateOptions();
         var userId = Guid.NewGuid();
 
         await using (var context = new AppDbContext(options))
@@ -104,61 +109,56 @@ public sealed class VipPlanAndCouponTests
     [Fact]
     public async Task CascadeDelete_WhenUserDeleted_RemovesDependentEntities()
     {
-        var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
+        var (connection, context, _) = await Database.CreateOpenContextAsync();
         var userId = Guid.NewGuid();
         const int movieId = 1;
 
         await using (connection)
+        await using (context)
         {
-            await using (var context = new AppDbContext(options))
+            await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
+            await DatabaseSeeder.SeedCatalogAsync(context);
+
+            var user = new UserEntity
             {
-                await context.Database.EnsureCreatedAsync();
-                await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
-                await DatabaseSeeder.SeedCatalogAsync(context);
-
-                var user = new UserEntity
-                {
-                    Id = userId,
-                    Email = "cascadetest@cinema.vn",
-                    FullName = "Cascade Tester",
-                    NormalizedEmail = "CASCADETEST@CINEMA.VN"
-                };
-                context.Users.Add(user);
-                context.UserLibrary.Add(new UserLibraryEntity { UserId = userId, MovieId = movieId, AddedAt = DateTime.UtcNow });
-                context.UserSettings.Add(new UserSettingsEntity { UserId = userId, Language = "vi", UpdatedAtUtc = DateTime.UtcNow });
-                context.WatchProgress.Add(new WatchProgressEntity
-                {
-                    UserId = userId,
-                    MovieId = movieId,
-                    ProgressSeconds = 120,
-                    DurationSeconds = 3600,
-                    LastWatchedAtUtc = DateTime.UtcNow
-                });
-                context.Notifications.Add(new NotificationEntity
-                {
-                    Id = Guid.NewGuid(),
-                    UserId = userId,
-                    Title = "Test",
-                    Copy = "Notification",
-                    CreatedAtUtc = DateTime.UtcNow
-                });
-
-                await context.SaveChangesAsync();
-            }
-
-            await using (var context = new AppDbContext(options))
+                Id = userId,
+                Email = "cascadetest@cinema.vn",
+                FullName = "Cascade Tester",
+                NormalizedEmail = "CASCADETEST@CINEMA.VN"
+            };
+            context.Users.Add(user);
+            context.UserLibrary.Add(new UserLibraryEntity { UserId = userId, MovieId = movieId, AddedAt = DateTime.UtcNow });
+            context.UserSettings.Add(new UserSettingsEntity { UserId = userId, Language = "vi", UpdatedAtUtc = DateTime.UtcNow });
+            context.WatchProgress.Add(new WatchProgressEntity
             {
-                var user = await context.Users.SingleAsync(u => u.Id == userId);
-                context.Users.Remove(user);
-                await context.SaveChangesAsync();
+                UserId = userId,
+                MovieId = movieId,
+                ProgressSeconds = 120,
+                DurationSeconds = 3600,
+                LastWatchedAtUtc = DateTime.UtcNow
+            });
+            context.Notifications.Add(new NotificationEntity
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                Title = "Test",
+                Copy = "Notification",
+                CreatedAtUtc = DateTime.UtcNow
+            });
 
-                Assert.Empty(await context.UserLibrary.Where(ul => ul.UserId == userId).ToListAsync());
-                Assert.Empty(await context.UserSettings.Where(us => us.UserId == userId).ToListAsync());
-                Assert.Empty(await context.WatchProgress.Where(wp => wp.UserId == userId).ToListAsync());
-                Assert.Empty(await context.Notifications.Where(n => n.UserId == userId).ToListAsync());
-            }
+            await context.SaveChangesAsync();
+        }
+
+        await using (var deleteContext = Database.CreateContext())
+        {
+            var user = await deleteContext.Users.SingleAsync(u => u.Id == userId);
+            deleteContext.Users.Remove(user);
+            await deleteContext.SaveChangesAsync();
+
+            Assert.Empty(await deleteContext.UserLibrary.Where(ul => ul.UserId == userId).ToListAsync());
+            Assert.Empty(await deleteContext.UserSettings.Where(us => us.UserId == userId).ToListAsync());
+            Assert.Empty(await deleteContext.WatchProgress.Where(wp => wp.UserId == userId).ToListAsync());
+            Assert.Empty(await deleteContext.Notifications.Where(n => n.UserId == userId).ToListAsync());
         }
     }
 }

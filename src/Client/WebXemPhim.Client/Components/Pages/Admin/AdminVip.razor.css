@@ -152,7 +152,7 @@
     border: 1px solid rgba(255, 255, 255, 0.15);
     display: grid;
     place-items: center;
-    font-size: 0.68rem;
+    font-size: 0.72rem;
     font-weight: 700;
     color: #e2e8f0;
     flex-shrink: 0;
@@ -530,4 +530,111 @@
     font-size: 0.85rem;
     line-height: 1.5;
     color: #e2e8f0;
+}
+
+/* =============================================================================
+   Admin VIP — light mode contrast fixes
+   The status pills and method badges below fail WCAG AA on a light background
+   (colours like #34d399 or #fbbf24 on a translucent pale background are only
+   about 2:1). These overrides darken the text and strengthen the border so the
+   label stays readable in light mode.
+   ============================================================================= */
+
+body[data-theme="light"] .status-pill.status-completed,
+[data-theme="light"] .status-pill.status-completed {
+    color: #047857;
+    background: rgba(16, 185, 129, 0.14);
+    border-color: rgba(4, 120, 87, 0.35);
+}
+
+body[data-theme="light"] .status-pill.status-pending,
+[data-theme="light"] .status-pill.status-pending {
+    color: #92400e;
+    background: rgba(245, 158, 11, 0.16);
+    border-color: rgba(146, 64, 14, 0.32);
+}
+
+body[data-theme="light"] .status-pill.status-failed,
+[data-theme="light"] .status-pill.status-failed {
+    color: #b91c1c;
+    background: rgba(248, 113, 113, 0.16);
+    border-color: rgba(185, 28, 28, 0.32);
+}
+
+body[data-theme="light"] .method-badge.vietqr,
+[data-theme="light"] .method-badge.vietqr {
+    color: #1d4ed8;
+    background: rgba(96, 165, 250, 0.16);
+    border-color: rgba(29, 78, 216, 0.3);
+}
+
+body[data-theme="light"] .method-badge.momo,
+[data-theme="light"] .method-badge.momo {
+    color: #be185d;
+    background: rgba(244, 114, 182, 0.16);
+    border-color: rgba(190, 24, 93, 0.3);
+}
+
+body[data-theme="light"] .method-badge.visa,
+[data-theme="light"] .method-badge.visa {
+    color: #a16207;
+    background: rgba(250, 204, 21, 0.2);
+    border-color: rgba(161, 98, 7, 0.32);
+}
+
+body[data-theme="light"] .btn-table-action.approve,
+[data-theme="light"] .btn-table-action.approve {
+    color: #047857;
+    border-color: rgba(4, 120, 87, 0.4);
+    background: rgba(16, 185, 129, 0.12);
+}
+
+body[data-theme="light"] .btn-table-action.approve:hover {
+    color: #ffffff;
+    background: #047857;
+}
+
+body[data-theme="light"] .btn-table-action.reject,
+[data-theme="light"] .btn-table-action.reject {
+    color: #b91c1c;
+    border-color: rgba(185, 28, 28, 0.4);
+    background: rgba(248, 113, 113, 0.12);
+}
+
+body[data-theme="light"] .btn-table-action.reject:hover {
+    color: #ffffff;
+    background: #b91c1c;
+}
+
+body[data-theme="light"] .badge-recommended,
+[data-theme="light"] .badge-recommended {
+    color: #92400e;
+    background: rgba(245, 158, 11, 0.16);
+    border-color: rgba(146, 64, 14, 0.3);
+}
+
+body[data-theme="light"] .badge-discount,
+[data-theme="light"] .badge-discount {
+    color: #b91c1c;
+    background: rgba(229, 9, 20, 0.12);
+    border-color: rgba(185, 28, 28, 0.3);
+}
+
+body[data-theme="light"] .plan-active-status,
+[data-theme="light"] .plan-active-status {
+    color: #334155;
+}
+
+body[data-theme="light"] .grant-summary-banner,
+[data-theme="light"] .grant-summary-banner {
+    color: #1e293b;
+    background: rgba(16, 185, 129, 0.12);
+    border-color: rgba(4, 120, 87, 0.28);
+}
+
+body[data-theme="light"] .kpi-icon-wrap.gold,
+body[data-theme="light"] .kpi-icon-wrap.green,
+body[data-theme="light"] .kpi-icon-wrap.amber,
+body[data-theme="light"] .kpi-icon-wrap.cyan {
+    background: rgba(15, 23, 42, 0.05);
 }

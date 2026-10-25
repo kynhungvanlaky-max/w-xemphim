@@ -14,9 +14,11 @@ services:
       - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development}
       - ASPNETCORE_URLS=http://+:8080
       - DOTNET_RUNNING_IN_CONTAINER=true
-      - Database__Provider=${DB_PROVIDER:-Sqlite}
-      - ConnectionStrings__Default=${DB_CONNECTION_STRING:-Data Source=/app/data/webxemphim.db}
-      - Database__SeedDemoData=${SEED_DEMO_DATA:-true}
+      - Database__Provider=${DB_PROVIDER:-PostgreSql}
+      - ConnectionStrings__Default=${DB_CONNECTION_STRING:-Host=postgres;Port=5432;Database=webxemphim;Username=webxemphim;Password=webxemphim}
+      # Demo seeding creates a well-known admin account (admin@cinemaflow.vn / Password123!).
+      # It is opt-in only; never enable it on a host reachable from the internet.
+      - Database__SeedDemoData=${SEED_DEMO_DATA:-false}
       - Security__AllowedOrigins__0=http://localhost:5229
       - Security__AllowedOrigins__1=http://127.0.0.1:5229
       - Security__AllowedOrigins__2=http://localhost:${CLIENT_PORT:-5229}
@@ -24,12 +26,23 @@ services:
       - Security__AllowedOrigins__4=http://webxemphim-client:8080
       - Security__DataProtectionKeyPath=/app/keys
       - Security__StreamSigningKey=${STREAM_SIGNING_KEY:-CinemaFlow_Secure_Stream_HMAC_Secret_Key_2026_AtLeast32Bytes!}
-      - Security__StreamTtlMinutes=${STREAM_TTL_MINUTES:-120}
+      - Security__StreamTtlMinutes=${STREAM_TTL_MINUTES:-10}
+      # The signed playback URL is opened by the BROWSER, so it has to point at a public host.
+      # Without it the API hands out the internal container host (server:8080) and the player
+      # fails to load the video.
+      - Security__PublicApiBaseUrl=${PUBLIC_API_BASE_URL:-http://localhost:${SERVER_PORT:-5085}}
       - Payment__WebhookSecret=${PAYMENT_WEBHOOK_SECRET:-CinemaFlow_Secure_Payment_Webhook_HMAC_SHA512_Secret_Key_2026_AtLeast32Bytes!}
+      - Security__KnownProxyNetworks__0=172.16.0.0/12
+      - Security__KnownProxyNetworks__1=10.0.0.0/8
+      - Security__KnownProxyNetworks__2=192.168.0.0/16
+      - Security__KnownProxyNetworks__3=127.0.0.1/8
       - AllowedHosts=*
     volumes:
       - server_data:/app/data
       - server_keys:/app/keys
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - cinemaflow-net
 
@@ -50,11 +63,39 @@ services:
       - DOTNET_RUNNING_IN_CONTAINER=true
       - ApiBaseUrl=http://server:8080
       - Security__DataProtectionKeyPath=/app/keys
+      - Security__KnownProxyNetworks__0=172.16.0.0/12
+      - Security__KnownProxyNetworks__1=10.0.0.0/8
+      - Security__KnownProxyNetworks__2=192.168.0.0/16
+      - Security__KnownProxyNetworks__3=127.0.0.1/8
       - AllowedHosts=*
     volumes:
       - client_keys:/app/keys
     depends_on:
       - server
+    networks:
+      - cinemaflow-net
+
+  # ==========================================
+  # PostgreSQL 17 (primary database engine)
+  # ==========================================
+  postgres:
+    container_name: webxemphim-postgres
+    image: postgres:17-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-webxemphim}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-webxemphim}
+      - POSTGRES_DB=${POSTGRES_DB:-webxemphim}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-webxemphim} -d ${POSTGRES_DB:-webxemphim}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     networks:
       - cinemaflow-net
 
@@ -68,7 +109,7 @@ services:
     profiles:
       - mysql
     ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
     environment:
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-cinemaflow_root_secret_2026}
       - MYSQL_DATABASE=${MYSQL_DATABASE:-webxemphim}
@@ -88,6 +129,8 @@ volumes:
   server_keys:
     driver: local
   client_keys:
+    driver: local
+  postgres_data:
     driver: local
   mysql_data:
     driver: local

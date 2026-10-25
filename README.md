@@ -17,7 +17,7 @@
 
 ### 🛡️ Phân Hệ Quản Trị Chuyên Sâu (Admin Workspace)
 - **Quản lý kho phim (`/admin/movies`)**: Bộ lọc 7 chiều (thể loại, định dạng, chất lượng 4K/FHD, cờ thịnh hành, năm, IMDb, tìm kiếm từ khóa).
-- **Quản lý tập phim (`/admin/episodes`)**: Quản lý đa tập, kiểm soát độ sẵn sàng của các máy chủ CDN luồng stream.
+- **Quản lý tập phim (`/admin/episodes`)**: Quản lý đa tập, tải lên ảnh nền tập tùy chỉnh, kiểm soát độ sẵn sàng của các máy chủ CDN luồng stream.
 - **Quản lý người dùng (`/admin/users`)**: Thống kê nhanh telemetry, phân loại hạng VIP, kiểm soát trạng thái khóa/mở tài khoản.
 - **Nhật ký kiểm toán (`/admin/audit-logs`)**: Ghi vết bảo mật và hoạt động điều hành hệ thống với thanh tỷ lệ phân bổ mini.
 
@@ -35,10 +35,11 @@ WebXemPhim/
 │   └── Shared/
 │       └── WebXemPhim.Shared/     # DTOs, Enums, Models & Tiện ích bảo mật dùng chung
 ├── database/
-│   └── mysql/                     # Scripts khởi tạo cấu trúc CSDL và dữ liệu mẫu MySQL
-├── docs/                          # Tài liệu kiến trúc bảo mật, deployment & mobile audit
+│   ├── postgresql/                # Script khởi tạo schema, hàm chuẩn hoá & FTS PostgreSQL 17
+│   └── mysql/                     # Scripts khởi tạo cấu trúc CSDL và dữ liệu mẫu MySQL (tùy chọn)
+├── docs/                          # Tài liệu kiến trúc bảo mật, deployment, PostgreSQL & stream delivery
 ├── tests/
-│   └── WebXemPhim.Tests/          # Bộ kiểm thử tự động toàn diện (570 tests PASS 100%)
+│   └── WebXemPhim.Tests/          # Bộ kiểm thử tự động toàn diện (1312 tests PASS 100%)
 └── WebXemPhim.slnx                # Solution file (.NET 10)
 ```
 
@@ -48,14 +49,21 @@ WebXemPhim/
 
 ### Yêu cầu tiên quyết
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- **PostgreSQL 17** (khuyến nghị chạy nhanh qua Docker Compose: `docker compose up -d postgres`)
 
 ### 1. Khởi chạy Server (Web API)
+Nếu mới clone dự án lần đầu, sao chép file cấu hình mẫu cho môi trường Development:
+```powershell
+copy src\Server\WebXemPhim.Server\appsettings.Development.example.json src\Server\WebXemPhim.Server\appsettings.Development.json
+copy src\Client\WebXemPhim.Client\appsettings.Development.example.json src\Client\WebXemPhim.Client\appsettings.Development.json
+```
+Khởi chạy Server:
 ```bash
 dotnet run --project src/Server/WebXemPhim.Server/WebXemPhim.Server.csproj --launch-profile http
 ```
 - API Endpoint: `http://localhost:5085`
 - Tài liệu OpenAPI: `http://localhost:5085/openapi/v1.json`
-- Mặc định môi trường Development sử dụng SQLite (`webxemphim.db`) và tự động nạp dữ liệu mẫu.
+- Mặc định môi trường Development sử dụng PostgreSQL (`localhost:5432`, database `webxemphim`) và tự động nạp dữ liệu mẫu.
 
 ### 2. Khởi chạy Client (Blazor App)
 ```bash
@@ -63,27 +71,29 @@ dotnet run --project src/Client/WebXemPhim.Client/WebXemPhim.Client.csproj --lau
 ```
 - Truy cập trình duyệt: `http://localhost:5229`
 
+*(Trên Windows có thể chạy nhanh cả Server và Client bằng script `run-app.bat` và dừng bằng `stop-app.bat`).*
+
 ---
 
-## 🧪 Kiểm Thử Tự Động (Unit Tests)
+## 🧪 Kiểm Thử Tự Động (Unit & Integration Tests)
 
-Dự án sở hữu bộ test tự động kiểm thử toàn diện cả Server API, Controller, Service logic, Security và Client:
+Dự án sở hữu bộ test tự động kiểm thử toàn diện cả Server API, Controller, Service logic, PostgreSQL Full-Text Search, Stream Security và Client:
 ```bash
-dotnet test
+dotnet test WebXemPhim.slnx
 ```
-*Trạng thái: 570 / 570 Testcases PASS 100% (0 Failed).*
+*Trạng thái: 1312 / 1312 Testcases PASS 100% (0 Failed).*
 
 ---
 
-## 🔑 Tài Khoản Thử Nghiệm
+## 🔑 Tài Khoản Thử Nghiệm (Development Seed)
 
-| Phân quyền | Tên đăng nhập | Mật khẩu |
+| Phân quyền | Email / Tên đăng nhập | Mật khẩu |
 | :--- | :--- | :--- |
-| **Quản trị viên (Admin)** | `admin` | `Admin@123456` |
-| **Hội viên VIP (Diamond)** | `vip_user` | `User@123456` |
-| **Người dùng thông thường** | `normal_user` | `User@123456` |
+| **Quản trị viên (Admin)** | `admin@cinemaflow.vn` (hoặc gõ `admin`) | `Password123!` |
+| **Hội viên VIP** | `vip@cinemaflow.vn` (hoặc `hoangnam@cinemaflow.vn`) | `Password123!` |
+| **Người dùng thông thường** | `thuylinh@cinemaflow.vn` (hoặc `longle@cinemaflow.vn`) | `Password123!` |
 
 ---
 
 ## 📄 Bản Quyền
-Dự án được phát triển và vận hành bởi [hoangky2405](https://gitlab.com/hoangky2405).
+Dự án được phát triển và vận hành tại [kynhungvanlaky-max/w-xemphim](https://github.com/kynhungvanlaky-max/w-xemphim).

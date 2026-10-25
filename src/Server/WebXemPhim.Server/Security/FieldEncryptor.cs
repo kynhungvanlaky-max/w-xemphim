@@ -46,10 +46,23 @@ public sealed class FieldEncryptor : IFieldEncryptor
         }
         catch (CryptographicException)
         {
+            // A value that still carries the Data Protection header was written by the
+            // encryptor but cannot be read with the current key ring (the ring was rotated
+            // or reset). Returning it verbatim would push raw ciphertext into the UI, so the
+            // value is dropped and the caller shows an empty state instead.
+            if (LooksEncrypted(ciphertext)) return null;
+
             // Fallback for legacy plaintext values in database
             return ciphertext;
         }
     }
+
+    /// <summary>
+    /// True when the value carries the ASP.NET Core Data Protection header, i.e. it was
+    /// produced by the encryptor and cannot be read with the current key ring.
+    /// </summary>
+    public static bool LooksEncrypted(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && value.StartsWith("CfDJ8", StringComparison.Ordinal);
 
     public string? ComputeLookupHash(string? value)
     {

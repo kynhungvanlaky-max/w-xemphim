@@ -1,12 +1,11 @@
-using System.Data.Common;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Moq;
+using Npgsql;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Server.Security;
 using WebXemPhim.Server.Services;
@@ -17,22 +16,34 @@ using Xunit;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public sealed class FieldEncryptionTests
+public sealed class FieldEncryptionTests : IClassFixture<PostgresTestDatabaseFixture>
 {
+    private readonly PostgresTestDatabaseFixture _fixture;
+
+    public FieldEncryptionTests(PostgresTestDatabaseFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    private PostgresTestDatabase Database => _fixture.Database;
+
     private static DbContextOptions<AppDbContext> CreateInMemoryOptions() =>
         new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase($"webxemphim-enc-tests-{Guid.NewGuid():N}")
             .Options;
 
-    private static (SqliteConnection connection, DbContextOptions<AppDbContext> options) CreateSqliteOptions()
+    private async Task<(NpgsqlConnection Connection, DbContextOptions<AppDbContext> Options)> CreatePostgresOptionsAsync()
     {
-        var connection = new SqliteConnection("DataSource=:memory:");
-        connection.Open();
+        var database = Database;
+        await database.ResetAsync();
+        var connection = new NpgsqlConnection(database.ConnectionString);
+        await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connection)
+            .UseNpgsql(connection)
             .Options;
-        using var context = new AppDbContext(options);
-        context.Database.EnsureCreated();
+        await using var context = new AppDbContext(options);
+        await context.Database.MigrateAsync();
+        await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
         return (connection, options);
     }
 
@@ -84,9 +95,9 @@ public sealed class FieldEncryptionTests
     }
 
     [Fact]
-    public async Task Database_StoredValuesAreEncryptedAtRest_InSqlite()
+    public async Task Database_StoredValuesAreEncryptedAtRest_InPostgreSql()
     {
-        var (connection, options) = CreateSqliteOptions();
+        var (connection, options) = await CreatePostgresOptionsAsync();
         await using (connection)
         {
             var userId = Guid.NewGuid();
@@ -115,7 +126,7 @@ public sealed class FieldEncryptionTests
             // 2. Query RAW database table directly via ADO.NET DbCommand
             await using (var command = connection.CreateCommand())
             {
-                command.CommandText = "SELECT Email, FullName, EmailLookupHash FROM users LIMIT 1;";
+                command.CommandText = "SELECT \"Email\", \"FullName\", \"EmailLookupHash\" FROM users LIMIT 1";
 
                 await using var reader = await command.ExecuteReaderAsync();
                 Assert.True(await reader.ReadAsync());
@@ -148,7 +159,7 @@ public sealed class FieldEncryptionTests
     [Fact]
     public async Task AuthService_RegistrationAndLogin_WorksWithEncryptedFieldsAndLookupHash()
     {
-        var (connection, options) = CreateSqliteOptions();
+        var (connection, options) = await CreatePostgresOptionsAsync();
         await using (connection)
         {
             var factoryMock = new Mock<IDbContextFactory<AppDbContext>>();
@@ -179,7 +190,7 @@ public sealed class FieldEncryptionTests
             // Verify in raw DB that values are encrypted
             await using (var command = connection.CreateCommand())
             {
-                command.CommandText = "SELECT Email, FullName, EmailLookupHash FROM users LIMIT 1;";
+                command.CommandText = "SELECT \"Email\", \"FullName\", \"EmailLookupHash\" FROM users LIMIT 1";
 
                 await using var reader = await command.ExecuteReaderAsync();
                 Assert.True(await reader.ReadAsync());
@@ -216,7 +227,7 @@ public sealed class FieldEncryptionTests
     [Fact]
     public async Task AuthService_UpdateProfile_ReEncryptsAndUpdatesTransparently()
     {
-        var (connection, options) = CreateSqliteOptions();
+        var (connection, options) = await CreatePostgresOptionsAsync();
         await using (connection)
         {
             var factoryMock = new Mock<IDbContextFactory<AppDbContext>>();
@@ -252,7 +263,7 @@ public sealed class FieldEncryptionTests
             // Verify RAW DB has updated ciphertext
             await using (var command = connection.CreateCommand())
             {
-                command.CommandText = "SELECT FullName FROM users LIMIT 1;";
+                command.CommandText = "SELECT \"FullName\" FROM users LIMIT 1";
                 var rawUpdatedName = (string)(await command.ExecuteScalarAsync())!;
                 Assert.NotEqual(updatedName, rawUpdatedName);
                 Assert.NotEqual("Initial Name", rawUpdatedName);

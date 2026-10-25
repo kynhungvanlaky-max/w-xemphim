@@ -8,28 +8,19 @@
 @inject NavigationManager Nav
 @inject AuthState Auth
 @inject IAdminApiClient AdminApi
+@inject IJSRuntime JS
 @implements IDisposable
 
-<PageTitle>Quản lý tập phim & Nguồn phát - CinemaFlow Admin</PageTitle>
+<PageTitle>Quản lý tập phim &amp; Nguồn phát - CinemaFlow Admin</PageTitle>
 
 <!-- Topbar -->
 <header class="admin-topbar">
     <div class="topbar-title-group">
         <h1 class="topbar-title">Studio Tập phim &amp; Nguồn Stream</h1>
-        <p class="topbar-subtitle">Cấu hình luồng đa máy chủ, kiểm tra kết nối CDN ping thời gian thực và sinh tự động hàng loạt tập</p>
+        <p class="topbar-subtitle">Cấu hình luồng đa máy chủ, kiểm tra kết nối CDN ping thời gian thực và quản lý tập phim theo từng tác phẩm</p>
     </div>
 
     <div class="topbar-actions">
-        <button type="button" class="btn-secondary-ghost" @onclick="OpenProbeModal" title="Đo độ trễ và kiểm tra đường dẫn luồng phát">
-            <CinemaIcon Name="CinemaIconName.TrendingUp" Size="15" />
-            <span>Kiểm tra luồng (Probe)</span>
-        </button>
-
-        <button type="button" class="btn-secondary-ghost" @onclick="OpenBatchModal" disabled="@(selectedMovieId <= 0)" title="Tạo tự động nhiều tập với URL template">
-            <CinemaIcon Name="CinemaIconName.Sparkles" Size="15" />
-            <span>Tạo hàng loạt (Batch)</span>
-        </button>
-
         <button type="button" class="btn-add-movie" @onclick="OpenAddEpisodeModal" disabled="@(selectedMovieId <= 0)">
             <CinemaIcon Name="CinemaIconName.Plus" Size="16" />
             <span>Thêm tập mới</span>
@@ -57,94 +48,230 @@
             <h2>Quản lý tập phim</h2>
         </div>
         <div class="episodes-movie-picker">
-            <span class="audit-filter-label" style="font-size: 0.8rem;">Đang chọn tác phẩm:</span>
-            <select value="@selectedMovieId" @onchange="OnMovieSelected" class="admin-select-picker" style="font-weight: 600;">
-                @foreach (var m in DisplayedMovies)
+            <span class="audit-filter-label" style="font-size: 0.8rem;">Tác phẩm đang quản lý</span>
+            <div class="movie-picker">
+                <button type="button"
+                        class="movie-picker-trigger @(showMoviePicker ? "is-open" : "")"
+                        aria-haspopup="true"
+                        aria-expanded="@(showMoviePicker ? "true" : "false")"
+                        title="Tìm và chọn tác phẩm cần quản lý tập phim"
+                        @onclick="ToggleMoviePicker">
+                    <CinemaIcon Name="CinemaIconName.Search" Size="14" Class="movie-picker-trigger-icon" />
+                    <span class="movie-picker-trigger-label">@(SelectedMovie?.Title ?? "Chọn tác phẩm")</span>
+                    @if (SelectedMovie is not null)
+                    {
+                        <span class="movie-picker-trigger-meta">@MovieTypeLabel(SelectedMovie.Type) · @SelectedMovie.ReleaseYear</span>
+                    }
+                    <CinemaIcon Name="CinemaIconName.ChevronDown" Size="13" Class="movie-picker-trigger-caret" />
+                </button>
+
+                @if (showMoviePicker)
                 {
-                    <option value="@m.Id">@m.Title (@(m.Type == MovieType.Movie ? "Phim lẻ" : m.Type == MovieType.Series ? "Phim bộ" : "Anime"))</option>
+                    <div class="filter-settings-backdrop" @onclick="CloseMoviePicker"></div>
+                    <div class="movie-picker-panel" role="group" aria-label="Tìm và chọn tác phẩm" @onkeydown="OnMoviePickerKeyDown">
+                        <div class="filter-search-box movie-picker-search">
+                            <CinemaIcon Name="CinemaIconName.Search" Size="14" Class="filter-search-icon" />
+                            <input @ref="moviePickerInput"
+                                   type="text"
+                                   placeholder="Nhập tên phim, tên gốc..."
+                                   aria-label="Tìm tác phẩm theo tên"
+                                   @bind="moviePickerQuery"
+                                   @bind:event="oninput"
+                                   @onkeydown="OnMoviePickerInputKeyDown" />
+                            @if (!string.IsNullOrEmpty(moviePickerQuery))
+                            {
+                                <button type="button" class="filter-search-clear" title="Xóa từ khóa" aria-label="Xóa từ khóa" @onclick="ClearMoviePickerQuery">&times;</button>
+                            }
+                        </div>
+
+                        <div class="movie-picker-scope" role="group" aria-label="Lọc nhanh theo định dạng">
+                            <button type="button" class="movie-picker-scope-btn @(moviePickerType is null ? "active" : "")" @onclick="() => SetMoviePickerType(null)">
+                                Tất cả (@allMoviesList.Count)
+                            </button>
+                            <button type="button" class="movie-picker-scope-btn @(moviePickerType == MovieType.Series ? "active" : "")" @onclick="() => SetMoviePickerType(MovieType.Series)">
+                                Phim bộ (@allMoviesList.Count(m => m.Type == MovieType.Series))
+                            </button>
+                            <button type="button" class="movie-picker-scope-btn @(moviePickerType == MovieType.Anime ? "active" : "")" @onclick="() => SetMoviePickerType(MovieType.Anime)">
+                                Anime (@allMoviesList.Count(m => m.Type == MovieType.Anime))
+                            </button>
+                            <button type="button" class="movie-picker-scope-btn @(moviePickerType == MovieType.Movie ? "active" : "")" @onclick="() => SetMoviePickerType(MovieType.Movie)">
+                                Phim lẻ (@allMoviesList.Count(m => m.Type == MovieType.Movie))
+                            </button>
+                        </div>
+
+                        <div class="movie-picker-results">
+                            @if (PickerResults.Count == 0)
+                            {
+                                <p class="movie-picker-empty">Không tìm thấy tác phẩm phù hợp.</p>
+                            }
+                            else
+                            {
+                                @foreach (var m in PickerResults)
+                                {
+                                    <button type="button"
+                                            class="movie-picker-item @(m.Id == selectedMovieId ? "is-current" : "")"
+                                            @onclick="() => SelectMovieFromPicker(m.Id)">
+                                        <span class="movie-picker-item-title">@m.Title</span>
+                                        <span class="movie-picker-item-meta">@MovieTypeLabel(m.Type) · @m.ReleaseYear · @m.TotalEpisodes tập</span>
+                                    </button>
+                                }
+                            }
+                        </div>
+
+                        <p class="movie-picker-hint">Gõ để tìm nhanh · Enter chọn kết quả đầu tiên · Esc để đóng</p>
+                    </div>
                 }
-            </select>
+            </div>
         </div>
     </div>
 
     <!-- Multi-Dimensional Filter Suite for Episodes -->
     <div class="cockpit-filter-suite">
-        <!-- Row 1: Movie Type Quick Selector & Count -->
+        <!-- Row 1: Count summary + filter customiser -->
         <div class="filter-suite-top">
-            <div class="status-tabs-row" style="margin-bottom: 0;">
-                <button type="button" class="status-tab-btn @(movieTypeFilter == null ? "active" : "")" @onclick="() => FilterMovieType(null)">
-                    Tất cả phim (@allMoviesList.Count)
-                </button>
-                <button type="button" class="status-tab-btn @(movieTypeFilter == MovieType.Series ? "active" : "")" @onclick="() => FilterMovieType(MovieType.Series)">
-                    <span class="status-dot blue"></span> Phim bộ (@allMoviesList.Count(m => m.Type == MovieType.Series))
-                </button>
-                <button type="button" class="status-tab-btn @(movieTypeFilter == MovieType.Anime ? "active" : "")" @onclick="() => FilterMovieType(MovieType.Anime)">
-                    <span class="status-dot purple"></span> Anime (@allMoviesList.Count(m => m.Type == MovieType.Anime))
-                </button>
-                <button type="button" class="status-tab-btn @(movieTypeFilter == MovieType.Movie ? "active" : "")" @onclick="() => FilterMovieType(MovieType.Movie)">
-                    <span class="status-dot green"></span> Phim lẻ (@allMoviesList.Count(m => m.Type == MovieType.Movie))
-                </button>
-            </div>
-
             <div class="filter-count-chip">
                 <span>Hiển thị: <strong>@filteredEpisodes.Count</strong> / @episodesList.Count tập phim</span>
             </div>
-        </div>
 
-        <!-- Row 2: Detailed Filter Controls Grid -->
-        <div class="filter-controls-grid">
-            <div class="filter-control-item" style="grid-column: span 2; min-width: 200px;">
-                <label class="filter-label">Tìm kiếm tập</label>
-                <div class="filter-search-input-wrap">
-                    <input type="text" class="admin-select-picker" style="cursor: text;"
-                           placeholder="Nhập số tập (VD: 1, #05) hoặc tiêu đề tập..."
-                           value="@episodeSearchQuery"
-                           @oninput="OnEpisodeSearchInput" />
+            <div class="filter-suite-tools">
+                <div class="filter-settings-anchor">
+                    <button type="button"
+                            class="btn-filter-util @(showFilterSettings ? "is-active" : "")"
+                            aria-haspopup="true"
+                            aria-expanded="@(showFilterSettings ? "true" : "false")"
+                            title="Chọn bộ lọc muốn hiển thị"
+                            @onclick="ToggleFilterSettings">
+                        <CinemaIcon Name="CinemaIconName.Settings" Size="13" />
+                        <span>Bộ lọc</span>
+                        @if (hiddenFilters.Count > 0 && hiddenFilters.Count < FilterOptions.Length)
+                        {
+                            <span class="filter-util-badge" title="@($"{hiddenFilters.Count} bộ lọc đang ẩn")">@hiddenFilters.Count</span>
+                        }
+                    </button>
+
+                    @if (showFilterSettings)
+                    {
+                        <div class="filter-settings-backdrop" @onclick="CloseFilterSettings"></div>
+                        <div class="filter-settings-panel" role="group" aria-label="Tùy chỉnh bộ lọc hiển thị" @onkeydown="OnFilterSettingsKeyDown">
+                            <div class="filter-settings-head">
+                                <strong>Hiển thị bộ lọc</strong>
+                                <button type="button" class="btn-filter-util-reset" disabled="@(hiddenFilters.Count == 0)" @onclick="ShowAllFiltersAsync">
+                                    Hiện tất cả
+                                </button>
+                            </div>
+                            <p class="filter-settings-hint">Bỏ tick để ẩn bộ lọc không dùng. Giá trị đang chọn của bộ lọc bị ẩn sẽ được xóa để danh sách không bị lọc ngầm.</p>
+                            <div class="filter-settings-list">
+                                @foreach (var option in FilterOptions)
+                                {
+                                    <label class="filter-settings-item">
+                                        <input type="checkbox"
+                                               checked="@(!hiddenFilters.Contains(option.Key))"
+                                               @onclick="() => SetFilterVisibility(option.Key, hiddenFilters.Contains(option.Key))" />
+                                        <span>@option.Label</span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    }
                 </div>
-            </div>
 
-            <div class="filter-control-item">
-                <label class="filter-label">Khoảng số tập</label>
-                <select class="admin-select-picker" value="@selectedEpRange" @onchange="OnEpRangeChanged">
-                    <option value="">Tất cả các tập</option>
-                    <option value="1-10">Tập 1 – 10</option>
-                    <option value="11-25">Tập 11 – 25</option>
-                    <option value="26-50">Tập 26 – 50</option>
-                    <option value="51+">Từ tập 51 trở lên</option>
-                </select>
-            </div>
-
-            <div class="filter-control-item">
-                <label class="filter-label">Trạng thái luồng CDN</label>
-                <select class="admin-select-picker" value="@selectedStreamStatus" @onchange="OnStreamStatusChanged">
-                    <option value="">Tất cả trạng thái</option>
-                    <option value="has_streams">✓ Đã có luồng phát</option>
-                    <option value="no_streams">⚠ Chưa có luồng phát</option>
-                    <option value="has_vip">👑 Có nguồn VIP FastServer</option>
-                </select>
-            </div>
-
-            <div class="filter-control-item">
-                <label class="filter-label">Thời lượng tập</label>
-                <select class="admin-select-picker" value="@selectedDurationFilter" @onchange="OnDurationFilterChanged">
-                    <option value="">Mọi thời lượng</option>
-                    <option value="short">Dưới 25 phút (Anime / Ngắn)</option>
-                    <option value="medium">25 – 50 phút (Tiêu chuẩn)</option>
-                    <option value="long">Trên 50 phút (Dài / Đặc biệt)</option>
-                </select>
-            </div>
-
-            <div class="filter-control-item">
-                <label class="filter-label">Sắp xếp theo</label>
-                <select class="admin-select-picker" value="@selectedEpSort" @onchange="OnEpSortChanged">
-                    <option value="ep_asc">Số tập tăng dần (#01 → #99)</option>
-                    <option value="ep_desc">Số tập giảm dần (#99 → #01)</option>
-                    <option value="duration_desc">Thời lượng dài nhất</option>
-                    <option value="duration_asc">Thời lượng ngắn nhất</option>
-                    <option value="title_asc">Tiêu đề tập (A → Z)</option>
-                </select>
+                <button type="button"
+                        class="btn-filter-util"
+                        title="@(filtersCollapsed ? "Mở rộng khối bộ lọc" : "Thu gọn khối bộ lọc")"
+                        aria-expanded="@(filtersCollapsed ? "false" : "true")"
+                        @onclick="ToggleFilterCollapse">
+                    <CinemaIcon Name="@(filtersCollapsed ? CinemaIconName.ChevronRight : CinemaIconName.ChevronDown)" Size="13" />
+                    <span>@(filtersCollapsed ? "Mở rộng" : "Thu gọn")</span>
+                </button>
             </div>
         </div>
+
+        <!-- Row 2: Detailed Filter Controls Grid (từng ô có thể bật/tắt) -->
+        @if (!filtersCollapsed)
+        {
+            <div class="filter-controls-grid">
+                @if (hiddenFilters.Count == FilterOptions.Length)
+                {
+                    <p class="filter-all-hidden-note">
+                        Chưa bật ô lọc nào. Mở <strong>Bộ lọc</strong> và tick những ô bạn cần dùng.
+                    </p>
+                }
+
+                @if (!hiddenFilters.Contains("search"))
+                {
+                    <div class="filter-control-item filter-control-search">
+                        <label class="filter-label" for="episode-search">Tìm kiếm tập</label>
+                        <div class="filter-search-box">
+                            <CinemaIcon Name="CinemaIconName.Search" Size="14" Class="filter-search-icon" />
+                            <input id="episode-search"
+                                   type="text"
+                                   placeholder="Nhập số tập (VD: 1, #05) hoặc tiêu đề tập..."
+                                   @bind="episodeSearchQuery"
+                                   @bind:event="oninput"
+                                   @bind:after="ApplyEpisodeFilters" />
+                            @if (!string.IsNullOrEmpty(episodeSearchQuery))
+                            {
+                                <button type="button" class="filter-search-clear" title="Xóa từ khóa tìm kiếm" aria-label="Xóa từ khóa tìm kiếm" @onclick="ClearEpisodeSearchQuery">&times;</button>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("range"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Khoảng số tập</label>
+                        <select class="admin-select-picker" value="@selectedEpRange" @onchange="OnEpRangeChanged">
+                            <option value="">Tất cả các tập</option>
+                            <option value="1-10">Tập 1 – 10</option>
+                            <option value="11-25">Tập 11 – 25</option>
+                            <option value="26-50">Tập 26 – 50</option>
+                            <option value="51+">Từ tập 51 trở lên</option>
+                        </select>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("streams"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Trạng thái luồng CDN</label>
+                        <select class="admin-select-picker" value="@selectedStreamStatus" @onchange="OnStreamStatusChanged">
+                            <option value="">Tất cả trạng thái</option>
+                            <option value="has_streams">✓ Đã có luồng phát</option>
+                            <option value="no_streams">⚠ Chưa có luồng phát</option>
+                            <option value="has_vip">👑 Có nguồn VIP FastServer</option>
+                        </select>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("duration"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Thời lượng tập</label>
+                        <select class="admin-select-picker" value="@selectedDurationFilter" @onchange="OnDurationFilterChanged">
+                            <option value="">Mọi thời lượng</option>
+                            <option value="short">Dưới 25 phút (Anime / Ngắn)</option>
+                            <option value="medium">25 – 50 phút (Tiêu chuẩn)</option>
+                            <option value="long">Trên 50 phút (Dài / Đặc biệt)</option>
+                        </select>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("sort"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Sắp xếp theo</label>
+                        <select class="admin-select-picker" value="@selectedEpSort" @onchange="OnEpSortChanged">
+                            <option value="ep_asc">Số tập tăng dần (#01 → #99)</option>
+                            <option value="ep_desc">Số tập giảm dần (#99 → #01)</option>
+                            <option value="duration_desc">Thời lượng dài nhất</option>
+                            <option value="duration_asc">Thời lượng ngắn nhất</option>
+                            <option value="title_asc">Tiêu đề tập (A → Z)</option>
+                        </select>
+                    </div>
+                }
+            </div>
+        }
 
         <!-- Row 3: Active Filters Strip & Clear All -->
         @if (HasActiveEpisodeFilters)
@@ -202,7 +329,7 @@
         else if (episodesList.Count == 0)
         {
             <div class="admin-table-state-msg" style="padding: 3rem 1.5rem;">
-                Phim này hiện chưa có tập phim nào. Bấm <strong>"+ Thêm tập mới"</strong> hoặc <strong>"Tạo hàng loạt"</strong> để thiết lập nguồn phát đầu tiên.
+                Phim này hiện chưa có tập phim nào. Bấm <strong>"+ Thêm tập mới"</strong> để thiết lập nguồn phát đầu tiên.
             </div>
         }
         else if (filteredEpisodes.Count == 0)
@@ -216,11 +343,12 @@
             <table class="admin-movies-table">
                 <thead>
                     <tr>
-                        <th style="width: 80px;">Tập</th>
+                        <th style="width: 70px;">Tập</th>
+                        <th style="width: 80px;">Ảnh nền</th>
                         <th>Tiêu đề tập</th>
                         <th>Thời lượng</th>
                         <th>Máy chủ phát</th>
-                        <th style="text-align: right;">Thao tác</th>
+                        <th style="text-align: right; width: 140px;">Thao tác</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -229,6 +357,18 @@
                         var streamCount = ep.StreamSources?.Count ?? 0;
                         <tr>
                             <td><strong class="font-mono-num">#@ep.EpisodeNumber.ToString("00")</strong></td>
+                            <td>
+                                <div class="ep-table-thumb-frame" @onclick="() => OpenThumbnailModal(ep)" title="Bấm để đổi ảnh nền tập #@ep.EpisodeNumber">
+                                    @if (!string.IsNullOrEmpty(ep.ThumbnailUrl))
+                                    {
+                                        <img src="@ep.ThumbnailUrl" alt="Tập @ep.EpisodeNumber" loading="lazy" />
+                                    }
+                                    else
+                                    {
+                                        <span class="ep-thumb-empty">#@ep.EpisodeNumber</span>
+                                    }
+                                </div>
+                            </td>
                             <td>
                                 <div style="display: flex; flex-direction: column;">
                                     <strong>@ep.Title</strong>
@@ -251,7 +391,13 @@
                             </td>
                             <td style="text-align: right;">
                                 <div class="row-actions" style="justify-content: flex-end;">
-                                    <button type="button" class="btn-action-icon" title="Cấu hình nguồn phát máy chủ" @onclick="() => OpenStreamsManager(ep)">
+                                    <button type="button" class="btn-action-icon" title="Đổi ảnh nền tập này" @onclick="() => OpenThumbnailModal(ep)">
+                                        <CinemaIcon Name="CinemaIconName.Image" Size="13" />
+                                    </button>
+                                    <button type="button" class="btn-action-icon" title="Chỉnh sửa thông tin tập" @onclick="() => OpenEditEpisodeModal(ep)">
+                                        <CinemaIcon Name="CinemaIconName.Edit" Size="13" />
+                                    </button>
+                                    <button type="button" class="btn-action-icon" title="Cấu hình nguồn phát máy chủ &amp; chất lượng" @onclick="() => OpenStreamsManager(ep)">
                                         <CinemaIcon Name="CinemaIconName.Settings" Size="13" />
                                     </button>
                                     <button type="button" class="btn-action-icon" style="color: #ef4444;" title="Xóa tập phim" @onclick="() => DeleteEpisode(ep.Id)">
@@ -272,13 +418,13 @@
     </div>
 </section>
 
-<!-- MODAL THÊM TẬP PHIM ĐƠN LẺ -->
+<!-- MODAL THÊM HOẶC CHỈNH SỬA TẬP PHIM -->
 @if (showEpisodeModal)
 {
     <div class="admin-modal-backdrop" @onclick="CloseEpisodeModal">
         <div class="admin-modal-card" style="max-width: 600px;" role="dialog" aria-modal="true" @onclick:stopPropagation>
             <div class="admin-modal-header">
-                <h3>Thêm tập phim mới</h3>
+                <h3>@(editingEpisodeId.HasValue ? $"Chỉnh sửa tập #{episodeModel.EpisodeNumber}" : "Thêm tập phim mới")</h3>
                 <button type="button" class="btn-close-modal" @onclick="CloseEpisodeModal">&times;</button>
             </div>
 
@@ -299,94 +445,121 @@
                     <input type="text" @bind="episodeModel.Title" placeholder="Ví dụ: Tập 01: Khởi đầu mới" />
                 </div>
 
-                <div class="form-row-2">
-                    <div class="admin-form-group">
-                        <label>Tên máy chủ phát (Server)</label>
-                        <input type="text" @bind="episodeModel.ServerName" placeholder="VIP FastServer 1 (Hà Nội)" />
-                    </div>
-                    <div class="admin-form-group">
-                        <label>Chất lượng</label>
-                        <select @bind="episodeModel.Quality">
-                            <option value="1080p FHD">1080p FHD</option>
-                            <option value="4K UHD">4K UHD</option>
-                            <option value="720p HD">720p HD</option>
-                        </select>
-                    </div>
+                <div class="admin-form-group">
+                    <label>Tóm tắt nội dung tập</label>
+                    <textarea rows="2" @bind="episodeModel.Overview" class="admin-select-picker" style="cursor: text; resize: vertical;" placeholder="Tóm tắt ngắn gọn nội dung tập..."></textarea>
                 </div>
 
-                <div class="admin-form-group">
-                    <label>URL luồng Stream (HLS .m3u8 hoặc file .mp4) *</label>
-                    <input type="text" @bind="episodeModel.StreamUrl" placeholder="https://domain.com/video/master.m3u8" />
-                </div>
+                @if (!editingEpisodeId.HasValue)
+                {
+                    <div class="admin-section-divider" style="margin: 1rem 0;"></div>
+                    <h4 style="font-size: 0.85rem; margin-bottom: 0.5rem; color: rgba(255,255,255,0.7);">Khởi tạo luồng phát ban đầu</h4>
+
+                    <div class="form-row-2">
+                        <div class="admin-form-group">
+                            <label>Tên máy chủ phát (Server)</label>
+                            <input type="text" @bind="episodeModel.ServerName" placeholder="VIP FastServer 1 (Hà Nội)" />
+                        </div>
+                        <div class="admin-form-group">
+                            <label>Chất lượng</label>
+                            <select @bind="episodeModel.Quality">
+                                <option value="1080p FHD">1080p FHD</option>
+                                <option value="4K UHD">4K UHD</option>
+                                <option value="720p HD">720p HD</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="admin-form-group">
+                        <label>URL luồng Stream (HLS .m3u8 hoặc file .mp4) *</label>
+                        <input type="text" @bind="episodeModel.StreamUrl" placeholder="https://domain.com/video/master.m3u8" />
+                    </div>
+                }
             </div>
 
             <div class="admin-modal-footer">
                 <button type="button" class="btn-secondary-ghost" @onclick="CloseEpisodeModal">Hủy</button>
                 <button type="button" class="btn-primary-action" @onclick="SaveEpisode" disabled="@isSavingEpisode">
-                    @(isSavingEpisode ? "Đang thêm..." : "Thêm tập phim")
+                    @(isSavingEpisode ? "Đang lưu..." : editingEpisodeId.HasValue ? "Lưu thay đổi tập" : "Thêm tập phim")
                 </button>
             </div>
         </div>
     </div>
 }
 
-<!-- MODAL TẠO TẬP HÀNG LOẠT (BATCH GENERATOR) -->
-@if (showBatchModal)
+<!-- MODAL QUẢN LÝ ẢNH NỀN TẬP PHIM -->
+@if (showThumbnailModal && thumbEpisode != null)
 {
-    <div class="admin-modal-backdrop" @onclick="CloseBatchModal">
-        <div class="admin-modal-card" style="max-width: 620px;" role="dialog" aria-modal="true" @onclick:stopPropagation>
+    <div class="admin-modal-backdrop" @onclick="CloseThumbnailModal">
+        <div class="admin-modal-card" style="max-width: 580px;" role="dialog" aria-modal="true" @onclick:stopPropagation>
             <div class="admin-modal-header">
-                <h3>Tạo tập phim hàng loạt (Batch Generator)</h3>
-                <button type="button" class="btn-close-modal" @onclick="CloseBatchModal">&times;</button>
+                <div>
+                    <h3>Đổi ảnh nền: Tập @thumbEpisode.EpisodeNumber.ToString("00")</h3>
+                    <p style="font-size: 0.78rem; color: rgba(255,255,255,0.5); margin: 0.2rem 0 0;">
+                        Tập @thumbEpisode.EpisodeNumber - @thumbEpisode.Title
+                    </p>
+                </div>
+                <button type="button" class="btn-close-modal" @onclick="CloseThumbnailModal">&times;</button>
             </div>
 
             <div class="admin-modal-body">
-                <p style="font-size: 0.85rem; color: rgba(255,255,255,0.6); margin-bottom: 1rem;">
-                    Hệ thống sẽ thay thế biến <code>{n}</code> trong mẫu tiêu đề và mẫu URL thành số tập tương ứng từ tập bắt đầu đến kết thúc.
-                </p>
-
-                <div class="form-row-2">
-                    <div class="admin-form-group">
-                        <label>Tập bắt đầu</label>
-                        <input type="number" @bind="batchModel.StartEpisode" min="1" max="1000" />
+                @if (!string.IsNullOrEmpty(thumbModalAlert))
+                {
+                    <div class="form-alert success" style="margin-bottom: 1rem;" role="status">
+                        @thumbModalAlert
                     </div>
-                    <div class="admin-form-group">
-                        <label>Tập kết thúc</label>
-                        <input type="number" @bind="batchModel.EndEpisode" min="1" max="1000" />
+                }
+                @if (!string.IsNullOrEmpty(thumbModalError))
+                {
+                    <div class="form-alert error" style="margin-bottom: 1rem;" role="alert">
+                        @thumbModalError
+                    </div>
+                }
+
+                <div class="thumb-preview-box">
+                    <span class="thumb-preview-label">Ảnh nền hiện tại:</span>
+                    <div class="thumb-preview-canvas">
+                        @if (!string.IsNullOrEmpty(thumbPreviewUrl))
+                        {
+                            <img src="@thumbPreviewUrl" alt="Xem trước ảnh nền mới" />
+                        }
+                        else if (!string.IsNullOrEmpty(thumbEpisode.ThumbnailUrl))
+                        {
+                            <img src="@thumbEpisode.ThumbnailUrl" alt="Ảnh nền tập @thumbEpisode.EpisodeNumber" />
+                        }
+                        else
+                        {
+                            <div class="thumb-preview-empty">Chưa có ảnh nền</div>
+                        }
+                    </div>
+
+                    <div style="margin-top: 0.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+                        @if (isCustomThumbnail)
+                        {
+                            <span class="server-type-badge vip" style="font-size: 0.72rem;">Ảnh tải lên tùy chỉnh</span>
+                            <button type="button" class="btn-secondary-ghost" style="font-size: 0.75rem; padding: 4px 10px;" @onclick="ResetThumbnailToDefault" disabled="@isUploadingThumbnail">
+                                Khôi phục ảnh mặc định
+                            </button>
+                        }
+                        else
+                        {
+                            <small style="color: rgba(255,255,255,0.45); font-size: 0.75rem;">
+                                Đang dùng ảnh sinh tự động. Tải ảnh lên bên dưới để áp dụng ảnh riêng cho tập này.
+                            </small>
+                        }
                     </div>
                 </div>
 
-                <div class="form-row-2">
-                    <div class="admin-form-group">
-                        <label>Thời lượng mỗi tập (phút)</label>
-                        <input type="number" @bind="batchModel.DurationMinutes" min="1" />
-                    </div>
-                    <div class="admin-form-group">
-                        <label>Chất lượng</label>
-                        <input type="text" @bind="batchModel.Quality" />
-                    </div>
-                </div>
-
-                <div class="admin-form-group">
-                    <label>Mẫu tiêu đề (Dùng {n})</label>
-                    <input type="text" @bind="batchModel.TitlePattern" placeholder="Tập {n}" />
-                </div>
-
-                <div class="admin-form-group">
-                    <label>Tên máy chủ</label>
-                    <input type="text" @bind="batchModel.ServerName" placeholder="VIP FastServer 1" />
-                </div>
-
-                <div class="admin-form-group">
-                    <label>Mẫu URL luồng Stream (Dùng {n}) *</label>
-                    <input type="text" @bind="batchModel.StreamUrlPattern" placeholder="https://cdn.example.com/movie-slug/ep_{n}.mp4" />
+                <div class="admin-form-group" style="margin-top: 1.25rem;">
+                    <label>Tải lên ảnh mới (JPG, PNG, WEBP, GIF, AVIF - Tối đa 5 MB):</label>
+                    <InputFile OnChange="OnThumbnailFileSelected" class="admin-file-picker" accept=".jpg,.jpeg,.png,.webp,.gif,.avif" />
                 </div>
             </div>
 
             <div class="admin-modal-footer">
-                <button type="button" class="btn-secondary-ghost" @onclick="CloseBatchModal">Hủy</button>
-                <button type="button" class="btn-primary-action" @onclick="SubmitBatchGenerate" disabled="@isSubmittingBatch">
-                    @(isSubmittingBatch ? "Đang xử lý..." : "Khởi tạo hàng loạt")
+                <button type="button" class="btn-secondary-ghost" @onclick="CloseThumbnailModal">Đóng</button>
+                <button type="button" class="btn-primary-action" @onclick="SubmitThumbnailUpload" disabled="@(selectedThumbnailFile == null || isUploadingThumbnail)">
+                    @(isUploadingThumbnail ? "Đang tải lên..." : "Lưu ảnh nền mới")
                 </button>
             </div>
         </div>
@@ -465,109 +638,193 @@
 @if (managingEpisode != null)
 {
     <div class="admin-modal-backdrop" @onclick="CloseStreamsManager">
-        <div class="admin-modal-card" style="max-width: 720px;" role="dialog" aria-modal="true" @onclick:stopPropagation>
+        <div class="admin-modal-card streams-modal-card" role="dialog" aria-modal="true" aria-labelledby="streams-modal-title" @onclick:stopPropagation>
             <div class="admin-modal-header">
-                <h3>Các máy chủ phát: Tập @managingEpisode.EpisodeNumber (@managingEpisode.Title)</h3>
+                <div style="min-width: 0;">
+                    <h3 id="streams-modal-title">Luồng phát · Tập @managingEpisode.EpisodeNumber</h3>
+                    <p class="streams-modal-sub" title="@managingEpisode.Title">@managingEpisode.Title</p>
+                </div>
                 <button type="button" class="btn-close-modal" @onclick="CloseStreamsManager">&times;</button>
             </div>
 
             <div class="admin-modal-body">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 0.5rem;">
-                    <span style="font-size: 0.85rem; color: rgba(255,255,255,0.7); font-weight: 600;">Danh sách máy chủ phát (@currentStreamsList.Count nguồn)</span>
-                    @if (currentStreamsList.Count > 0)
-                    {
-                        <button type="button" class="btn-batch-probe" @onclick="ProbeAllStreams" disabled="@isBatchProbing">
-                            <CinemaIcon Name="CinemaIconName.TrendingUp" Size="13" />
-                            <span>@(isBatchProbing ? "Đang đo kiểm toàn bộ..." : "Kiểm tra toàn bộ (Ping All)")</span>
+                @if (!string.IsNullOrEmpty(streamActionAlert))
+                {
+                    <div class="form-alert success" role="status">
+                        @streamActionAlert
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(streamActionError))
+                {
+                    <div class="form-alert error" role="alert">
+                        @streamActionError
+                    </div>
+                }
+
+                <div class="streams-toolbar">
+                    <span class="streams-toolbar-count">
+                        <strong>@currentStreamsList.Count</strong> luồng · <strong>@UniqueServerNames.Count</strong> máy chủ
+                    </span>
+                    <div class="streams-toolbar-actions">
+                        @if (currentStreamsList.Count > 0)
+                        {
+                            <button type="button" class="btn-stream-tool" @onclick="ProbeAllStreams" disabled="@isBatchProbing" title="Đo độ trễ toàn bộ luồng phát">
+                                <CinemaIcon Name="CinemaIconName.TrendingUp" Size="13" />
+                                <span>@(isBatchProbing ? "Đang đo..." : "Ping tất cả")</span>
+                            </button>
+                        }
+                        <button type="button" class="btn-stream-tool is-primary" @onclick="ToggleStreamForm" title="Mở form thêm nguồn phát mới">
+                            <CinemaIcon Name="CinemaIconName.Plus" Size="13" />
+                            <span>Nguồn phát</span>
                         </button>
-                    }
+                    </div>
                 </div>
 
-                <table class="stream-sources-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 50px;">Vị trí</th>
-                            <th>Tên máy chủ</th>
-                            <th>Chất lượng</th>
-                            <th>Đường dẫn</th>
-                            <th style="width: 100px; text-align: center;">Trạng thái</th>
-                            <th style="text-align: right;">Thao tác</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @if (currentStreamsList.Count == 0)
+                @if (currentStreamsList.Count == 0)
+                {
+                    <p class="streams-empty">Chưa có nguồn phát nào. Bấm <strong>Nguồn phát</strong> để thêm luồng đầu tiên.</p>
+                }
+                else
+                {
+                    <div class="streams-list">
+                        <div class="streams-head-row">
+                            <span>#</span>
+                            <span>Chất lượng</span>
+                            <span>Đường dẫn</span>
+                            <span>Ping</span>
+                            <span></span>
+                        </div>
+
+                        @foreach (var serverGroup in currentStreamsList.GroupBy(s => s.ServerName))
                         {
-                            <tr>
-                                <td colspan="6" style="text-align: center; color: rgba(255,255,255,0.4); padding: 1.5rem;">
-                                    Chưa có nguồn máy chủ nào. Vui lòng thêm nguồn bên dưới.
-                                </td>
-                            </tr>
+                            var sName = serverGroup.Key;
+                            var sType = serverGroup.First().ServerType;
+                            <div class="stream-server-group">
+                                <div class="stream-server-head">
+                                    <span class="server-type-badge @(sType == StreamServerType.VipFastServer ? "vip" : sType == StreamServerType.HydraCdn ? "cdn" : "backup")">
+                                        @(sType == StreamServerType.VipFastServer ? "VIP" : sType == StreamServerType.HydraCdn ? "CDN" : "Dự phòng")
+                                    </span>
+                                    <strong class="stream-server-name" title="@sName">@sName</strong>
+                                    <span class="stream-server-count">@serverGroup.Count() luồng</span>
+                                    <button type="button" class="btn-add-quality-pill" @onclick="() => QuickAddQualityForServer(sName, sType)" title="Thêm chất lượng khác cho @sName">
+                                        + Chất lượng
+                                    </button>
+                                </div>
+
+                                @foreach (var s in serverGroup)
+                                {
+                                    var isEditingThis = editingStreamPosition == s.Position;
+                                    <div class="stream-row @(isEditingThis ? "is-editing" : "")">
+                                        <span class="stream-pos font-mono-num">#@s.Position</span>
+                                        <span class="stream-quality-chip">@s.Quality</span>
+                                        <span class="stream-url font-mono-num" title="@s.StreamUrl">@s.StreamUrl</span>
+                                        <span class="stream-status">
+                                            @if (streamProbeResults.TryGetValue(s.Position, out var pr))
+                                            {
+                                                <span class="probe-pill @(pr.IsSuccess ? "success" : "fail")">@(pr.IsSuccess ? $"{pr.LatencyMs}ms" : "Lỗi")</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="stream-status-idle">Chưa ping</span>
+                                            }
+                                        </span>
+                                        <span class="stream-row-actions">
+                                            <button type="button" class="btn-action-icon" title="Kiểm tra ping luồng này" @onclick="() => ProbeThisStream(s.StreamUrl)">
+                                                <CinemaIcon Name="CinemaIconName.TrendingUp" Size="13" />
+                                            </button>
+                                            <button type="button" class="btn-action-icon @(isEditingThis ? "active" : "")" title="Chỉnh sửa luồng này" @onclick="() => StartEditStream(s)">
+                                                <CinemaIcon Name="CinemaIconName.Edit" Size="13" />
+                                            </button>
+                                            <button type="button" class="btn-action-icon action-danger" title="Xóa nguồn phát #@s.Position" @onclick="() => DeleteStreamSource(s.Position)">
+                                                <CinemaIcon Name="CinemaIconName.Trash" Size="13" />
+                                            </button>
+                                        </span>
+                                    </div>
+                                }
+                            </div>
                         }
-                        else
-                        {
-                            @foreach (var s in currentStreamsList)
+                    </div>
+                }
+
+                @if (showStreamForm || editingStreamPosition.HasValue)
+                {
+                    <div class="admin-section-divider" style="margin: 0;"></div>
+
+                    <!-- ADD OR EDIT STREAM FORM -->
+                    <div class="stream-editor-box @(editingStreamPosition.HasValue ? "is-editing" : "")">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                        <h4 style="font-size: 0.92rem; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                            @if (editingStreamPosition.HasValue)
                             {
-                                <tr>
-                                    <td><strong class="font-mono-num">#@s.Position</strong></td>
-                                    <td>@s.ServerName</td>
-                                    <td><span class="movie-quality-tag">@s.Quality</span></td>
-                                    <td style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                                        <small class="font-mono-num">@s.StreamUrl</small>
-                                    </td>
-                                    <td style="text-align: center;">
-                                        @if (streamProbeResults.TryGetValue(s.Position, out var pr))
-                                        {
-                                            <span class="probe-pill @(pr.IsSuccess ? "success" : "fail")" style="font-size: 0.72rem; padding: 2px 7px;">
-                                                @(pr.IsSuccess ? $"{pr.LatencyMs}ms" : "Lỗi")
-                                            </span>
-                                        }
-                                        else
-                                        {
-                                            <span style="font-size: 0.72rem; color: rgba(255,255,255,0.3);">Chưa ping</span>
-                                        }
-                                    </td>
-                                    <td style="text-align: right;">
-                                        <button type="button" class="btn-action-icon" title="Kiểm tra ping luồng này" @onclick="() => ProbeThisStream(s.StreamUrl)">
-                                            <CinemaIcon Name="CinemaIconName.TrendingUp" Size="13" />
-                                        </button>
-                                        <button type="button" class="btn-action-icon" style="color: #ef4444;" title="Xóa máy chủ" @onclick="() => DeleteStreamSource(s.Position)">
-                                            <CinemaIcon Name="CinemaIconName.Trash" Size="13" />
-                                        </button>
-                                    </td>
-                                </tr>
+                                <span style="color: #fbbf24;">✎ Chỉnh sửa nguồn phát vị trí #@editingStreamPosition.Value</span>
                             }
+                            else
+                            {
+                                <span>+ Thêm nguồn phát mới</span>
+                            }
+                        </h4>
+                        @if (editingStreamPosition.HasValue)
+                        {
+                            <button type="button" class="btn-cancel-edit-pill" @onclick="CancelEditStream">
+                                Hủy sửa (Thêm nguồn mới)
+                            </button>
                         }
-                    </tbody>
-                </table>
+                    </div>
 
-                <div class="admin-section-divider" style="margin: 1.25rem 0;"></div>
+                    <div class="form-row-3">
+                        <div class="admin-form-group">
+                            <label>Tên máy chủ</label>
+                            <input type="text" list="existing-servers-datalist" @bind="streamFormModel.ServerName" placeholder="VIP FastServer 1" />
+                            <datalist id="existing-servers-datalist">
+                                @foreach (var sName in UniqueServerNames)
+                                {
+                                    <option value="@sName">@sName</option>
+                                }
+                            </datalist>
+                        </div>
+                        <div class="admin-form-group">
+                            <label>Loại máy chủ</label>
+                            <select @bind="streamFormModel.ServerType">
+                                <option value="@StreamServerType.VipFastServer">VIP Fast Server</option>
+                                <option value="@StreamServerType.HydraCdn">Hydra CDN</option>
+                                <option value="@StreamServerType.BackupStream">Backup Stream</option>
+                            </select>
+                        </div>
+                        <div class="admin-form-group">
+                            <label>Chất lượng phát</label>
+                            <input type="text" @bind="streamFormModel.Quality" placeholder="1080p FHD" />
+                        </div>
+                    </div>
 
-                <h4 style="font-size: 0.9rem; margin-bottom: 0.75rem;">+ Thêm nguồn phát dự phòng mới</h4>
-                <div class="form-row-3">
-                    <div class="admin-form-group">
-                        <label>Tên máy chủ</label>
-                        <input type="text" @bind="newStreamModel.ServerName" placeholder="VIP FastServer Backup" />
+                    <!-- Quick Quality Preset Chips -->
+                    <div class="quick-quality-presets" style="display: flex; align-items: center; gap: 0.4rem; margin-top: -0.25rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
+                        <span style="font-size: 0.72rem; color: var(--admin-text-muted);">Gợi ý chất lượng:</span>
+                        @foreach (var q in QualityPresets)
+                        {
+                            <button type="button" class="preset-pill @(streamFormModel.Quality == q ? "active" : "")" @onclick="() => streamFormModel.Quality = q">
+                                @q
+                            </button>
+                        }
                     </div>
+
                     <div class="admin-form-group">
-                        <label>Chất lượng</label>
-                        <input type="text" @bind="newStreamModel.Quality" placeholder="1080p FHD" />
+                        <label>Đường dẫn luồng Stream (HLS .m3u8 hoặc file .mp4) *</label>
+                        <input type="text" @bind="streamFormModel.StreamUrl" placeholder="https://domain.com/video/stream.m3u8" />
                     </div>
-                    <div class="admin-form-group">
-                        <label>Loại luồng</label>
-                        <select @bind="newStreamModel.ServerType">
-                            <option value="@StreamServerType.VipFastServer">VIP Fast Server</option>
-                            <option value="@StreamServerType.HydraCdn">Hydra CDN</option>
-                            <option value="@StreamServerType.BackupStream">Backup Stream</option>
-                        </select>
+
+                    <div style="display: flex; gap: 0.75rem; margin-top: 0.75rem;">
+                        <button type="button" class="btn-primary-action" @onclick="SaveStreamSource" disabled="@isSavingStream">
+                            @(isSavingStream ? "Đang lưu..." : editingStreamPosition.HasValue ? "Lưu thay đổi luồng" : "Thêm nguồn phát này")
+                        </button>
+                        @if (editingStreamPosition.HasValue)
+                        {
+                            <button type="button" class="btn-secondary-ghost" @onclick="CancelEditStream">
+                                Hủy sửa
+                            </button>
+                        }
                     </div>
-                </div>
-                <div class="admin-form-group">
-                    <label>URL Stream *</label>
-                    <input type="text" @bind="newStreamModel.StreamUrl" placeholder="https://..." />
-                </div>
-                <button type="button" class="btn-primary-action" style="margin-top: 0.5rem;" @onclick="AddStreamSource" disabled="@isAddingStream">
-                    @(isAddingStream ? "Đang lưu..." : "Thêm nguồn phát này")
-                </button>
+                    </div>
+                }
             </div>
 
             <div class="admin-modal-footer">
@@ -592,12 +849,33 @@
     private int pageSize = 10;
 
     // Filters for Episodes
-    private MovieType? movieTypeFilter = null;
     private string episodeSearchQuery = "";
     private string selectedEpRange = "";
     private string selectedStreamStatus = "";
     private string selectedDurationFilter = "";
     private string selectedEpSort = "ep_asc";
+
+    // Tùy chỉnh bộ lọc: ẩn/hiện từng ô lọc, lưu lại theo trình duyệt.
+    private const string FilterPrefsStorageKey = "cinemaflow_admin_episode_filter_prefs_v2";
+    private static readonly (string Key, string Label)[] FilterOptions =
+    [
+        ("search", "Tìm kiếm tập"),
+        ("range", "Khoảng số tập"),
+        ("streams", "Trạng thái luồng CDN"),
+        ("duration", "Thời lượng tập"),
+        ("sort", "Sắp xếp")
+    ];
+    // Mặc định ban đầu: chưa bật ô lọc nào (tick trống) — admin tự chọn ô cần dùng.
+    private readonly HashSet<string> hiddenFilters = [.. FilterOptions.Select(o => o.Key)];
+    private bool showFilterSettings;
+    private bool filtersCollapsed;
+
+    // Bộ chọn tác phẩm bằng tìm kiếm (thay cho dropdown dài dòng)
+    private bool showMoviePicker;
+    private bool focusMoviePicker;
+    private string moviePickerQuery = "";
+    private MovieType? moviePickerType;
+    private ElementReference moviePickerInput;
 
     private bool HasActiveEpisodeFilters =>
         !string.IsNullOrEmpty(episodeSearchQuery) ||
@@ -606,20 +884,36 @@
         !string.IsNullOrEmpty(selectedDurationFilter) ||
         selectedEpSort != "ep_asc";
 
-    private IEnumerable<MovieDetailDto> DisplayedMovies =>
-        movieTypeFilter.HasValue
-            ? allMoviesList.Where(m => m.Type == movieTypeFilter.Value)
-            : allMoviesList;
+    private MovieDetailDto? SelectedMovie => allMoviesList.FirstOrDefault(m => m.Id == selectedMovieId);
 
-    // Modal state for single episode
+    private List<MovieDetailDto> PickerResults
+    {
+        get
+        {
+            var query = moviePickerQuery.Trim();
+            return allMoviesList
+                .Where(m => !moviePickerType.HasValue || m.Type == moviePickerType.Value)
+                .Where(m => string.IsNullOrEmpty(query)
+                    || m.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || m.OriginalTitle.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || m.Slug.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .Take(60)
+                .ToList();
+        }
+    }
+
+    private static string MovieTypeLabel(MovieType type) => type switch
+    {
+        MovieType.Series => "Phim bộ",
+        MovieType.Anime => "Anime",
+        _ => "Phim lẻ"
+    };
+
+    // Modal state for single episode (Add / Edit)
     private bool showEpisodeModal = false;
+    private int? editingEpisodeId = null;
     private UpsertEpisodeRequest episodeModel = new();
     private bool isSavingEpisode = false;
-
-    // Batch generator modal
-    private bool showBatchModal = false;
-    private BatchEpisodeGenerateRequest batchModel = new();
-    private bool isSubmittingBatch = false;
 
     // Stream probe modal
     private bool showProbeModal = false;
@@ -630,15 +924,48 @@
     // Streams studio manager
     private EpisodeDto? managingEpisode;
     private List<StreamSourceDto> currentStreamsList = [];
-    private UpsertStreamSourceRequest newStreamModel = new();
-    private bool isAddingStream = false;
+    private int? editingStreamPosition = null;
+    private bool showStreamForm;
+    private UpsertStreamSourceRequest streamFormModel = new();
+    private bool isSavingStream = false;
+    private string? streamActionAlert;
+    private string? streamActionError;
+
+    private readonly List<string> QualityPresets = ["4K UHD", "1080p 60fps", "1080p FHD", "720p HD", "480p SD", "Auto HLS"];
+    private List<string> UniqueServerNames => currentStreamsList.Select(s => s.ServerName).Distinct().ToList();
+
+    // Thumbnail modal state
+    private bool showThumbnailModal = false;
+    private EpisodeDto? thumbEpisode;
+    private IBrowserFile? selectedThumbnailFile;
+    private string? thumbPreviewUrl;
+    private bool isUploadingThumbnail = false;
+    private string? thumbModalAlert;
+    private string? thumbModalError;
+
+    private bool isCustomThumbnail =>
+        thumbEpisode != null && !string.IsNullOrEmpty(thumbEpisode.ThumbnailUrl) && thumbEpisode.ThumbnailUrl.Contains("/media");
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             await Auth.InitializeAsync();
+            await LoadFilterPrefsAsync();
             await LoadInitialData();
+        }
+
+        if (focusMoviePicker)
+        {
+            focusMoviePicker = false;
+            try
+            {
+                await moviePickerInput.FocusAsync();
+            }
+            catch (InvalidOperationException)
+            {
+                // Ô tìm kiếm chưa kịp render (ví dụ popover vừa đóng) — bỏ qua.
+            }
         }
     }
 
@@ -681,26 +1008,183 @@
         }
     }
 
-    private async Task FilterMovieType(MovieType? type)
+    // ---------- Bộ chọn tác phẩm ----------
+
+    private void ToggleMoviePicker()
     {
-        movieTypeFilter = type;
-        var available = DisplayedMovies.ToList();
-        if (available.Count > 0 && !available.Any(m => m.Id == selectedMovieId))
+        showMoviePicker = !showMoviePicker;
+        if (!showMoviePicker) return;
+
+        showFilterSettings = false;
+        moviePickerQuery = "";
+        focusMoviePicker = true;
+    }
+
+    private void CloseMoviePicker()
+    {
+        showMoviePicker = false;
+    }
+
+    private void ClearMoviePickerQuery()
+    {
+        moviePickerQuery = "";
+        focusMoviePicker = true;
+    }
+
+    private void SetMoviePickerType(MovieType? type)
+    {
+        moviePickerType = type;
+        focusMoviePicker = true;
+    }
+
+    private void OnMoviePickerKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") showMoviePicker = false;
+    }
+
+    private async Task OnMoviePickerInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+
+        var first = PickerResults.FirstOrDefault();
+        if (first is not null) await SelectMovieFromPicker(first.Id);
+    }
+
+    private async Task SelectMovieFromPicker(int movieId)
+    {
+        showMoviePicker = false;
+        if (movieId == selectedMovieId)
         {
-            selectedMovieId = available[0].Id;
-            await LoadEpisodesForMovie(selectedMovieId);
+            StateHasChanged();
+            return;
         }
+
+        selectedMovieId = movieId;
+        if (MovieId != movieId)
+        {
+            Nav.NavigateTo($"/admin/episodes/{movieId}", replace: true);
+        }
+
+        await LoadEpisodesForMovie(movieId);
+    }
+
+    // ---------- Tùy chỉnh bộ lọc ----------
+
+    private void ToggleFilterSettings()
+    {
+        showFilterSettings = !showFilterSettings;
+        if (showFilterSettings) showMoviePicker = false;
+    }
+
+    private void CloseFilterSettings()
+    {
+        showFilterSettings = false;
+    }
+
+    private void OnFilterSettingsKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") showFilterSettings = false;
+    }
+
+    private async Task ToggleFilterCollapse()
+    {
+        filtersCollapsed = !filtersCollapsed;
+        await SaveFilterPrefsAsync();
+    }
+
+    /// <summary>Bật/tắt một ô lọc. Ẩn ô lọc sẽ xóa luôn giá trị đang chọn để tránh lọc ngầm.</summary>
+    private async Task SetFilterVisibility(string key, bool visible)
+    {
+        // Bỏ qua sự kiện change phát sinh khi popover đã đóng.
+        if (!showFilterSettings) return;
+
+        if (visible) hiddenFilters.Remove(key);
+        else hiddenFilters.Add(key);
+
+        var needsReload = !visible && ClearFilterValue(key);
+        await SaveFilterPrefsAsync();
+
+        if (needsReload) ApplyEpisodeFilters();
         StateHasChanged();
     }
 
-    private async Task OnMovieSelected(ChangeEventArgs e)
+    /// <summary>Xóa giá trị của bộ lọc vừa bị ẩn. Trả về true nếu thực sự có thay đổi.</summary>
+    private bool ClearFilterValue(string key)
     {
-        if (int.TryParse(e.Value?.ToString(), out var id))
+        switch (key)
         {
-            selectedMovieId = id;
-            await LoadEpisodesForMovie(id);
+            case "search" when !string.IsNullOrEmpty(episodeSearchQuery):
+                episodeSearchQuery = "";
+                return true;
+            case "range" when !string.IsNullOrEmpty(selectedEpRange):
+                selectedEpRange = "";
+                return true;
+            case "streams" when !string.IsNullOrEmpty(selectedStreamStatus):
+                selectedStreamStatus = "";
+                return true;
+            case "duration" when !string.IsNullOrEmpty(selectedDurationFilter):
+                selectedDurationFilter = "";
+                return true;
+            case "sort" when selectedEpSort != "ep_asc":
+                selectedEpSort = "ep_asc";
+                return true;
+            default:
+                return false;
         }
     }
+
+    private async Task ShowAllFiltersAsync()
+    {
+        if (hiddenFilters.Count == 0) return;
+        hiddenFilters.Clear();
+        await SaveFilterPrefsAsync();
+    }
+
+    private void ClearEpisodeSearchQuery()
+    {
+        episodeSearchQuery = "";
+        ApplyEpisodeFilters();
+    }
+
+    /// <summary>Đọc lại lựa chọn ẩn/hiện bộ lọc đã lưu trong localStorage của trình duyệt.</summary>
+    private async Task LoadFilterPrefsAsync()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("adminTools.getStoredJson", FilterPrefsStorageKey);
+            if (string.IsNullOrWhiteSpace(json)) return;
+
+            var prefs = System.Text.Json.JsonSerializer.Deserialize<EpisodeFilterPrefs>(json);
+            if (prefs is null) return;
+
+            hiddenFilters.Clear();
+            foreach (var key in prefs.Hidden.Where(k => FilterOptions.Any(o => o.Key == k)))
+            {
+                hiddenFilters.Add(key);
+            }
+            filtersCollapsed = prefs.Collapsed;
+        }
+        catch
+        {
+            // Tùy chọn hiển thị chỉ là tiện ích: localStorage bị chặn hoặc dữ liệu hỏng thì dùng mặc định.
+        }
+    }
+
+    private async Task SaveFilterPrefsAsync()
+    {
+        try
+        {
+            var prefs = new EpisodeFilterPrefs(hiddenFilters.ToList(), filtersCollapsed);
+            var json = System.Text.Json.JsonSerializer.Serialize(prefs);
+            await JS.InvokeVoidAsync("adminTools.setStoredJson", FilterPrefsStorageKey, json);
+        }
+        catch
+        {
+            // Không lưu được thì thôi, không chặn thao tác của admin.
+        }
+    }
+
+    private sealed record EpisodeFilterPrefs(List<string> Hidden, bool Collapsed);
 
     private async Task LoadEpisodesForMovie(int movieId)
     {
@@ -789,12 +1273,6 @@
         currentPage = 1;
     }
 
-    private void OnEpisodeSearchInput(ChangeEventArgs e)
-    {
-        episodeSearchQuery = e.Value?.ToString() ?? "";
-        ApplyEpisodeFilters();
-    }
-
     private void OnEpRangeChanged(ChangeEventArgs e)
     {
         selectedEpRange = e.Value?.ToString() ?? "";
@@ -831,6 +1309,7 @@
 
     private void OpenAddEpisodeModal()
     {
+        editingEpisodeId = null;
         episodeModel = new UpsertEpisodeRequest
         {
             EpisodeNumber = episodesList.Count + 1,
@@ -843,32 +1322,78 @@
         showEpisodeModal = true;
     }
 
-    private void CloseEpisodeModal() => showEpisodeModal = false;
+    private void OpenEditEpisodeModal(EpisodeDto ep)
+    {
+        editingEpisodeId = ep.Id;
+        episodeModel = new UpsertEpisodeRequest
+        {
+            EpisodeNumber = ep.EpisodeNumber,
+            Title = ep.Title,
+            DurationMinutes = ep.DurationMinutes,
+            Overview = ep.Overview,
+            ThumbnailUrl = ep.ThumbnailUrl,
+            ServerName = ep.StreamSources?.FirstOrDefault()?.ServerName ?? "VIP FastServer 1",
+            Quality = ep.StreamSources?.FirstOrDefault()?.Quality ?? "1080p FHD",
+            StreamUrl = ep.StreamSources?.FirstOrDefault()?.StreamUrl ?? ""
+        };
+        showEpisodeModal = true;
+    }
+
+    private void CloseEpisodeModal()
+    {
+        showEpisodeModal = false;
+        editingEpisodeId = null;
+    }
 
     private async Task SaveEpisode()
     {
-        if (string.IsNullOrWhiteSpace(episodeModel.StreamUrl))
-        {
-            actionError = "Vui lòng nhập URL Stream hợp lệ.";
-            return;
-        }
-
         isSavingEpisode = true;
         actionAlert = null;
         actionError = null;
 
         try
         {
-            var res = await AdminApi.AddEpisodeAsync(selectedMovieId, episodeModel);
-            if (res?.Success == true)
+            if (editingEpisodeId.HasValue)
             {
-                actionAlert = $"Đã thêm tập {episodeModel.EpisodeNumber} thành công!";
-                showEpisodeModal = false;
-                await LoadEpisodesForMovie(selectedMovieId);
+                var updateReq = new UpdateEpisodeRequest
+                {
+                    EpisodeNumber = episodeModel.EpisodeNumber,
+                    Title = episodeModel.Title,
+                    DurationMinutes = episodeModel.DurationMinutes,
+                    Overview = episodeModel.Overview
+                };
+                var res = await AdminApi.UpdateEpisodeAsync(editingEpisodeId.Value, updateReq);
+                if (res?.Success == true)
+                {
+                    actionAlert = $"Đã cập nhật thông tin tập {episodeModel.EpisodeNumber} thành công!";
+                    showEpisodeModal = false;
+                    editingEpisodeId = null;
+                    await LoadEpisodesForMovie(selectedMovieId);
+                }
+                else
+                {
+                    actionError = res?.Message ?? "Không thể cập nhật tập phim.";
+                }
             }
             else
             {
-                actionError = res?.Message ?? "Không thể thêm tập phim.";
+                if (string.IsNullOrWhiteSpace(episodeModel.StreamUrl))
+                {
+                    actionError = "Vui lòng nhập URL Stream khởi tạo cho tập mới.";
+                    return;
+                }
+
+                var res = await AdminApi.AddEpisodeAsync(selectedMovieId, episodeModel);
+                if (res?.Success == true)
+                {
+                    actionAlert = $"Đã thêm tập {episodeModel.EpisodeNumber} thành công!";
+                    showEpisodeModal = false;
+                    await LoadEpisodesForMovie(selectedMovieId);
+                }
+                else
+                {
+                    actionError = res?.Message ?? "Không thể thêm tập phim.";
+                }
             }
         }
         catch (Exception ex)
@@ -882,55 +1407,131 @@
         }
     }
 
-    private void OpenBatchModal()
+    // Thumbnail modal handlers
+    private void OpenThumbnailModal(EpisodeDto ep)
     {
-        batchModel = new BatchEpisodeGenerateRequest
-        {
-            MovieId = selectedMovieId,
-            StartEpisode = episodesList.Count + 1,
-            EndEpisode = episodesList.Count + 12,
-            DurationMinutes = 45,
-            TitlePattern = "Tập {n}",
-            StreamUrlPattern = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4",
-            ServerName = "VIP FastServer 1",
-            Quality = "1080p FHD"
-        };
-        showBatchModal = true;
+        thumbEpisode = ep;
+        selectedThumbnailFile = null;
+        thumbPreviewUrl = null;
+        thumbModalAlert = null;
+        thumbModalError = null;
+        showThumbnailModal = true;
     }
 
-    private void CloseBatchModal() => showBatchModal = false;
-
-    private async Task SubmitBatchGenerate()
+    private void CloseThumbnailModal()
     {
-        isSubmittingBatch = true;
-        actionAlert = null;
-        actionError = null;
+        showThumbnailModal = false;
+        thumbEpisode = null;
+        selectedThumbnailFile = null;
+        thumbPreviewUrl = null;
+    }
+
+    private async Task OnThumbnailFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedThumbnailFile = e.File;
+        thumbModalError = null;
+        thumbModalAlert = null;
+
+        if (selectedThumbnailFile != null)
+        {
+            if (selectedThumbnailFile.Size > 5 * 1024 * 1024)
+            {
+                thumbModalError = "Dung lượng tệp vượt quá giới hạn 5 MB.";
+                selectedThumbnailFile = null;
+                thumbPreviewUrl = null;
+                return;
+            }
+
+            try
+            {
+                var buffer = new byte[selectedThumbnailFile.Size];
+                await using var stream = selectedThumbnailFile.OpenReadStream(5 * 1024 * 1024);
+                var read = 0;
+                while (read < buffer.Length)
+                {
+                    var chunk = await stream.ReadAsync(buffer.AsMemory(read, buffer.Length - read));
+                    if (chunk <= 0) break;
+                    read += chunk;
+                }
+                thumbPreviewUrl = $"data:{selectedThumbnailFile.ContentType};base64,{Convert.ToBase64String(buffer)}";
+            }
+            catch
+            {
+                // Non-critical preview failure
+            }
+        }
+    }
+
+    private async Task SubmitThumbnailUpload()
+    {
+        if (thumbEpisode == null || selectedThumbnailFile == null) return;
+        isUploadingThumbnail = true;
+        thumbModalAlert = null;
+        thumbModalError = null;
 
         try
         {
-            var res = await AdminApi.BatchGenerateEpisodesAsync(batchModel);
+            await using var stream = selectedThumbnailFile.OpenReadStream(5 * 1024 * 1024);
+            var res = await AdminApi.UploadEpisodeThumbnailAsync(thumbEpisode.Id, stream, selectedThumbnailFile.Name);
             if (res?.Success == true)
             {
-                actionAlert = $"Đã tạo thành công {res.Data} tập phim mới!";
-                showBatchModal = false;
+                thumbModalAlert = "Đã cập nhật ảnh nền tập thành công!";
+                thumbEpisode.ThumbnailUrl = res.Data?.ThumbnailUrl ?? thumbEpisode.ThumbnailUrl;
+                thumbPreviewUrl = null;
+                selectedThumbnailFile = null;
                 await LoadEpisodesForMovie(selectedMovieId);
             }
             else
             {
-                actionError = res?.Message ?? "Không thể tạo tập hàng loạt.";
+                thumbModalError = res?.Message ?? "Không thể tải lên ảnh nền.";
             }
         }
         catch (Exception ex)
         {
-            actionError = "Lỗi khi tạo tập: " + ex.Message;
+            thumbModalError = "Lỗi khi tải ảnh: " + ex.Message;
         }
         finally
         {
-            isSubmittingBatch = false;
+            isUploadingThumbnail = false;
             StateHasChanged();
         }
     }
 
+    private async Task ResetThumbnailToDefault()
+    {
+        if (thumbEpisode == null) return;
+        isUploadingThumbnail = true;
+        thumbModalAlert = null;
+        thumbModalError = null;
+
+        try
+        {
+            var res = await AdminApi.DeleteEpisodeThumbnailAsync(thumbEpisode.Id);
+            if (res?.Success == true)
+            {
+                thumbModalAlert = "Đã khôi phục ảnh nền mặc định thành công!";
+                thumbPreviewUrl = null;
+                selectedThumbnailFile = null;
+                await LoadEpisodesForMovie(selectedMovieId);
+                thumbEpisode = episodesList.FirstOrDefault(e => e.Id == thumbEpisode.Id) ?? thumbEpisode;
+            }
+            else
+            {
+                thumbModalError = res?.Message ?? "Không thể khôi phục ảnh.";
+            }
+        }
+        catch (Exception ex)
+        {
+            thumbModalError = "Lỗi: " + ex.Message;
+        }
+        finally
+        {
+            isUploadingThumbnail = false;
+            StateHasChanged();
+        }
+    }
+
+    // Prober modal handlers
     private void OpenProbeModal()
     {
         probeResult = null;
@@ -971,14 +1572,20 @@
         _ = ExecuteProbe();
     }
 
+    // Stream Manager Studio handlers
     private async Task OpenStreamsManager(EpisodeDto ep)
     {
         managingEpisode = ep;
-        newStreamModel = new UpsertStreamSourceRequest
+        editingStreamPosition = null;
+        showStreamForm = false;
+        streamActionAlert = null;
+        streamActionError = null;
+        streamFormModel = new UpsertStreamSourceRequest
         {
             EpisodeId = ep.Id,
-            ServerName = "VIP Backup Server",
+            ServerName = "VIP FastServer 1",
             Quality = "1080p FHD",
+            ServerType = StreamServerType.VipFastServer,
             StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4"
         };
         await LoadStreamsForEpisode(ep.Id);
@@ -1023,8 +1630,22 @@
     private void CloseStreamsManager()
     {
         managingEpisode = null;
+        editingStreamPosition = null;
+        showStreamForm = false;
         currentStreamsList.Clear();
         streamProbeResults.Clear();
+    }
+
+    /// <summary>Mở/đóng form thêm nguồn phát. Nếu đang sửa thì đóng form sẽ hủy trạng thái sửa.</summary>
+    private void ToggleStreamForm()
+    {
+        if (showStreamForm)
+        {
+            if (editingStreamPosition.HasValue) CancelEditStream();
+            showStreamForm = false;
+            return;
+        }
+        showStreamForm = true;
     }
 
     private async Task LoadStreamsForEpisode(int epId)
@@ -1032,6 +1653,11 @@
         try
         {
             currentStreamsList = await AdminApi.GetEpisodeStreamsAsync(epId);
+            if (currentStreamsList.Count > 0 && !editingStreamPosition.HasValue)
+            {
+                streamFormModel.ServerName = currentStreamsList.First().ServerName;
+                streamFormModel.ServerType = currentStreamsList.First().ServerType;
+            }
         }
         catch
         {
@@ -1040,22 +1666,111 @@
         StateHasChanged();
     }
 
-    private async Task AddStreamSource()
+    private void StartEditStream(StreamSourceDto s)
     {
-        if (managingEpisode == null || string.IsNullOrWhiteSpace(newStreamModel.StreamUrl)) return;
-        isAddingStream = true;
+        editingStreamPosition = s.Position;
+        showStreamForm = true;
+        streamFormModel = new UpsertStreamSourceRequest
+        {
+            EpisodeId = managingEpisode?.Id ?? 0,
+            ServerName = s.ServerName,
+            ServerType = s.ServerType,
+            Quality = s.Quality,
+            StreamUrl = s.StreamUrl
+        };
+        streamActionAlert = null;
+        streamActionError = null;
+    }
+
+    private void CancelEditStream()
+    {
+        editingStreamPosition = null;
+        streamFormModel = new UpsertStreamSourceRequest
+        {
+            EpisodeId = managingEpisode?.Id ?? 0,
+            ServerName = currentStreamsList.FirstOrDefault()?.ServerName ?? "VIP FastServer 1",
+            ServerType = StreamServerType.VipFastServer,
+            Quality = "1080p FHD",
+            StreamUrl = ""
+        };
+        streamActionAlert = null;
+        streamActionError = null;
+    }
+
+    private void QuickAddQualityForServer(string serverName, StreamServerType serverType)
+    {
+        editingStreamPosition = null;
+        showStreamForm = true;
+        var existingQualities = currentStreamsList.Where(s => s.ServerName == serverName).Select(s => s.Quality).ToHashSet();
+        var nextQuality = QualityPresets.FirstOrDefault(q => !existingQualities.Contains(q)) ?? "720p HD";
+
+        streamFormModel = new UpsertStreamSourceRequest
+        {
+            EpisodeId = managingEpisode?.Id ?? 0,
+            ServerName = serverName,
+            ServerType = serverType,
+            Quality = nextQuality,
+            StreamUrl = ""
+        };
+        streamActionAlert = $"Đang thêm chất lượng '{nextQuality}' cho máy chủ '{serverName}'. Nhập URL luồng bên dưới.";
+        streamActionError = null;
+    }
+
+    private async Task SaveStreamSource()
+    {
+        if (managingEpisode == null) return;
+        if (string.IsNullOrWhiteSpace(streamFormModel.StreamUrl))
+        {
+            streamActionError = "Vui lòng nhập URL luồng Stream hợp lệ.";
+            return;
+        }
+
+        isSavingStream = true;
+        streamActionAlert = null;
+        streamActionError = null;
+
         try
         {
-            var res = await AdminApi.AddStreamSourceAsync(managingEpisode.Id, newStreamModel);
-            if (res?.Success == true)
+            if (editingStreamPosition.HasValue)
             {
-                await LoadStreamsForEpisode(managingEpisode.Id);
-                newStreamModel.StreamUrl = "";
+                var res = await AdminApi.UpdateStreamSourceAsync(managingEpisode.Id, editingStreamPosition.Value, streamFormModel);
+                if (res?.Success == true)
+                {
+                    streamActionAlert = $"Đã cập nhật nguồn stream #{editingStreamPosition.Value} ({streamFormModel.Quality}) thành công!";
+                    editingStreamPosition = null;
+                    showStreamForm = false;
+                    streamFormModel.StreamUrl = "";
+                    await LoadStreamsForEpisode(managingEpisode.Id);
+                    await LoadEpisodesForMovie(selectedMovieId);
+                }
+                else
+                {
+                    streamActionError = res?.Message ?? "Không thể cập nhật nguồn stream.";
+                }
             }
+            else
+            {
+                var res = await AdminApi.AddStreamSourceAsync(managingEpisode.Id, streamFormModel);
+                if (res?.Success == true)
+                {
+                    streamActionAlert = $"Đã thêm nguồn stream '{streamFormModel.ServerName}' ({streamFormModel.Quality}) thành công!";
+                    streamFormModel.StreamUrl = "";
+                    await LoadStreamsForEpisode(managingEpisode.Id);
+                    await LoadEpisodesForMovie(selectedMovieId);
+                }
+                else
+                {
+                    streamActionError = res?.Message ?? "Không thể thêm nguồn stream.";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            streamActionError = "Lỗi khi lưu nguồn: " + ex.Message;
         }
         finally
         {
-            isAddingStream = false;
+            isSavingStream = false;
             StateHasChanged();
         }
     }
@@ -1063,8 +1778,25 @@
     private async Task DeleteStreamSource(int position)
     {
         if (managingEpisode == null) return;
-        await AdminApi.DeleteStreamSourceAsync(managingEpisode.Id, position);
-        await LoadStreamsForEpisode(managingEpisode.Id);
+        streamActionAlert = null;
+        streamActionError = null;
+
+        if (editingStreamPosition == position)
+        {
+            CancelEditStream();
+        }
+
+        var res = await AdminApi.DeleteStreamSourceAsync(managingEpisode.Id, position);
+        if (res?.Success == true)
+        {
+            streamActionAlert = $"Đã xóa nguồn phát #{position}.";
+            await LoadStreamsForEpisode(managingEpisode.Id);
+            await LoadEpisodesForMovie(selectedMovieId);
+        }
+        else
+        {
+            streamActionError = "Không thể xóa nguồn phát.";
+        }
     }
 
     private async Task DeleteEpisode(int episodeId)

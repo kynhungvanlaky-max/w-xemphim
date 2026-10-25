@@ -19,7 +19,8 @@ RUN dotnet publish "WebXemPhim.Server.csproj" -c Release -o /app/publish /p:UseA
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
-# Ensure directories for persistent volumes (SQLite DB and Data Protection keys)
+# Ensure directories for persistent volumes (Data Protection keys).
+# The catalogue itself lives in PostgreSQL, the data volume is kept for compatibility.
 RUN mkdir -p /app/data /app/keys
 
 COPY --from=build /app/publish .

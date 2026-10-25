@@ -37,6 +37,12 @@ public sealed class AdminMoviesController(
         [FromQuery] string? genre = null,
         [FromQuery] string? quality = null,
         [FromQuery] string? status = null,
+        [FromQuery] int? year = null,
+        [FromQuery] int? yearFrom = null,
+        [FromQuery] int? yearTo = null,
+        [FromQuery] string? country = null,
+        [FromQuery] double? minRating = null,
+        [FromQuery] double? maxRating = null,
         [FromQuery] string? sortBy = null)
     {
         await using var context = await ContextFactory.CreateDbContextAsync();
@@ -52,7 +58,9 @@ public sealed class AdminMoviesController(
             query = query.Where(m => m.Title.ToLower().Contains(s)
                 || m.OriginalTitle.ToLower().Contains(s)
                 || m.Slug.ToLower().Contains(s)
-                || (m.Director != null && m.Director.ToLower().Contains(s)));
+                || (m.Director != null && m.Director.ToLower().Contains(s))
+                || m.CastMembers.Any(c => c.Name.ToLower().Contains(s))
+                || m.MovieGenres.Any(mg => mg.Genre.Name.ToLower().Contains(s)));
         }
 
         if (type.HasValue)
@@ -77,18 +85,54 @@ public sealed class AdminMoviesController(
             var st = status.Trim().ToLower();
             if (st == "trending") query = query.Where(m => m.IsTrending);
             else if (st == "featured") query = query.Where(m => m.IsFeatured);
+            else if (st == "standard") query = query.Where(m => !m.IsTrending && !m.IsFeatured);
+        }
+
+        if (year.HasValue && year.Value > 0)
+        {
+            query = query.Where(m => m.ReleaseYear == year.Value);
+        }
+        else if (yearFrom.HasValue && yearFrom.Value > 0)
+        {
+            var from = yearFrom.Value;
+            query = query.Where(m => m.ReleaseYear >= from);
+            if (yearTo.HasValue && yearTo.Value > 0)
+            {
+                var to = yearTo.Value;
+                query = query.Where(m => m.ReleaseYear <= to);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(country))
+        {
+            var c = country.Trim().ToLower();
+            query = query.Where(m => m.Country.ToLower().Contains(c));
+        }
+
+        if (minRating.HasValue && minRating.Value > 0)
+        {
+            var r = minRating.Value;
+            query = query.Where(m => m.Rating >= r);
+        }
+
+        if (maxRating.HasValue && maxRating.Value > 0)
+        {
+            var r = maxRating.Value;
+            query = query.Where(m => m.Rating <= r);
         }
 
         query = (sortBy?.ToLowerInvariant()) switch
         {
-            "rating" => query.OrderByDescending(m => m.Rating),
-            "releaseyear" => query.OrderByDescending(m => m.ReleaseYear),
-            "viewcount" => query.OrderByDescending(m => m.ViewCount),
-            "title" => query.OrderBy(m => m.Title),
+            "rating" or "rating_desc" => query.OrderByDescending(m => m.Rating),
+            "releaseyear" or "date_desc" or "year_desc" => query.OrderByDescending(m => m.ReleaseYear),
+            "viewcount" or "views_desc" => query.OrderByDescending(m => m.ViewCount),
+            "title" or "title_asc" => query.OrderBy(m => m.Title),
+            "title_desc" => query.OrderByDescending(m => m.Title),
             _ => query.OrderByDescending(m => m.Id)
         };
 
         if (pageSize <= 0) pageSize = 20;
+        if (pageSize > 1000) pageSize = 1000;
         var totalItems = await query.CountAsync();
         var movies = await query
             .Skip((Math.Max(page, 1) - 1) * pageSize)
@@ -218,9 +262,9 @@ public sealed class AdminMoviesController(
             if (tx != null) await tx.DisposeAsync();
         }
 
-        if (context.Database.IsSqlite())
+        if (context.Database.IsNpgsql())
         {
-            try { await DatabaseSchemaHelper.IndexSingleMovieAsync(context, movie.Id); }
+            try { await DatabaseSchemaHelper.RefreshMovieSearchIndexAsync(context, movie.Id); }
             catch (Exception ex) { logger?.LogWarning(ex, "Lỗi tái tạo chỉ mục tìm kiếm cho phim {MovieId}.", movie.Id); }
         }
 
@@ -344,9 +388,9 @@ public sealed class AdminMoviesController(
             if (tx != null) await tx.DisposeAsync();
         }
 
-        if (context.Database.IsSqlite())
+        if (context.Database.IsNpgsql())
         {
-            try { await DatabaseSchemaHelper.IndexSingleMovieAsync(context, movie.Id); }
+            try { await DatabaseSchemaHelper.RefreshMovieSearchIndexAsync(context, movie.Id); }
             catch (Exception ex) { logger?.LogWarning(ex, "Lỗi tái tạo chỉ mục tìm kiếm cho phim {MovieId}.", movie.Id); }
         }
 
@@ -632,9 +676,9 @@ public sealed class AdminMoviesController(
             if (tx != null) await tx.DisposeAsync();
         }
 
-        if (context.Database.IsSqlite())
+        if (context.Database.IsNpgsql())
         {
-            try { await DatabaseSchemaHelper.IndexSingleMovieAsync(context, cloned.Id); }
+            try { await DatabaseSchemaHelper.RefreshMovieSearchIndexAsync(context, cloned.Id); }
             catch (Exception ex) { logger?.LogWarning(ex, "Lỗi tái tạo chỉ mục tìm kiếm cho phim đã nhân bản {MovieId}.", cloned.Id); }
         }
 

@@ -13,6 +13,20 @@ window.adminTools = {
         link.remove();
         URL.revokeObjectURL(url);
     },
+    getStoredJson(key) {
+        try {
+            return window.localStorage.getItem(key);
+        } catch {
+            return null;
+        }
+    },
+    setStoredJson(key, value) {
+        try {
+            window.localStorage.setItem(key, value);
+        } catch {
+            // Storage can be blocked (private mode / quota); preferences are optional.
+        }
+    },
     registerCommandPalette(dotNetHelper) {
         const handler = (e) => {
             if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {

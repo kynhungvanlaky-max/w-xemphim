@@ -13,6 +13,14 @@ public class AdminDashboardDto
     public int TotalUsers { get; set; }
     public int ActiveVipUsers { get; set; }
     public int FreeUsers { get; set; }
+    /// <summary>Số tài khoản có hạng VIP, tính cả tài khoản đã hết hạn.</summary>
+    public int VipMembers { get; set; }
+    /// <summary>Số tài khoản đang có quyền quản trị viên.</summary>
+    public int AdminUsers { get; set; }
+    /// <summary>Số tài khoản đang bị khoá.</summary>
+    public int LockedUsers { get; set; }
+    /// <summary>Số tài khoản VIP sắp hết hạn trong vòng 7 ngày.</summary>
+    public int ExpiringSoonVipUsers { get; set; }
     public decimal TotalRevenue { get; set; }
     public int TotalTransactions { get; set; }
     public int TotalReviews { get; set; }
@@ -99,6 +107,18 @@ public class UpsertEpisodeRequest
     public string Quality { get; set; } = "1080p";
     [EnumDataType(typeof(StreamServerType))]
     public StreamServerType ServerType { get; set; } = StreamServerType.VipFastServer;
+}
+
+public class UpdateEpisodeRequest
+{
+    [Range(1, 10000)]
+    public int EpisodeNumber { get; set; } = 1;
+    [Required, StringLength(240)]
+    public string Title { get; set; } = string.Empty;
+    [Range(1, 1440)]
+    public int DurationMinutes { get; set; } = 45;
+    [StringLength(2000)]
+    public string Overview { get; set; } = string.Empty;
 }
 
 public class AdminUpdateUserRequest

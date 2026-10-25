@@ -392,6 +392,37 @@ public sealed class Milestone3ModularAdminTests
     }
 
     [Fact]
+    public async Task AdminUsersController_GetUsers_SupportsDateAscAndVipDescSort()
+    {
+        var (factory, options) = CreateContextFactory();
+        await using (var seedCtx = new AppDbContext(options))
+        {
+            await SeedSampleDataAsync(seedCtx);
+
+            // Chỉ thành viên thường có hạn VIP để kiểm tra thứ tự đẩy tài khoản không VIP xuống cuối.
+            var member = await seedCtx.Users.FindAsync(MemberUserId);
+            member!.VipExpiresAtUtc = DateTime.UtcNow.AddDays(15);
+            await seedCtx.SaveChangesAsync();
+        }
+
+        var controller = new AdminUsersController(factory, TimeProvider.System);
+        SetAdminUser(controller, AdminUserId);
+
+        var oldestFirstResult = await controller.GetUsers(page: 1, pageSize: 10, sortBy: "date_asc");
+        var oldestFirstOk = Assert.IsType<OkObjectResult>(oldestFirstResult.Result);
+        var oldestFirst = Assert.IsType<ApiResponse<PagedResult<UserDto>>>(oldestFirstOk.Value);
+        Assert.True(oldestFirst.Success);
+        Assert.Equal(AdminUserId, oldestFirst.Data!.Items[0].Id);
+
+        var vipFirstResult = await controller.GetUsers(page: 1, pageSize: 10, sortBy: "vip_desc");
+        var vipFirstOk = Assert.IsType<OkObjectResult>(vipFirstResult.Result);
+        var vipFirst = Assert.IsType<ApiResponse<PagedResult<UserDto>>>(vipFirstOk.Value);
+        Assert.True(vipFirst.Success);
+        Assert.Equal(MemberUserId, vipFirst.Data!.Items[0].Id);
+        Assert.Equal(AdminUserId, vipFirst.Data.Items[^1].Id);
+    }
+
+    [Fact]
     public async Task AdminPaymentsController_MarkPaid_ApprovesAndHandlesDuplicate()
     {
         var (factory, options) = CreateContextFactory();

@@ -1,16 +1,21 @@
 @using Microsoft.AspNetCore.Components.Web
 @*
-    Injects route/component specific stylesheets into the document head.
-    Keeping these files out of App.razor means a visitor only downloads the CSS
-    that the page they are on actually needs.
+    Injects route/component specific stylesheets into the current page.
+
+    The links are rendered as part of the page markup on purpose: Blazor then adds them when
+    the page is displayed and removes them again when the visitor navigates away. Using
+    <HeadContent> instead would keep every route sheet of every visited page in the document
+    head, so the sheets of different pages would pile up and override each other.
+
+    The sheet of the route is preloaded on intent (hover/focus of a link) by
+    js/route-style-preload.js, so the browser already has it cached when the navigation
+    happens and the page is never painted unstyled.
 *@
 
-<HeadContent>
-    @foreach (var href in ResolveAll())
-    {
-        <link rel="stylesheet" href="@href" />
-    }
-</HeadContent>
+@foreach (var href in ResolveAll())
+{
+    <link rel="stylesheet" href="@href" data-route-stylesheet="true" />
+}
 
 @code {
     /// <summary>Static asset paths relative to wwwroot, e.g. "css/home-expanded.css".</summary>
@@ -29,6 +34,7 @@
             "css/profile-settings.css" => @Assets["css/profile-settings.css"],
             "css/library-membership.css" => @Assets["css/library-membership.css"],
             "css/watch-workspace.css" => @Assets["css/watch-workspace.css"],
+            "css/admin-workspace.css" => @Assets["css/admin-workspace.css"],
             _ => "/" + file.TrimStart('/')
         }).ToArray();
     }

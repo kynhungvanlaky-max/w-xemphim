@@ -1,4 +1,5 @@
 @page "/explore"
+@using WebXemPhim.Client.Services
 @using WebXemPhim.Shared.Models
 @using WebXemPhim.Shared.Enums
 @using WebXemPhim.Client.Components.Icons
@@ -7,7 +8,7 @@
 @inject NavigationManager Nav
 @inject ILogger<Explore> Logger
 
-<PageTitle>Khám phá kho phim - CinemaFlow</PageTitle>
+<CinemaPageTitle>Khám phá kho phim - CinemaFlow</CinemaPageTitle>
 <RouteStylesheet Files="@ExploreStyles" />
 
 
@@ -132,7 +133,7 @@
 </div>
 
 @code {
-    private static readonly string[] ExploreStyles = ["css/discovery-filters.css"];
+    private static readonly string[] ExploreStyles = RouteStylesheetCatalog.Explore;
 
     [SupplyParameterFromQuery(Name = "keyword")] public string? KeywordParam { get; set; }
     [SupplyParameterFromQuery(Name = "type")] public int? TypeParam { get; set; }

@@ -122,14 +122,22 @@ public sealed class PaymentWebhookVerifier : IPaymentWebhookVerifier
 
     public string BuildCanonicalPayload(PaymentWebhookRequest request)
     {
-        var orderCode = request.OrderCode?.Trim() ?? string.Empty;
         var amount = request.Amount.ToString("G29", CultureInfo.InvariantCulture);
-        var status = request.Status?.Trim() ?? string.Empty;
-        var transRef = request.TransactionReference?.Trim() ?? string.Empty;
-        var gateway = request.Gateway?.Trim() ?? string.Empty;
         var timestamp = request.Timestamp.HasValue ? request.Timestamp.Value.ToString(CultureInfo.InvariantCulture) : string.Empty;
 
-        return $"amount={amount}&gateway={gateway}&orderCode={orderCode}&status={status}&timestamp={timestamp}&transactionRef={transRef}";
+        // Mỗi giá trị phải được escape trước khi ghép bằng '&' và '='. Nếu không, một
+        // gateway/orderCode chứa ký tự phân tách có thể tạo ra cùng chuỗi canonical với một
+        // payload khác (field-boundary collision), làm chữ ký bị dùng lại ngoài ý muốn.
+        return $"amount={EscapeCanonicalValue(amount)}&gateway={EscapeCanonicalValue(request.Gateway)}&orderCode={EscapeCanonicalValue(request.OrderCode)}&status={EscapeCanonicalValue(request.Status)}&timestamp={EscapeCanonicalValue(timestamp)}&transactionRef={EscapeCanonicalValue(request.TransactionReference)}";
+    }
+
+    private static string EscapeCanonicalValue(string? value) =>
+        Uri.EscapeDataString((value ?? string.Empty).Trim());
+
+    private long GetTimestampToleranceSeconds()
+    {
+        var configured = _configuration.GetValue<int?>("Payment:WebhookTimestampToleranceSeconds") ?? 300;
+        return Math.Clamp(configured, 30, 3600);
     }
 
     public string ComputeSignature(PaymentWebhookRequest request, string? secretKey = null)
@@ -170,6 +178,21 @@ public sealed class PaymentWebhookVerifier : IPaymentWebhookVerifier
             !CryptographicOperations.FixedTimeEquals(actualSigBytes, expectedSigBytes))
         {
             return WebhookVerificationResult.Fail(WebhookVerificationStatus.InvalidSignature, "Chữ ký xác thực webhook không hợp lệ (403 Forbidden).");
+        }
+
+        // Chống replay: nếu gateway gửi timestamp, nó phải nằm trong cửa sổ thời gian cho phép.
+        // Timestamp bị bỏ trống vẫn được chấp nhận để tương thích với các gateway cũ; khi đó
+        // tính idempotent của trạng thái thanh toán là lớp bảo vệ chính.
+        if (request.Timestamp is { } timestamp)
+        {
+            var now = _timeProvider.GetUtcNow().ToUnixTimeSeconds();
+            var tolerance = GetTimestampToleranceSeconds();
+            if (timestamp < now - tolerance || timestamp > now + tolerance)
+            {
+                return WebhookVerificationResult.Fail(
+                    WebhookVerificationStatus.TimestampExpired,
+                    "Dấu thời gian của webhook đã hết hạn hoặc không hợp lệ.");
+            }
         }
 
         return WebhookVerificationResult.Success();

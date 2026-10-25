@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using WebXemPhim.Server.Security;
+using WebXemPhim.Server.Services;
 using WebXemPhim.Shared.Enums;
 using WebXemPhim.Shared.Models;
 
@@ -1543,7 +1544,7 @@ public static class DatabaseSeeder
             EpisodeNumber = index + 1,
             Title = $"Tập {index + 1}: {title}",
             DurationMinutes = baseDuration + index % 3 - 1,
-            ThumbnailUrl = thumbnails.Length > 0 ? thumbnails[index % thumbnails.Length] : $"/images/movies/movie-{movieId}-backdrop.webp",
+            ThumbnailUrl = thumbnails.Length > 0 ? thumbnails[index % thumbnails.Length] : EpisodeThumbnailUrl(movieId, index + 1),
             Overview = $"Diễn biến tập {index + 1} của bộ phim, tiếp nối câu chuyện với những khám phá và xung đột mới.",
             Streams = GenerateMultiServerStreams(movieId * 10 + index)
         }).ToList();
@@ -1577,6 +1578,8 @@ public static class DatabaseSeeder
 
         foreach (var movie in CatalogMovies)
         {
+            EnsureEpisodeCount(movie);
+
             movie.SimilarMovies = CatalogMovies
                 .Where(m => m.Id != movie.Id && (m.Type == movie.Type || m.Genres.Any(g => movie.Genres.Contains(g))))
                 .Take(4)
@@ -1688,8 +1691,7 @@ public static class DatabaseSeeder
             .Where(e => e.Streams.Select(s => s.ServerName).Distinct().Count() < 4)
             .ToListAsync(cancellationToken);
         if (episodesToUpdate.Count > 0)
-        {
-            foreach (var ep in episodesToUpdate)
+        {            foreach (var ep in episodesToUpdate)
             {
                 context.StreamSources.RemoveRange(ep.Streams);
                 var newStreams = GenerateMultiServerStreams(ep.Id);
@@ -1708,6 +1710,110 @@ public static class DatabaseSeeder
             }
             await context.SaveChangesAsync(cancellationToken);
         }
+
+        await RepairMissingEpisodesAsync(context, cancellationToken);
+        await RepairEpisodeThumbnailsAsync(context, cancellationToken);
+    }
+
+    /// <summary>
+    /// Đổi ảnh nền của các tập đang dùng chung ảnh bìa phim sang ảnh riêng theo tập.
+    /// </summary>
+    private static async Task RepairEpisodeThumbnailsAsync(AppDbContext context, CancellationToken cancellationToken = default)
+    {
+        // Chỉ những tập còn trỏ ảnh bìa chung hoặc để trống mới được đổi sang ảnh riêng.
+        // Ảnh do quản trị viên tải lên (/api/episodes/{id}/media) và ảnh sinh động
+        // (/api/episodes/{m}/{n}/thumbnail) phải được giữ nguyên.
+        var episodes = await context.Episodes
+            .Where(episode => episode.ThumbnailUrl == null
+                || episode.ThumbnailUrl == string.Empty
+                || episode.ThumbnailUrl.StartsWith("/images/movies/movie-")
+                || (episode.ThumbnailUrl.StartsWith("/api/episodes/")
+                    && !episode.ThumbnailUrl.Contains("/media")
+                    && !episode.ThumbnailUrl.Contains("/thumbnail")))
+            .ToListAsync(cancellationToken);
+
+        if (episodes.Count == 0) return;
+
+        foreach (var episode in episodes)
+        {
+            episode.ThumbnailUrl = EpisodeThumbnailUrl(episode.MovieId, episode.EpisodeNumber);
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Bù các tập còn thiếu cho phim đã có trong CSDL nhưng số tập thực tế ít hơn
+    /// <c>TotalEpisodes</c> đã khai báo. Danh mục seed khai báo 28 tập cho một bộ anime nhưng
+    /// chỉ tạo 1 tập, nên danh sách tập trên trang xem chỉ có 1 mục dù thẻ phim ghi "28 tập".
+    /// </summary>
+    private static async Task RepairMissingEpisodesAsync(AppDbContext context, CancellationToken cancellationToken = default)
+    {
+        var movies = await context.Movies
+            .Include(movie => movie.Episodes).ThenInclude(episode => episode.Streams)
+            .ToListAsync(cancellationToken);
+
+        var createdEpisodes = new List<EpisodeEntity>();
+
+        foreach (var movie in movies)
+        {
+            if (movie.TotalEpisodes <= movie.Episodes.Count) continue;
+
+            var baseDuration = movie.Episodes.Count > 0
+                ? movie.Episodes.OrderBy(e => e.EpisodeNumber).First().DurationMinutes
+                : 24;
+
+            // Bù theo SỐ THỨ TỰ tập chứ không theo số lượng hiện có: làm vậy việc chạy lại
+            // luôn cho kết quả giống nhau và không bỏ sót số thứ tự nào.
+            var existingNumbers = movie.Episodes.Select(e => e.EpisodeNumber).ToHashSet();
+
+            for (var episodeNumber = 1; episodeNumber <= movie.TotalEpisodes; episodeNumber++)
+            {
+                if (existingNumbers.Contains(episodeNumber)) continue;
+
+                var episodeId = movie.Id * 100 + episodeNumber;
+
+                // Tập được tạo trước, stream ghi sau: nếu gắn stream ngay từ đầu thì EF sẽ
+                // INSERT stream_sources (bảng con) trước episodes (bảng chính) và vi phạm
+                // khoá ngoại.
+                var episode = new EpisodeEntity
+                {
+                    Id = episodeId,
+                    MovieId = movie.Id,
+                    EpisodeNumber = episodeNumber,
+                    Title = $"Tập {episodeNumber}: {movie.Title}",
+                    DurationMinutes = baseDuration,
+                    ThumbnailUrl = EpisodeThumbnailUrl(movie.Id, episodeNumber),
+                    Overview = $"Diễn biến tập {episodeNumber} của bộ phim, tình tiết mới cập nhật mỗi kỳ chiếu xung đột mới."
+                };
+
+                context.Episodes.Add(episode);
+                createdEpisodes.Add(episode);
+            }
+        }
+
+        if (createdEpisodes.Count == 0) return;
+
+        await context.SaveChangesAsync(cancellationToken);
+
+        foreach (var episode in createdEpisodes)
+        {
+            var streams = GenerateMultiServerStreams(episode.Id);
+            foreach (var stream in streams)
+            {
+                context.StreamSources.Add(new StreamSourceEntity
+                {
+                    EpisodeId = episode.Id,
+                    Position = stream.Position,
+                    ServerName = stream.ServerName,
+                    ServerType = stream.ServerType,
+                    Quality = stream.Quality,
+                    StreamUrl = stream.StreamUrl
+                });
+            }
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>
@@ -2199,7 +2305,99 @@ public static class DatabaseSeeder
 
             await context.SaveChangesAsync(cancellationToken);
         }
+
+        await RepairUnreadableDemoIdentitiesAsync(context, cancellationToken);
     }
+
+    /// <summary>
+    /// The demo identities that the seeder provisions. They are listed separately so the
+    /// repair step below can restore them without touching the rest of the catalogue.
+    /// </summary>
+    private static readonly (Guid Id, string FullName, string Email)[] DemoIdentities =
+    [
+        (Guid.Parse("11111111-1111-1111-1111-111111111111"), "Quản Trị Viên", "admin@cinemaflow.vn"),
+        (Guid.Parse("22222222-2222-2222-2222-222222222222"), "Trần Hoàng Nam", "hoangnam@cinemaflow.vn"),
+        (Guid.Parse("33333333-3333-3333-3333-333333333333"), "VIP Member", "vip@cinemaflow.vn"),
+        (Guid.Parse("44444444-4444-4444-4444-444444444444"), "Nguyễn Thùy Linh", "thuylinh@cinemaflow.vn"),
+        (Guid.Parse("55555555-5555-5555-5555-555555555555"), "Lê Bảo Long", "longle@cinemaflow.vn")
+    ];
+
+    /// <summary>
+    /// Restores the demo accounts when their encrypted name/e-mail can no longer be read.
+    /// <para>
+    /// The customer fields are encrypted at rest. When the Data Protection key ring is reset
+    /// (a rebuilt container without a persisted key volume, for instance) the stored ciphertext
+    /// becomes unreadable and the cockpit would render the raw ciphertext. The demo identities
+    /// are known, so they are re-applied and re-encrypted with the current key ring.
+    /// </para>
+    /// </summary>
+    private static async Task RepairUnreadableDemoIdentitiesAsync(AppDbContext context, CancellationToken cancellationToken)
+    {
+        var repaired = 0;
+
+        foreach (var (id, fullName, email) in DemoIdentities)
+        {
+            var user = await context.Users.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+            if (user is null) continue;
+
+            var nameUnreadable = string.IsNullOrWhiteSpace(user.FullName);
+            var emailUnreadable = string.IsNullOrWhiteSpace(user.Email);
+            if (!nameUnreadable && !emailUnreadable) continue;
+
+            if (nameUnreadable) user.FullName = fullName;
+            if (emailUnreadable)
+            {
+                user.Email = email;
+                user.NormalizedEmail = email;
+                user.EmailLookupHash = FieldEncryptor.Current.ComputeLookupHash(email);
+            }
+
+            repaired++;
+        }
+
+        if (repaired > 0)
+        {
+            await context.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Bù các tập còn thiếu so với <c>TotalEpisodes</c>.
+    /// <para>
+    /// Danh mục khai báo 28 tập cho một bộ anime nhưng chỉ liệt kê 1 tập, nên thẻ phim ghi
+    /// "28 tập" trong khi danh sách tập trên trang xem chỉ có 1 mục — người xem không chọn được
+    /// tập nào khác. Bù đủ số tập đã khai báo để hai nơi luôn khớp nhau.
+    /// </para>
+    /// </summary>
+    private static void EnsureEpisodeCount(MovieDetailDto movie)
+    {
+        if (movie.TotalEpisodes <= 0 || movie.Episodes.Count >= movie.TotalEpisodes) return;
+
+        var baseDuration = movie.Episodes.Count > 0 ? movie.Episodes[0].DurationMinutes : 24;
+
+        while (movie.Episodes.Count < movie.TotalEpisodes)
+        {
+            var episodeNumber = movie.Episodes.Count + 1;
+            movie.Episodes.Add(new EpisodeDto
+            {
+                Id = movie.Id * 100 + episodeNumber,
+                MovieId = movie.Id,
+                EpisodeNumber = episodeNumber,
+                Title = $"Tập {episodeNumber}: {movie.Title}",
+                DurationMinutes = baseDuration,
+                ThumbnailUrl = EpisodeThumbnailUrl(movie.Id, episodeNumber),
+                Overview = $"Diễn biến tập {episodeNumber} của bộ phim, tình tiết mới cập nhật mỗi kỳ chiếu xung đột mới.",
+                Streams = GenerateMultiServerStreams(movie.Id * 100 + episodeNumber)
+            });
+        }
+    }
+
+    /// <summary>
+    /// Ảnh nền riêng cho từng tập. Mỗi tập nhận một màu chuyển sắc khác nhau (sinh động
+    /// theo phim + số tập) nên danh sách tập không bị lặp ảnh như trước.
+    /// </summary>
+    private static string EpisodeThumbnailUrl(int movieId, int episodeNumber) =>
+        EpisodeThumbnailUrls.Static(movieId, episodeNumber);
 
     private static (byte[] Salt, byte[] Hash) HashPassword(string password)
     {

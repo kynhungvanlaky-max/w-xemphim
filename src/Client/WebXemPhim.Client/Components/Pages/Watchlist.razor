@@ -5,7 +5,7 @@
 @inject ILogger<Watchlist> Logger
 @implements IDisposable
 
-<PageTitle>Tủ phim - CinemaFlow</PageTitle>
+<CinemaPageTitle>Tủ phim - CinemaFlow</CinemaPageTitle>
 <RouteStylesheet Files="@WatchlistStyles" />
 <main class="personal-library">
     <header class="library-heading">
@@ -131,7 +131,7 @@
 </main>
 
 @code {
-    private static readonly string[] WatchlistStyles = ["css/library-membership.css"];
+    private static readonly string[] WatchlistStyles = RouteStylesheetCatalog.Watchlist;
 
     private List<WatchlistItemDto> items = [];
     private bool isLoading = true;

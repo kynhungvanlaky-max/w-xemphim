@@ -164,12 +164,12 @@ public sealed class Milestone2WatchExperienceTests
         factoryMock.Setup(f => f.CreateClient("AccountApi")).Returns(() => new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri("http://localhost:5000/") });
 
         var accountApiMock = new Mock<IAccountApiClient>();
-        accountApiMock.Setup(a => a.GetMeAsync()).ReturnsAsync(new UserDto
+        accountApiMock.Setup(a => a.GetMeResultAsync()).ReturnsAsync(ApiResponse<UserDto>.Ok(new UserDto
         {
             Id = Guid.NewGuid(),
             Email = "test@user.vn",
             MembershipTier = MembershipTier.Vip
-        });
+        }));
 
         var sessionStoreMock = new Mock<IAuthSessionStore>();
         sessionStoreMock.Setup(s => s.ReadAsync()).ReturnsAsync("test-bearer-token");

@@ -1,3 +1,5 @@
+using WebXemPhim.Server.Services;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WebXemPhim.Server.Data;
@@ -14,7 +16,9 @@ public sealed class AdminUsersController(
     IDbContextFactory<AppDbContext> contextFactory,
     TimeProvider timeProvider,
     IWebHostEnvironment? env = null,
-    IHttpClientFactory? httpClientFactory = null)
+    IHttpClientFactory? httpClientFactory = null,
+    IStreamSessionService? streamSessionService = null,
+    IMemoryCache? memoryCache = null)
     : AdminBaseController(contextFactory, timeProvider, env, httpClientFactory)
 {
     [HttpGet]
@@ -22,7 +26,12 @@ public sealed class AdminUsersController(
         [FromQuery] string? q = null,
         [FromQuery] MembershipTier? tier = null,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20)
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? role = null,
+        [FromQuery] string? lockStatus = null,
+        [FromQuery] string? vipStatus = null,
+        [FromQuery] string? registeredPeriod = null,
+        [FromQuery] string? sortBy = null)
     {
         await using var context = await ContextFactory.CreateDbContextAsync();
         var query = context.Users.AsQueryable();
@@ -38,10 +47,94 @@ public sealed class AdminUsersController(
             query = query.Where(u => u.Membership == tier.Value);
         }
 
+        var utcNow = UtcNow;
+        var roleFilter = role?.Trim().ToLower();
+        var lockFilter = lockStatus?.Trim().ToLower();
+        var vipFilter = vipStatus?.Trim().ToLower();
+
+        if (roleFilter is "admin" or "user")
+        {
+            var securityQuery = context.Set<UserSecurityEntity>().AsQueryable();
+            securityQuery = roleFilter == "admin"
+                ? securityQuery.Where(s => s.IsAdmin)
+                : securityQuery.Where(s => !s.IsAdmin);
+            var matchingIds = await securityQuery.Select(s => s.UserId).ToListAsync();
+            query = query.Where(u => matchingIds.Contains(u.Id));
+        }
+
+        if (lockFilter is "locked" or "unlocked")
+        {
+            var lockedIds = await context.Set<UserSecurityEntity>()
+                .Where(s => s.LockedUntilUtc.HasValue && s.LockedUntilUtc.Value > utcNow)
+                .Select(s => s.UserId)
+                .ToListAsync();
+            query = lockFilter == "locked"
+                ? query.Where(u => lockedIds.Contains(u.Id))
+                : query.Where(u => !lockedIds.Contains(u.Id));
+        }
+
+        if (vipFilter == "active")
+        {
+            query = query.Where(u => u.Membership != MembershipTier.Free && u.VipExpiresAtUtc.HasValue && u.VipExpiresAtUtc.Value > utcNow);
+        }
+        else if (vipFilter == "expiring_soon")
+        {
+            var deadline = utcNow.AddDays(7);
+            query = query.Where(u => u.Membership != MembershipTier.Free
+                && u.VipExpiresAtUtc.HasValue
+                && u.VipExpiresAtUtc.Value > utcNow
+                && u.VipExpiresAtUtc.Value <= deadline);
+        }
+        else if (vipFilter == "expired")
+        {
+            query = query.Where(u => u.Membership != MembershipTier.Free && (!u.VipExpiresAtUtc.HasValue || u.VipExpiresAtUtc.Value <= utcNow));
+        }
+        else if (vipFilter == "none")
+        {
+            query = query.Where(u => u.Membership == MembershipTier.Free);
+        }
+
+        var periodFilter = registeredPeriod?.Trim().ToLower();
+        if (periodFilter == "7d")
+        {
+            var from = utcNow.AddDays(-7);
+            query = query.Where(u => u.CreatedAtUtc >= from);
+        }
+        else if (periodFilter == "30d")
+        {
+            var from = utcNow.AddDays(-30);
+            query = query.Where(u => u.CreatedAtUtc >= from);
+        }
+        else if (periodFilter == "this_year")
+        {
+            var year = utcNow.Year;
+            var start = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            var end = start.AddYears(1);
+            query = query.Where(u => u.CreatedAtUtc >= start && u.CreatedAtUtc < end);
+        }
+        else if (periodFilter == "older")
+        {
+            var year = utcNow.Year;
+            var start = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            query = query.Where(u => u.CreatedAtUtc < start);
+        }
+
+        query = (sortBy?.ToLowerInvariant()) switch
+        {
+            "name_asc" => query.OrderBy(u => u.FullName),
+            "name_desc" => query.OrderByDescending(u => u.FullName),
+            "oldest" or "date_asc" => query.OrderBy(u => u.CreatedAtUtc),
+            // VIP hết hạn xa nhất lên đầu; tài khoản không có VIP (null) luôn nằm cuối.
+            "vip_desc" => query
+                .OrderByDescending(u => u.VipExpiresAtUtc.HasValue)
+                .ThenByDescending(u => u.VipExpiresAtUtc),
+            _ => query.OrderByDescending(u => u.CreatedAtUtc)
+        };
+
         if (pageSize <= 0) pageSize = 20;
+        if (pageSize > 1000) pageSize = 1000;
         var totalItems = await query.CountAsync();
         var rawUsers = await query
-            .OrderByDescending(u => u.CreatedAtUtc)
             .Skip((Math.Max(page, 1) - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
@@ -51,7 +144,6 @@ public sealed class AdminUsersController(
             .Where(s => userIds.Contains(s.UserId))
             .ToDictionaryAsync(s => s.UserId);
 
-        var utcNow = UtcNow;
         var users = rawUsers.Select(u =>
         {
             securities.TryGetValue(u.Id, out var sec);
@@ -184,6 +276,13 @@ public sealed class AdminUsersController(
                 : UtcNow;
             user.VipExpiresAtUtc = baseDate.AddDays(request.ExtendDays);
         }
+        else if (!user.VipExpiresAtUtc.HasValue || user.VipExpiresAtUtc.Value <= UtcNow)
+        {
+            // VipExpiresAtUtc = null được toàn bộ hệ thống hiểu là VIP vĩnh viễn. Không được
+            // để thao tác "đổi hạng" vô tình tạo ra đặc quyền vĩnh viễn khi không nhập ngày.
+            return BadRequest(ApiResponse<UserDto>.Fail(
+                "Cần nhập số ngày gia hạn để cấp gói thành viên khi tài khoản chưa có hạn VIP còn hiệu lực."));
+        }
 
         Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? tx = null;
         if (context.Database.IsRelational())
@@ -195,6 +294,12 @@ public sealed class AdminUsersController(
             await context.SaveChangesAsync();
             await LogAuditAsync(context, "UPDATE_MEMBERSHIP", "User", id.ToString(), $"Cập nhật hạng thành viên của '{user.Email}' thành {request.MembershipTier}.");
             if (tx != null) await tx.CommitAsync();
+            memoryCache?.Remove($"vip_status_{id}");
+            memoryCache?.Remove($"isvip:{id}");
+            if (request.MembershipTier == MembershipTier.Free && streamSessionService is not null)
+            {
+                await streamSessionService.RevokeUserStreamsAsync(id);
+            }
         }
         catch
         {
@@ -354,6 +459,15 @@ public sealed class AdminUsersController(
             var isLockedNow = security.LockedUntilUtc.HasValue && security.LockedUntilUtc.Value > UtcNow;
             await LogAuditAsync(context, "UPDATE_LOCK_STATUS", "User", id.ToString(), $"Cập nhật trạng thái khóa của '{user.Email}': {(isLockedNow ? "Khóa" : "Mở khóa")}.");
             if (tx != null) await tx.CommitAsync();
+            if (request.IsLocked)
+            {
+                memoryCache?.Remove($"vip_status_{id}");
+                memoryCache?.Remove($"isvip:{id}");
+                if (streamSessionService is not null)
+                {
+                    await streamSessionService.RevokeUserStreamsAsync(id);
+                }
+            }
         }
         catch
         {

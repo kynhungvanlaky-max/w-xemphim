@@ -35,6 +35,30 @@ public sealed class ClientSecurityTests
         Assert.Contains("DataProtectionKeyPath", exception.Message);
     }
 
+    /// <summary>
+    /// Video được nạp từ API ở origin khác. Ở chế độ phát triển, API chạy bằng http (cổng
+    /// khác) nên nếu <c>media-src</c> chỉ cho phép 'self' + https: thì trình duyệt chặn video và
+    /// báo "Media load rejected by URL safety check" — người xem chỉ thấy màn hình đen.
+    /// Ở production API dùng https nên chính sách phải giữ nguyên độ chặt.
+    /// </summary>
+    [Fact]
+    public async Task DevelopmentCspAllowsHttpMediaSourceButProductionKeepsItStrict()
+    {
+        await using var devFactory = new WebApplicationFactory<App>().WithWebHostBuilder(builder => builder.UseEnvironment("Development"));
+        using var devClient = devFactory.CreateClient();
+        var devResponse = await devClient.GetAsync("/watch/1");
+        Assert.Equal(HttpStatusCode.OK, devResponse.StatusCode);
+
+        var devPolicy = devResponse.Headers.GetValues("Content-Security-Policy").Single();
+        var mediaSrc = Regex.Match(devPolicy, "media-src ([^;]+);").Groups[1].Value;
+        Assert.Contains("http:", mediaSrc, StringComparison.Ordinal);
+        Assert.Contains("'self'", mediaSrc, StringComparison.Ordinal);
+
+        // Ảnh bìa cũng nạp từ API nên img-src phải cho phép http ở chế độ phát triển.
+        var imgSrc = Regex.Match(devPolicy, "img-src ([^;]+);").Groups[1].Value;
+        Assert.Contains("http:", imgSrc, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("/admin", "Tổng quan vận hành")]
     [InlineData("/admin/users", "Quản lý người dùng")]

@@ -3,10 +3,10 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Npgsql;
 using WebXemPhim.Server.Controllers;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Server.Security;
@@ -18,36 +18,20 @@ using Xunit;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public sealed class SecurityAuditAndHardeningTests
+public sealed class SecurityAuditAndHardeningTests : IClassFixture<PostgresTestDatabaseFixture>
 {
-    private sealed class TestDbContextFactory(DbContextOptions<AppDbContext> options) : IDbContextFactory<AppDbContext>
+    private readonly PostgresTestDatabaseFixture _fixture;
+
+    public SecurityAuditAndHardeningTests(PostgresTestDatabaseFixture fixture)
     {
-        public AppDbContext CreateDbContext() => new(options);
-        public Task<AppDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(new AppDbContext(options));
+        _fixture = fixture;
     }
 
-    private static (SqliteConnection connection, IDbContextFactory<AppDbContext> factory, DbContextOptions<AppDbContext> options) CreateTestDatabase()
+    private PostgresTestDatabase Database => _fixture.Database;
+
+    private async Task<(AuthController controller, IAuthService authService, AppDbContext queryDb, NpgsqlConnection conn)> CreateTestEnvAsync()
     {
-        var connection = new SqliteConnection("DataSource=:memory:;Foreign Keys=True");
-        connection.Open();
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connection)
-            .Options;
-
-        using (var initialContext = new AppDbContext(options))
-        {
-            initialContext.Database.EnsureCreated();
-            DatabaseSchemaHelper.EnsureTablesCreatedAsync(initialContext).GetAwaiter().GetResult();
-        }
-
-        var factory = new TestDbContextFactory(options);
-        return (connection, factory, options);
-    }
-
-    private static (AuthController controller, IAuthService authService, AppDbContext queryDb, SqliteConnection conn) CreateTestEnv()
-    {
-        var (connection, factory, options) = CreateTestDatabase();
+        var (connection, queryDb, factory) = await Database.CreateOpenContextAsync();
         var timeProvider = TimeProvider.System;
         var dataProtection = new EphemeralDataProtectionProvider();
         var authService = new AuthService(factory, timeProvider, dataProtection);
@@ -61,14 +45,13 @@ public sealed class SecurityAuditAndHardeningTests
             auditService,
             loggerMock.Object);
 
-        var queryDb = new AppDbContext(options);
         return (controller, authService, queryDb, connection);
     }
 
     [Fact]
     public async Task Register_WhenSuccessful_RecordsRegisterSuccessAuditEvent()
     {
-        var (controller, _, queryDb, connection) = CreateTestEnv();
+        var (controller, _, queryDb, connection) = await CreateTestEnvAsync();
         await using (connection)
         await using (queryDb)
         {
@@ -99,7 +82,7 @@ public sealed class SecurityAuditAndHardeningTests
     [Fact]
     public async Task Login_WhenSuccessful_RecordsLoginSuccessAuditEvent()
     {
-        var (controller, _, queryDb, connection) = CreateTestEnv();
+        var (controller, _, queryDb, connection) = await CreateTestEnvAsync();
         await using (connection)
         await using (queryDb)
         {
@@ -137,7 +120,7 @@ public sealed class SecurityAuditAndHardeningTests
     [Fact]
     public async Task Login_WhenFailed_RecordsLoginFailedAuditEvent()
     {
-        var (controller, _, queryDb, connection) = CreateTestEnv();
+        var (controller, _, queryDb, connection) = await CreateTestEnvAsync();
         await using (connection)
         await using (queryDb)
         {
@@ -165,7 +148,7 @@ public sealed class SecurityAuditAndHardeningTests
     [Fact]
     public async Task RevokeAllSessions_RevokesAllAccessTokens_AndRecordsSessionRevokeAllAuditEvent()
     {
-        var (controller, authService, queryDb, connection) = CreateTestEnv();
+        var (controller, authService, queryDb, connection) = await CreateTestEnvAsync();
         await using (connection)
         await using (queryDb)
         {
@@ -222,7 +205,7 @@ public sealed class SecurityAuditAndHardeningTests
     [Fact]
     public async Task ChangePassword_WhenSuccessful_RecordsSessionRevokeAllAuditEvent()
     {
-        var (controller, authService, queryDb, connection) = CreateTestEnv();
+        var (controller, authService, queryDb, connection) = await CreateTestEnvAsync();
         await using (connection)
         await using (queryDb)
         {

@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
@@ -12,24 +11,31 @@ using WebXemPhim.Shared.Responses;
 
 namespace WebXemPhim.Tests.ServerTests;
 
-public sealed class MovieMultiFilterTests(TestApiFactory factory) : IClassFixture<TestApiFactory>
+public sealed class MovieMultiFilterTests : IClassFixture<TestApiFactory>, IClassFixture<PostgresTestDatabaseFixture>
 {
-    private readonly HttpClient client = factory.CreateClient();
+    private readonly HttpClient client;
+    private readonly TestApiFactory _apiFactory;
+    private readonly PostgresTestDatabaseFixture _fixture;
+
+    public MovieMultiFilterTests(TestApiFactory factory, PostgresTestDatabaseFixture fixture)
+    {
+        client = factory.CreateClient();
+        _apiFactory = factory;
+        _fixture = fixture;
+    }
 
     [Fact]
-    public async Task SqliteMatchesVietnameseCaseInsensitivelyAcrossMultipleGroups()
+    public async Task PostgreSqlMatchesVietnameseCaseInsensitivelyAcrossMultipleGroups()
     {
-        await using var connection = new SqliteConnection("Data Source=:memory:");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
-        await using (var seed = new AppDbContext(options))
+        var database = _fixture.Database;
+        await database.ResetAsync();
+        await using (var seed = database.CreateContext())
         {
-            await seed.Database.EnsureCreatedAsync();
             await DatabaseSeeder.SeedCatalogAsync(seed);
         }
         var contexts = new Mock<IDbContextFactory<AppDbContext>>();
         contexts.Setup(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new AppDbContext(options));
+            .ReturnsAsync(() => database.CreateContext());
         var service = new DatabaseMovieService(contexts.Object);
         var all = await service.FilterMoviesAsync(new MovieFilterRequest { PageSize = 100 });
         var request = new MovieFilterRequest
@@ -98,7 +104,7 @@ public sealed class MovieMultiFilterTests(TestApiFactory factory) : IClassFixtur
     {
         var query = "genre=" + Uri.EscapeDataString("Hành động") + "&genres=" + Uri.EscapeDataString("Tâm lý");
         var api = await Read(query);
-        var factoryContext = factory.Services.GetRequiredService<IDbContextFactory<AppDbContext>>();
+        var factoryContext = _apiFactory.Services.GetRequiredService<IDbContextFactory<AppDbContext>>();
         var service = new DatabaseMovieService(factoryContext);
         var memory = await service.FilterMoviesAsync(new MovieFilterRequest
         {

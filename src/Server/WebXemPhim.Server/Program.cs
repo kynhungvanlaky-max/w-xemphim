@@ -14,7 +14,10 @@ using WebXemPhim.Shared.Security;
 var builder = WebApplication.CreateBuilder(args);
 WebSecurityExtensions.ApplyDevelopmentDefaults(builder.Configuration, builder.Environment, client: false);
 WebSecurityExtensions.ValidateProduction(builder.Configuration, builder.Environment, client: false);
-builder.WebHost.ConfigureKestrel(options => { options.AddServerHeader = false; options.Limits.MaxRequestBodySize = 64 * 1024; });
+// Giới hạn mặc định 64 KB cho mọi API. Riêng endpoint tải ảnh nền tập dùng giới hạn
+// riêng (RequestSizeLimit trên action) nên Kestrel phải cho phép mức cao hơn — giới hạn
+// của action vẫn được áp dụng, các endpoint khác không bị nới ra.
+builder.WebHost.ConfigureKestrel(options => { options.AddServerHeader = false; options.Limits.MaxRequestBodySize = 6 * 1024 * 1024; });
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Services.AddSiteDataProtection(builder.Configuration, "WebXemPhim.Server");
@@ -55,6 +58,43 @@ if (!builder.Environment.IsEnvironment("Testing"))
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHttpClient();
 
+// Proxy video: máy chủ nguồn có thể chậm, nên thời gian chờ phải rộng và không được chặn
+// việc đọc nốt phần dữ liệu còn lại khi người xem đóng tab.
+// HLS có thể tạo nhiều request segment song song, nên cần mở rộng connection pool
+// và bật HTTP/2 để tránh bottleneck ở plafon 2 kết nối/máy chủ (mặc định HTTP/1.1).
+builder.Services.AddHttpClient("StreamProxy", client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(10);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("CinemaFlow/1.0 (+stream-proxy)");
+}).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+{
+    // Redirect được xử lý thủ công trong StreamController để kiểm tra lại URL từng bước.
+    AllowAutoRedirect = false,
+    AutomaticDecompression = System.Net.DecompressionMethods.All,
+    ConnectTimeout = TimeSpan.FromSeconds(15),
+    PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+    PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+    MaxConnectionsPerServer = 64,
+    EnableMultipleHttp2Connections = true,
+    KeepAlivePingDelay = TimeSpan.FromSeconds(30),
+    KeepAlivePingTimeout = TimeSpan.FromSeconds(10),
+    MaxResponseHeadersLength = 8 * 1024,
+    MaxResponseDrainSize = 8 * 1024,
+    // Chặn DNS rebinding: địa chỉ IP thật sự được kết nối phải là IP công khai.
+    ConnectCallback = SafeStreamUrlValidator.ConnectSafeAsync
+});
+
+builder.Services.AddHttpClient("StreamProbe", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(5);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("CinemaFlow-Probe/2026.1");
+}).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+{
+    AllowAutoRedirect = false,
+    ConnectTimeout = TimeSpan.FromSeconds(5),
+    ConnectCallback = SafeStreamUrlValidator.ConnectSafeAsync
+});
+
 // Register application services
 builder.Services.AddScoped<IMovieService, DatabaseMovieService>();
 builder.Services.AddScoped<IGenreService, DatabaseGenreService>();
@@ -64,6 +104,10 @@ builder.Services.AddScoped<ISecurityAuditService, SecurityAuditService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IReviewService, ReviewService>();
 builder.Services.AddSingleton<IStreamUrlSigner, StreamUrlSigner>();
+builder.Services.AddSingleton<PublicUrlResolver>();
+// Ảnh nền tập do quản trị viên tải lên nằm trong volume server_data (/app/data) nên
+// không mất khi build lại container.
+builder.Services.AddSingleton<EpisodeThumbnailStorage>();
 builder.Services.AddSingleton<IPaymentWebhookVerifier, PaymentWebhookVerifier>();
 builder.Services.AddSingleton<IFieldEncryptor, FieldEncryptor>();
 builder.Services.AddScoped<IStreamSessionService, StreamSessionService>();
@@ -82,7 +126,7 @@ builder.Services.AddCors(options =>
         {
             policy.WithOrigins(origins)
                   .WithMethods("GET", "POST", "PUT", "DELETE")
-                  .WithHeaders("Content-Type", "Authorization", "x-requested-with", "x-signalr-user-agent")
+                  .WithHeaders("Content-Type", "Authorization", "x-requested-with", "x-signalr-user-agent", "Range")
                   .AllowCredentials();
         }
     });
@@ -90,12 +134,28 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// The customer-field encryptor must share the application's Data Protection key ring.
+// Without this the static accessor falls back to a key folder in the process temp path,
+// which is wiped whenever the container is rebuilt — every already encrypted user name and
+// e-mail would then be unreadable and the cockpit would render raw ciphertext.
+FieldEncryptor.Current = new FieldEncryptor(app.Services.GetRequiredService<IDataProtectionProvider>());
+
 if (!app.Environment.IsEnvironment("Testing"))
 {
     var factory = app.Services.GetRequiredService<IDbContextFactory<AppDbContext>>();
     await using var db = await factory.CreateDbContextAsync();
     var schemaStartedAt = DateTime.UtcNow;
-    await db.Database.EnsureCreatedAsync();
+    if (db.Database.IsNpgsql())
+    {
+        // PostgreSQL validates foreign keys when a table is created, so the schema is applied
+        // through the migrations (which know the dependency order) instead of EnsureCreated.
+        await DatabaseSchemaHelper.BaselineMigrationsAsync(db);
+        await db.Database.MigrateAsync();
+    }
+    else
+    {
+        await db.Database.EnsureCreatedAsync();
+    }
     await DatabaseSchemaHelper.EnsureTablesCreatedAsync(db);
 
     // Revoke historical plaintext/predictable tokens; never migrate them into valid sessions.
@@ -141,10 +201,11 @@ if (!app.Environment.IsEnvironment("Testing"))
                 "Security:AllowedOrigins is empty. Browser calls to the REST API from another origin will be blocked by CORS. Configure the public client origins before going live.");
         }
 
-        if (app.Configuration.GetSection("Security:KnownProxies").Get<string[]>() is not { Length: > 0 })
+        if (app.Configuration.GetSection("Security:KnownProxies").Get<string[]>() is not { Length: > 0 } &&
+            app.Configuration.GetSection("Security:KnownProxyNetworks").Get<string[]>() is not { Length: > 0 })
         {
             app.Logger.LogWarning(
-                "Security:KnownProxies is empty. Only loopback and private networks are trusted for X-Forwarded-For, so the client IP (and the rate limit bucket) may be wrong when the reverse proxy sits outside those ranges.");
+                "No reverse proxy is explicitly trusted. Only loopback is trusted for X-Forwarded-For, so the client IP (and the rate limit bucket) may resolve to the proxy when it runs on a private network. Configure Security:KnownProxies or Security:KnownProxyNetworks.");
         }
     }
 
@@ -163,7 +224,7 @@ if (!app.Environment.IsEnvironment("Testing"))
     }
 
     // Repair text that was stored with the wrong code page (mojibake) by older seeds.
-    const string mojibakeRepairFlag = "mojibake-text-repaired";
+    const string mojibakeRepairFlag = "mojibake-text-repaired-v2";
     var mojibakeRepairDone = await db.AppMaintenanceFlags.AnyAsync(item => item.Flag == mojibakeRepairFlag);
     if (!mojibakeRepairDone)
     {
@@ -187,10 +248,10 @@ var forwardedHeadersOptions = new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
 };
+// Không tin toàn bộ dải mạng riêng: bất kỳ máy nào trong cùng VPC/LAN/Docker network đều
+// có thể gửi X-Forwarded-For giả để vượt rate limit hoặc làm sai lệch IP dùng để ký stream.
+// Chỉ loopback và proxy được cấu hình tường minh mới được tin.
 forwardedHeadersOptions.KnownIPNetworks.Clear();
-forwardedHeadersOptions.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("10.0.0.0"), 8));
-forwardedHeadersOptions.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("172.16.0.0"), 12));
-forwardedHeadersOptions.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("192.168.0.0"), 16));
 forwardedHeadersOptions.KnownProxies.Clear();
 forwardedHeadersOptions.KnownProxies.Add(System.Net.IPAddress.Loopback);
 forwardedHeadersOptions.KnownProxies.Add(System.Net.IPAddress.IPv6Loopback);
@@ -221,6 +282,7 @@ if (configuredProxyNetworks is { Length: > 0 })
             int.TryParse(parts[1], out var prefixLength))
         {
             forwardedHeadersOptions.KnownIPNetworks.Add(new System.Net.IPNetwork(address, prefixLength));
+            ApiRateLimits.AddTrustedProxyNetwork(network);
         }
         else
         {
@@ -255,9 +317,10 @@ if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Databas
             await using var context = await factory.CreateDbContextAsync();
             var timeProvider = app.Services.GetRequiredService<TimeProvider>();
             await DatabaseSeeder.SeedAsync(context, timeProvider);
-            if (context.Database.IsSqlite())
+            if (context.Database.IsNpgsql())
             {
-                await DatabaseSchemaHelper.SyncMoviesFtsAsync(context);
+                await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
+                await DatabaseSchemaHelper.SyncIdentitySequencesAsync(context);
             }
         }
     }

@@ -667,22 +667,22 @@ body[data-theme="light"] .hero-billboard-stage {
 
 [data-theme="light"] .hero-gradient-overlay-left,
 body[data-theme="light"] .hero-gradient-overlay-left {
-    background: linear-gradient(to right, #ffffff 0%, rgba(255, 255, 255, 0.95) 32%, rgba(255, 255, 255, 0.5) 65%, transparent 100%) !important;
+    background: linear-gradient(to right, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.58) 32%, rgba(255, 255, 255, 0.22) 62%, transparent 82%) !important;
 }
 
 [data-theme="light"] .hero-gradient-overlay-right,
 body[data-theme="light"] .hero-gradient-overlay-right {
-    background: linear-gradient(to left, #ffffff 0%, rgba(255, 255, 255, 0.92) 32%, rgba(255, 255, 255, 0.45) 70%, transparent 100%) !important;
+    background: linear-gradient(to left, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.48) 34%, rgba(255, 255, 255, 0.16) 72%, transparent 92%) !important;
 }
 
 [data-theme="light"] .hero-gradient-overlay-bottom,
 body[data-theme="light"] .hero-gradient-overlay-bottom {
-    background: linear-gradient(to top, #ffffff 0%, rgba(255, 255, 255, 0.85) 45%, transparent 100%) !important;
+    background: linear-gradient(to top, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.36) 34%, transparent 100%) !important;
 }
 
 [data-theme="light"] .hero-gradient-overlay-top,
 body[data-theme="light"] .hero-gradient-overlay-top {
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.75) 0%, transparent 100%) !important;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.42) 0%, transparent 100%) !important;
 }
 
 [data-theme="light"] .hero-kicker,
@@ -2134,6 +2134,41 @@ body[data-theme="light"] .search-icon {
 [data-theme="light"] .btn-clear,
 body[data-theme="light"] .btn-clear {
     color: var(--muted) !important;
+}
+
+/* Explore page icons - light mode visibility */
+[data-theme="light"] .search-pill .cinema-icon,
+[data-theme="light"] .search-icon,
+body[data-theme="light"] .search-pill .cinema-icon,
+body[data-theme="light"] .search-icon {
+    color: var(--muted) !important;
+    stroke: var(--muted) !important;
+}
+
+[data-theme="light"] .discovery-search-filter-btn .cinema-icon,
+[data-theme="light"] .discovery-toolbar .cinema-icon,
+body[data-theme="light"] .discovery-search-filter-btn .cinema-icon,
+body[data-theme="light"] .discovery-toolbar .cinema-icon {
+    color: var(--muted) !important;
+    stroke: var(--muted) !important;
+}
+
+[data-theme="light"] .discovery-active-filters .cinema-icon,
+body[data-theme="light"] .discovery-active-filters .cinema-icon {
+    color: var(--muted) !important;
+    stroke: var(--muted) !important;
+}
+
+[data-theme="light"] .explore-pagination .cinema-icon,
+body[data-theme="light"] .explore-pagination .cinema-icon {
+    color: var(--muted) !important;
+    stroke: var(--muted) !important;
+}
+
+[data-theme="light"] .discovery-filter-group .cinema-icon,
+body[data-theme="light"] .discovery-filter-group .cinema-icon {
+    color: var(--muted) !important;
+    stroke: var(--muted) !important;
 }
 
 [data-theme="light"] .filter-pill-bar,
@@ -4486,7 +4521,7 @@ body[data-theme="light"] .utility-breadcrumb-label {
 
 [data-theme="light"] .utility-separator,
 body[data-theme="light"] .utility-separator {
-    color: #94a3b8 !important;
+    color: #64748b !important;
 }
 
 [data-theme="light"] .utility-environment-tag,
@@ -4695,7 +4730,7 @@ body[data-theme="light"] .topbar-subtitle {
 body[data-theme="light"] .live-status-pill {
     background: rgba(16, 185, 129, 0.1) !important;
     border-color: rgba(16, 185, 129, 0.3) !important;
-    color: #059669 !important;
+    color: #047857 !important;
 }
 
 [data-theme="light"] .topbar-search-pill,
@@ -5370,7 +5405,7 @@ body[data-theme="light"] .cockpit-filter-suite {
 body[data-theme="light"] .filter-count-chip {
     background: #f1f5f9 !important;
     border-color: var(--line) !important;
-    color: var(--muted) !important;
+    color: #475569 !important;
 }
 
 [data-theme="light"] .filter-count-chip strong,
@@ -5388,7 +5423,7 @@ body[data-theme="light"] .filter-control-item select.admin-select-picker,
 [data-theme="light"] .filter-control-item input.admin-select-picker,
 body[data-theme="light"] .filter-control-item input.admin-select-picker {
     background: #ffffff !important;
-    border: 1px solid var(--line) !important;
+    border: 1px solid #cbd5e1 !important;
     color: var(--text) !important;
 }
 
@@ -5465,7 +5500,7 @@ body[data-theme="light"] .view-mode-toggle {
 
 [data-theme="light"] .view-mode-btn,
 body[data-theme="light"] .view-mode-btn {
-    color: var(--muted) !important;
+    color: #475569 !important;
 }
 
 [data-theme="light"] .view-mode-btn.active,
@@ -9010,7 +9045,68 @@ body[data-theme="light"] .site-main .explore-empty p,
 }
 
 /* ═══════════════════════════════════════════════════════
-   40. GENRES UNIVERSE PAGE (/genres)
+   /* ===== NavMenu search icon - light mode ===== */
+[data-theme="light"] .nav-search-pill ::deep .cinema-icon,
+[data-theme="light"] .nav-search-pill ::deep svg,
+body[data-theme="light"] .nav-search-pill .cinema-icon,
+body[data-theme="light"] .nav-search-pill svg,
+[data-theme="light"] .nav-search-icon,
+[data-theme="light"] .search-icon,
+body[data-theme="light"] .nav-search-icon,
+body[data-theme="light"] .search-icon {
+    color: #64748b !important;
+    stroke: #64748b !important;
+    fill: #64748b !important;
+}
+
+/* ===== Nav sign-in hover - light mode contrast fix ===== */
+[data-theme="light"] .nav-signin:hover,
+body[data-theme="light"] .nav-signin:hover {
+    background: #e2e8f0 !important;
+    border-color: #cbd5e1 !important;
+    color: #0f172a !important;
+}
+
+/* ===== Explore page icons - light mode visibility ===== */
+[data-theme="light"] .search-pill .cinema-icon,
+[data-theme="light"] .search-icon,
+body[data-theme="light"] .search-pill .cinema-icon,
+body[data-theme="light"] .search-icon {
+    color: var(--muted) !important;
+    stroke: var(--muted) !important;
+    fill: var(--muted) !important;
+}
+
+[data-theme="light"] .discovery-search-filter-btn .cinema-icon,
+[data-theme="light"] .discovery-toolbar .cinema-icon,
+body[data-theme="light"] .discovery-search-filter-btn .cinema-icon,
+body[data-theme="light"] .discovery-toolbar .cinema-icon {
+    color: var(--muted) !important;
+    stroke: var(--muted) !important;
+    fill: var(--muted) !important;
+}
+
+[data-theme="light"] .discovery-active-filters .cinema-icon,
+body[data-theme="light"] .discovery-active-filters .cinema-icon {
+    color: var(--muted) !important;
+    stroke: var(--muted) !important;
+    fill: var(--muted) !important;
+}
+
+[data-theme="light"] .explore-pagination .cinema-icon,
+body[data-theme="light"] .explore-pagination .cinema-icon {
+    color: var(--muted) !important;
+    stroke: var(--muted) !important;
+    fill: var(--muted) !important;
+}
+
+[data-theme="light"] .discovery-filter-group .cinema-icon,
+body[data-theme="light"] .discovery-filter-group .cinema-icon {
+    color: var(--muted) !important;
+    stroke: var(--muted) !important;
+    fill: var(--muted) !important;
+}
+40. GENRES UNIVERSE PAGE (/genres)
    ═══════════════════════════════════════════════════════ */
 body[data-theme="light"] .genres-catalog-page,
 [data-theme="light"] .genres-catalog-page {
@@ -10473,3 +10569,152 @@ body[data-theme="light"] .mobile-drawer-search-pill input::placeholder {
 
 
 
+
+/* --------------------------------------------- ảnh nền tập (khu vực quản trị) ---
+   Chỉ ghi đè nền/viền. Màu chữ để nguyên token --admin-* vì chúng đã tự đổi theo
+   theme (--admin-text-muted: #475569 trên nền sáng → tương phản 6,4:1). Ghi đè bằng
+   --text-2 (#334155) sẽ làm tương phản rơi xuống 4:1, dưới mức AA cho chữ nhỏ. */
+[data-theme="light"] .ep-thumb-preview,
+body[data-theme="light"] .ep-thumb-preview,
+[data-theme="light"] .ep-thumb-modal-preview img,
+body[data-theme="light"] .ep-thumb-modal-preview img {
+    background: var(--surface-2) !important;
+    border-color: var(--line-strong) !important;
+}
+
+[data-theme="light"] .ep-thumb-edit,
+body[data-theme="light"] .ep-thumb-edit {
+    background: var(--surface-2) !important;
+    border-color: var(--line-strong) !important;
+    /* Icon cần tương phản tối thiểu 3:1 — --muted (#64748b) trên nền sáng chỉ đạt
+       2,1:1 nên dùng --text-2 (#334155, đạt 3,85:1). */
+    color: var(--text-2) !important;
+}
+
+[data-theme="light"] .ep-thumb-edit:hover,
+body[data-theme="light"] .ep-thumb-edit:hover {
+    background: var(--surface) !important;
+    border-color: var(--text-2) !important;
+    color: var(--text) !important;
+}
+
+[data-theme="light"] .ep-thumb-drop,
+body[data-theme="light"] .ep-thumb-drop {
+    background: var(--surface-2) !important;
+    border-color: var(--line-strong) !important;
+}
+
+[data-theme="light"] .ep-thumb-drop:hover,
+body[data-theme="light"] .ep-thumb-drop:hover {
+    border-color: var(--accent) !important;
+}
+/* Fix: icon colors in light mode (override scoped !important dark colors) */
+:is(html, body)[data-theme="light"] .nav-search-pill .nav-search-icon.cinema-icon,
+:is(html, body)[data-theme="light"] .nav-search-pill .cinema-icon.nav-search-icon,
+:is(html, body)[data-theme="light"] .nav-search-pill .nav-search-icon,
+:is(html, body)[data-theme="light"] .nav-search-pill .cinema-icon,
+:is(html, body)[data-theme="light"] .nav-search-pill svg,
+:is(html, body)[data-theme="light"] .search-pill .search-icon,
+:is(html, body)[data-theme="light"] .search-pill .cinema-icon,
+:is(html, body)[data-theme="light"] .search-pill svg {
+    color: #475569 !important;
+    stroke: currentColor !important;
+}
+
+:is(html, body)[data-theme="light"] .discovery-search-filter-btn .cinema-icon,
+:is(html, body)[data-theme="light"] .discovery-search-filter-btn svg {
+    color: #0f172a !important;
+    stroke: currentColor !important;
+    fill: none !important;
+}
+
+:is(html, body)[data-theme="light"] .discovery-search-filter-btn.open .cinema-icon,
+:is(html, body)[data-theme="light"] .discovery-search-filter-btn.has-active .cinema-icon,
+:is(html, body)[data-theme="light"] .discovery-search-filter-btn.open svg,
+:is(html, body)[data-theme="light"] .discovery-search-filter-btn.has-active svg {
+    color: #dc2626 !important;
+}
+
+/* ===== /watch light mode: rail blocks, similar movies, controls ===== */
+:is(html, body)[data-theme="light"] .watch-v2 .wv-rail-block {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05) !important;
+    color: #0f172a;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .wv-rail h2,
+:is(html, body)[data-theme="light"] .watch-v2 .wv-similar-title {
+    color: #0f172a !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .wv-similar {
+    border-top-color: #e2e8f0 !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .related-row {
+    color: #0f172a !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .related-row:hover {
+    background: #f1f5f9 !important;
+    border-color: #cbd5e1 !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .related-row-thumb {
+    background: #e2e8f0 !important;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18) !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .related-row-title {
+    color: #0f172a !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .related-row-meta {
+    color: #475569 !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .related-row-rating {
+    color: #b45309 !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .related-strip-card {
+    background: #e2e8f0 !important;
+    border-color: #cbd5e1 !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .wv-similar-more {
+    background: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+    color: #334155 !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .wv-similar-more:hover {
+    background: #e2e8f0 !important;
+    border-color: #94a3b8 !important;
+    color: #0f172a !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .wv-view-btn {
+    color: #475569 !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .wv-view-btn:hover {
+    color: #0f172a !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .wv-view-btn.active {
+    background: #ffffff !important;
+    color: #d31920 !important;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18) !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .wv-rail-count {
+    color: #475569 !important;
+    background: #f1f5f9 !important;
+    border-color: #cbd5e1 !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .wv-sc-tool-btn,
+:is(html, body)[data-theme="light"] .watch-v2 .wv-sc-pill {
+    color: #334155 !important;
+    border-color: #cbd5e1 !important;
+    background: #f8fafc !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .wv-sc-pill.active,
+:is(html, body)[data-theme="light"] .watch-v2 .wv-sc-tool-btn.active {
+    color: #d31920 !important;
+    border-color: #f87171 !important;
+    background: #fee2e2 !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .wv-sc-label {
+    color: #475569 !important;
+}
+:is(html, body)[data-theme="light"] .watch-v2 .wv-episode-empty,
+:is(html, body)[data-theme="light"] .watch-v2 .wv-breadcrumb {
+    color: #475569 !important;
+}

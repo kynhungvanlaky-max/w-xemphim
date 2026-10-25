@@ -836,7 +836,7 @@ body .site-main .vip-plan-card { border-radius: var(--radius-card); }
 /* Admin */
 .admin-app-root.admin-workspace-shell { height: 100dvh; overflow: hidden; background: var(--bg); }
 .admin-app-root .admin-stage-container { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
-.admin-app-root .admin-left-sidebar { width: 230px; background: #0a0c0f; border-color: var(--line); }
+.admin-app-root .admin-left-sidebar { width: 260px; background: #0a0c0f; border-color: var(--line); }
 .admin-app-root .sidebar-brand-block { border-color: var(--line); }
 .admin-app-root .brand-name { letter-spacing: 0.05em; }
 .admin-app-root .brand-tag { color: var(--muted); }

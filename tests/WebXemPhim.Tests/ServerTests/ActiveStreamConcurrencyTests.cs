@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -547,5 +548,116 @@ public sealed class ActiveStreamConcurrencyTests
 
         streamServiceMock.Verify(s => s.ReleaseByConnectionIdAsync("conn-disco", default), Times.Once);
         groupsMock.Verify(g => g.RemoveFromGroupAsync("conn-disco", $"user-{userId}", default), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(MembershipTier.Free, 1)]
+    [InlineData(MembershipTier.Vip, 2)]
+    [InlineData(MembershipTier.Premium, 4)]
+    public async Task MaxAllowedStreams_UsesMembershipTierConfiguration(MembershipTier tier, int expectedLimit)
+    {
+        var (factory, options) = CreateContextFactory();
+        var timeProvider = new TestTimeProvider(DateTimeOffset.UtcNow);
+        var hubContextMock = new Mock<IHubContext<CinemaHub>>();
+        var hubClientsMock = new Mock<IHubClients>();
+        var clientProxyMock = new Mock<IClientProxy>();
+        hubContextMock.Setup(h => h.Clients).Returns(hubClientsMock.Object);
+        hubClientsMock.Setup(c => c.Group(It.IsAny<string>())).Returns(clientProxyMock.Object);
+
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["StreamSecurity:DefaultMaxStreams"] = "1",
+            ["StreamSecurity:MaxConcurrentStreams:Free"] = "1",
+            ["StreamSecurity:MaxConcurrentStreams:Vip"] = "2",
+            ["StreamSecurity:MaxConcurrentStreams:Premium"] = "4",
+            ["StreamSecurity:MaxConcurrentStreams:Admin"] = "5"
+        }).Build();
+
+        Guid userId;
+        await using (var db = new AppDbContext(options))
+        {
+            var user = await SeedUserAsync(db, $"tier-{tier}-{Guid.NewGuid():N}@cinema.test", tier);
+            userId = user.Id;
+        }
+
+        var service = new StreamSessionService(factory, hubContextMock.Object, timeProvider, configuration);
+
+        var first = await service.AcquireLeaseAsync(userId, 1, 1, "tier-session-1", "Browser 1");
+        Assert.True(first.Success);
+        Assert.Equal(expectedLimit, first.MaxAllowedStreams);
+        Assert.Equal(1, first.ActiveStreamsCount);
+
+        for (var index = 2; index <= expectedLimit; index++)
+        {
+            var next = await service.AcquireLeaseAsync(userId, 1, 1, $"tier-session-{index}", $"Browser {index}");
+            Assert.True(next.Success);
+            Assert.Equal(expectedLimit, next.MaxAllowedStreams);
+            Assert.Equal(index, next.ActiveStreamsCount);
+            Assert.False(next.EvictedPreviousSession);
+        }
+
+        var overLimit = await service.AcquireLeaseAsync(userId, 1, 1, "tier-session-over", "Browser over");
+        Assert.True(overLimit.Success);
+        Assert.True(overLimit.EvictedPreviousSession);
+        Assert.Equal(expectedLimit, overLimit.MaxAllowedStreams);
+        Assert.Equal(expectedLimit, overLimit.ActiveStreamsCount);
+    }
+
+    [Fact]
+    public async Task AdminRole_GetsAdminLimit_EvenWithFreeMembership()
+    {
+        var (factory, options) = CreateContextFactory();
+        var timeProvider = new TestTimeProvider(DateTimeOffset.UtcNow);
+        var hubContextMock = new Mock<IHubContext<CinemaHub>>();
+
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["StreamSecurity:DefaultMaxStreams"] = "1",
+            ["StreamSecurity:MaxConcurrentStreams:Free"] = "1",
+            ["StreamSecurity:MaxConcurrentStreams:Admin"] = "5"
+        }).Build();
+
+        Guid userId;
+        await using (var db = new AppDbContext(options))
+        {
+            var user = await SeedUserAsync(db, "admin-free@cinema.test", MembershipTier.Free);
+            userId = user.Id;
+            db.UserSecurity.Add(new UserSecurityEntity { UserId = userId, IsAdmin = true });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new StreamSessionService(factory, hubContextMock.Object, timeProvider, configuration);
+        var result = await service.AcquireLeaseAsync(userId, 1, 1, "admin-session", "Admin Browser");
+
+        Assert.True(result.Success);
+        Assert.Equal(5, result.MaxAllowedStreams);
+    }
+
+    [Fact]
+    public async Task GetActiveLeaseAsync_ReturnsNullAfterRelease()
+    {
+        var (factory, options) = CreateContextFactory();
+        var timeProvider = new TestTimeProvider(DateTimeOffset.UtcNow);
+        var hubContextMock = new Mock<IHubContext<CinemaHub>>();
+
+        Guid userId;
+        await using (var db = new AppDbContext(options))
+        {
+            var user = await SeedUserAsync(db, "lease-lookup@cinema.test");
+            userId = user.Id;
+        }
+
+        var service = new StreamSessionService(factory, hubContextMock.Object, timeProvider);
+        var acquired = await service.AcquireLeaseAsync(userId, 1, 1, "lease-lookup-session", "Browser");
+        Assert.True(acquired.Success);
+
+        var active = await service.GetActiveLeaseAsync("lease-lookup-session");
+        Assert.NotNull(active);
+        Assert.Equal(1, active.EpisodeId);
+
+        await service.ReleaseLeaseAsync("lease-lookup-session");
+
+        var released = await service.GetActiveLeaseAsync("lease-lookup-session");
+        Assert.Null(released);
     }
 }

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using WebXemPhim.Server.Services;
 using WebXemPhim.Shared.Models;
@@ -17,6 +18,10 @@ public class CinemaHub : Hub
     {
     }
 
+    // SignalR tạo hub qua ActivatorUtilities; constructor không tham số ở trên cũng là
+    // ứng viên hợp lệ nên phải chỉ định rõ constructor dùng cho DI, nếu không sẽ ném
+    // InvalidOperationException "Multiple constructors accepting all given argument types".
+    [ActivatorUtilitiesConstructor]
     public CinemaHub(
         IStreamSessionService streamSessionService,
         ILogger<CinemaHub>? logger = null)

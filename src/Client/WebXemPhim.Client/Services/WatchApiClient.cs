@@ -29,6 +29,105 @@ public sealed class WatchApiClient(
         return result.Data;
     }
 
+    public async Task<SignedStreamDto?> SignStreamAsync(
+        int episodeId,
+        int position,
+        string sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!auth.IsAuthenticated || string.IsNullOrWhiteSpace(auth.AccessToken)) return null;
+
+        try
+        {
+            using var client = factory.CreateClient("AccountApi");
+            using var request = new HttpRequestMessage(HttpMethod.Post, "api/stream/sign")
+            {
+                Content = JsonContent.Create(new SignStreamRequest
+                {
+                    EpisodeId = episodeId,
+                    Position = position,
+                    SessionId = sessionId
+                })
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+
+            using var response = await client.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode) return null;
+
+            var result = await response.Content.ReadFromJsonAsync<ApiResponse<SignedStreamDto>>(cancellationToken);
+            return result?.Success == true ? result.Data : null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            logger?.LogWarning(ex, "Failed to sign stream for episode {EpisodeId} position {Position}", episodeId, position);
+            return null;
+        }
+    }
+
+    public async Task<SignedStreamDto?> RefreshStreamAsync(
+        int episodeId,
+        int position,
+        string sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!auth.IsAuthenticated || string.IsNullOrWhiteSpace(auth.AccessToken) || string.IsNullOrWhiteSpace(sessionId))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var client = factory.CreateClient("AccountApi");
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                $"api/stream/sessions/{Uri.EscapeDataString(sessionId)}/refresh")
+            {
+                Content = JsonContent.Create(new RefreshStreamRequest
+                {
+                    EpisodeId = episodeId,
+                    Position = position
+                })
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+
+            using var response = await client.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode) return null;
+
+            var result = await response.Content.ReadFromJsonAsync<ApiResponse<SignedStreamDto>>(cancellationToken);
+            return result?.Success == true ? result.Data : null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            logger?.LogWarning(ex, "Failed to refresh stream session {SessionId}", sessionId);
+            return null;
+        }
+    }
+
+    public async Task<bool> RevokeStreamAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        if (!auth.IsAuthenticated || string.IsNullOrWhiteSpace(auth.AccessToken) || string.IsNullOrWhiteSpace(sessionId))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var client = factory.CreateClient("AccountApi");
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                $"api/stream/sessions/{Uri.EscapeDataString(sessionId)}/revoke");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+
+            using var response = await client.SendAsync(request, cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            logger?.LogWarning(ex, "Failed to revoke stream session {SessionId}", sessionId);
+            return false;
+        }
+    }
+
     public async Task<WatchProgressDto?> GetProgressAsync(int movieId)
     {
         if (!auth.IsAuthenticated || string.IsNullOrWhiteSpace(auth.AccessToken)) return null;

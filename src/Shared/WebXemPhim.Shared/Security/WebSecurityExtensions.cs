@@ -34,12 +34,12 @@ public static class WebSecurityExtensions
 
         if (string.IsNullOrWhiteSpace(config.GetConnectionString("Default")))
         {
-            config["ConnectionStrings:Default"] = "Data Source=webxemphim.db";
+            config["ConnectionStrings:Default"] = "Host=localhost;Port=5432;Database=webxemphim;Username=webxemphim;Password=webxemphim";
         }
 
         if (string.IsNullOrWhiteSpace(config["Database:Provider"]))
         {
-            config["Database:Provider"] = "Sqlite";
+            config["Database:Provider"] = "PostgreSql";
         }
 
         if (string.IsNullOrWhiteSpace(config["Database:SeedDemoData"]))
@@ -190,7 +190,12 @@ public static class WebSecurityExtensions
                 headers["X-Download-Options"] = "noopen";
                 headers["Cross-Origin-Opener-Policy"] = "same-origin";
                 headers["Content-Security-Policy"] = client
-                    ? $"default-src 'self'; script-src 'self' 'nonce-{nonce}'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; media-src 'self' https: blob:; connect-src 'self' https: wss:{(development ? " http: ws:" : "")}; frame-src https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+                    // media-src và img-src phải cho phép http: ở chế độ phát triển: video và ảnh
+                    // bìa được nạp từ API ở cổng khác (http://localhost:5085) nên nếu chỉ cho
+                    // 'self' + https: thì trình duyệt chặn và báo
+                    // "Media load rejected by URL safety check" — người xem chỉ thấy màn đen.
+                    // Ở production API dùng https nên đã nằm trong https: của chính sách.
+                    ? $"default-src 'self'; script-src 'self' 'nonce-{nonce}'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:{(development ? " http:" : "")}; media-src 'self' https: blob:{(development ? " http:" : "")}; connect-src 'self' https: wss:{(development ? " http: ws:" : "")}; frame-src https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
                     : "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
                 if ((client && context.Response.ContentType?.StartsWith("text/html", StringComparison.OrdinalIgnoreCase) == true) ||
                     context.Request.Headers.ContainsKey("Authorization") || context.Request.Path.StartsWithSegments("/api/auth") || context.Request.Path.StartsWithSegments("/api/admin") || context.Request.Path.StartsWithSegments("/api/payments/history"))

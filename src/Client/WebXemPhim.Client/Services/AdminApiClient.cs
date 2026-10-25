@@ -10,20 +10,58 @@ public interface IAdminApiClient
 {
     Task<AdminDashboardDto?> GetStatsAsync();
     Task<List<MovieDetailDto>> GetMoviesAsync(string? query = null, MovieType? type = null);
-    Task<PagedResult<MovieDetailDto>> GetMoviesPagedAsync(int page = 1, int pageSize = 20, string? query = null, MovieType? type = null, string? genre = null, string? quality = null, string? status = null, string? sortBy = null);
+    Task<PagedResult<MovieDetailDto>> GetMoviesPagedAsync(
+        int page = 1,
+        int pageSize = 20,
+        string? query = null,
+        MovieType? type = null,
+        string? genre = null,
+        string? quality = null,
+        string? status = null,
+        string? sortBy = null,
+        int? yearFrom = null,
+        int? yearTo = null,
+        string? country = null,
+        double? minRating = null,
+        double? maxRating = null);
     Task<ApiResponse<MovieDetailDto>?> CreateMovieAsync(UpsertMovieRequest request);
     Task<ApiResponse<MovieDetailDto>?> UpdateMovieAsync(int id, UpsertMovieRequest request);
     Task<bool> DeleteMovieAsync(int id);
     Task<List<EpisodeDto>> GetEpisodesAsync(int movieId);
     Task<ApiResponse<EpisodeDto>?> AddEpisodeAsync(int movieId, UpsertEpisodeRequest request);
+    Task<ApiResponse<EpisodeDto>?> UpdateEpisodeAsync(int episodeId, UpdateEpisodeRequest request);
     Task<bool> DeleteEpisodeAsync(int episodeId);
+    Task<ApiResponse<EpisodeDto>?> UploadEpisodeThumbnailAsync(int episodeId, Stream stream, string fileName);
+    Task<ApiResponse<bool>?> DeleteEpisodeThumbnailAsync(int episodeId);
     Task<List<UserDto>> GetUsersAsync(string? query = null, MembershipTier? tier = null);
-    Task<PagedResult<UserDto>> GetUsersPagedAsync(int page = 1, int pageSize = 20, string? query = null, MembershipTier? tier = null);
+    Task<PagedResult<UserDto>> GetUsersPagedAsync(
+        int page = 1,
+        int pageSize = 20,
+        string? query = null,
+        MembershipTier? tier = null,
+        string? role = null,
+        string? lockStatus = null,
+        string? vipStatus = null,
+        string? registeredPeriod = null,
+        string? sortBy = null);
     Task<ApiResponse<UserDto>?> UpdateUserMembershipAsync(Guid userId, AdminUpdateUserRequest request);
     Task<List<PaymentDto>> GetPaymentsAsync(string? query = null, PaymentStatus? status = null);
-    Task<PagedResult<PaymentDto>> GetPaymentsPagedAsync(int page = 1, int pageSize = 20, string? query = null, PaymentStatus? status = null);
+    Task<PagedResult<PaymentDto>> GetPaymentsPagedAsync(
+        int page = 1,
+        int pageSize = 20,
+        string? query = null,
+        PaymentStatus? status = null,
+        string? method = null,
+        string? sortBy = null);
     Task<List<AdminReviewDto>> GetReviewsAsync(string? query = null);
-    Task<PagedResult<AdminReviewDto>> GetReviewsPagedAsync(int page = 1, int pageSize = 20, string? query = null);
+    Task<PagedResult<AdminReviewDto>> GetReviewsPagedAsync(
+        int page = 1,
+        int pageSize = 20,
+        string? query = null,
+        string? status = null,
+        int? minRating = null,
+        int? maxRating = null,
+        string? sortBy = null);
     Task<bool> DeleteReviewAsync(Guid reviewId);
     Task<SystemHealthDto?> GetSystemHealthAsync();
     Task<List<AuditLogDto>> GetAuditLogsAsync(string? query = null, string? entityType = null, int take = 50);
@@ -140,7 +178,12 @@ public sealed class AdminApiClient(
         string? genre = null,
         string? quality = null,
         string? status = null,
-        string? sortBy = null)
+        string? sortBy = null,
+        int? yearFrom = null,
+        int? yearTo = null,
+        string? country = null,
+        double? minRating = null,
+        double? maxRating = null)
     {
         var url = $"api/admin/movies?page={page}&pageSize={pageSize}";
         var queryParams = new List<string>();
@@ -150,6 +193,11 @@ public sealed class AdminApiClient(
         if (!string.IsNullOrWhiteSpace(quality)) queryParams.Add($"quality={Uri.EscapeDataString(quality)}");
         if (!string.IsNullOrWhiteSpace(status)) queryParams.Add($"status={Uri.EscapeDataString(status)}");
         if (!string.IsNullOrWhiteSpace(sortBy)) queryParams.Add($"sortBy={Uri.EscapeDataString(sortBy)}");
+        if (yearFrom.HasValue) queryParams.Add($"yearFrom={yearFrom.Value}");
+        if (yearTo.HasValue) queryParams.Add($"yearTo={yearTo.Value}");
+        if (!string.IsNullOrWhiteSpace(country)) queryParams.Add($"country={Uri.EscapeDataString(country)}");
+        if (minRating.HasValue) queryParams.Add($"minRating={minRating.Value}");
+        if (maxRating.HasValue) queryParams.Add($"maxRating={maxRating.Value}");
         if (queryParams.Count > 0) url += "&" + string.Join("&", queryParams);
 
         return (await SendAsync<PagedResult<MovieDetailDto>>(HttpMethod.Get, url))?.Data ?? new PagedResult<MovieDetailDto>();
@@ -176,15 +224,73 @@ public sealed class AdminApiClient(
     public Task<ApiResponse<EpisodeDto>?> AddEpisodeAsync(int movieId, UpsertEpisodeRequest request) =>
         SendAsync<EpisodeDto>(HttpMethod.Post, $"api/admin/movies/{movieId}/episodes", request);
 
+    public Task<ApiResponse<EpisodeDto>?> UpdateEpisodeAsync(int episodeId, UpdateEpisodeRequest request) =>
+        SendAsync<EpisodeDto>(HttpMethod.Put, $"api/admin/episodes/{episodeId}", request);
+
     public async Task<bool> DeleteEpisodeAsync(int episodeId) =>
         (await SendAsync<bool>(HttpMethod.Delete, $"api/admin/episodes/{episodeId}"))?.Data ?? false;
 
-    public async Task<PagedResult<UserDto>> GetUsersPagedAsync(int page = 1, int pageSize = 20, string? query = null, MembershipTier? tier = null)
+    public async Task<ApiResponse<EpisodeDto>?> UploadEpisodeThumbnailAsync(int episodeId, Stream stream, string fileName)
+    {
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var streamContent = new StreamContent(stream);
+            var extension = Path.GetExtension(fileName).ToLowerInvariant();
+            var contentType = extension switch
+            {
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                ".webp" => "image/webp",
+                ".gif" => "image/gif",
+                ".avif" => "image/avif",
+                _ => "application/octet-stream"
+            };
+            streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+            content.Add(streamContent, "file", fileName);
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"api/admin/episodes/{episodeId}/thumbnail")
+            {
+                Content = content
+            };
+            if (!string.IsNullOrWhiteSpace(authState.AccessToken))
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authState.AccessToken);
+            }
+
+            using var response = await httpClient.SendAsync(request);
+            return await response.Content.ReadFromJsonAsync<ApiResponse<EpisodeDto>>();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Không thể tải lên ảnh nền cho tập {EpisodeId}.", episodeId);
+            return new ApiResponse<EpisodeDto> { Success = false, Message = ex.Message };
+        }
+    }
+
+    public async Task<ApiResponse<bool>?> DeleteEpisodeThumbnailAsync(int episodeId) =>
+        await SendAsync<bool>(HttpMethod.Delete, $"api/admin/episodes/{episodeId}/thumbnail");
+
+    public async Task<PagedResult<UserDto>> GetUsersPagedAsync(
+        int page = 1,
+        int pageSize = 20,
+        string? query = null,
+        MembershipTier? tier = null,
+        string? role = null,
+        string? lockStatus = null,
+        string? vipStatus = null,
+        string? registeredPeriod = null,
+        string? sortBy = null)
     {
         var url = $"api/admin/users?page={page}&pageSize={pageSize}";
         var queryParams = new List<string>();
         if (!string.IsNullOrWhiteSpace(query)) queryParams.Add($"q={Uri.EscapeDataString(query)}");
         if (tier.HasValue) queryParams.Add($"tier={(int)tier.Value}");
+        if (!string.IsNullOrWhiteSpace(role)) queryParams.Add($"role={Uri.EscapeDataString(role)}");
+        if (!string.IsNullOrWhiteSpace(lockStatus)) queryParams.Add($"lockStatus={Uri.EscapeDataString(lockStatus)}");
+        if (!string.IsNullOrWhiteSpace(vipStatus)) queryParams.Add($"vipStatus={Uri.EscapeDataString(vipStatus)}");
+        if (!string.IsNullOrWhiteSpace(registeredPeriod)) queryParams.Add($"registeredPeriod={Uri.EscapeDataString(registeredPeriod)}");
+        if (!string.IsNullOrWhiteSpace(sortBy)) queryParams.Add($"sortBy={Uri.EscapeDataString(sortBy)}");
         if (queryParams.Count > 0) url += "&" + string.Join("&", queryParams);
 
         return (await SendAsync<PagedResult<UserDto>>(HttpMethod.Get, url))?.Data ?? new PagedResult<UserDto>();
@@ -199,12 +305,20 @@ public sealed class AdminApiClient(
     public Task<ApiResponse<UserDto>?> UpdateUserMembershipAsync(Guid userId, AdminUpdateUserRequest request) =>
         SendAsync<UserDto>(HttpMethod.Put, $"api/admin/users/{userId}/membership", request);
 
-    public async Task<PagedResult<PaymentDto>> GetPaymentsPagedAsync(int page = 1, int pageSize = 20, string? query = null, PaymentStatus? status = null)
+    public async Task<PagedResult<PaymentDto>> GetPaymentsPagedAsync(
+        int page = 1,
+        int pageSize = 20,
+        string? query = null,
+        PaymentStatus? status = null,
+        string? method = null,
+        string? sortBy = null)
     {
         var url = $"api/admin/payments?page={page}&pageSize={pageSize}";
         var queryParams = new List<string>();
         if (!string.IsNullOrWhiteSpace(query)) queryParams.Add($"q={Uri.EscapeDataString(query)}");
         if (status.HasValue) queryParams.Add($"status={(int)status.Value}");
+        if (!string.IsNullOrWhiteSpace(method)) queryParams.Add($"method={Uri.EscapeDataString(method)}");
+        if (!string.IsNullOrWhiteSpace(sortBy)) queryParams.Add($"sortBy={Uri.EscapeDataString(sortBy)}");
         if (queryParams.Count > 0) url += "&" + string.Join("&", queryParams);
 
         return (await SendAsync<PagedResult<PaymentDto>>(HttpMethod.Get, url))?.Data ?? new PagedResult<PaymentDto>();
@@ -216,10 +330,23 @@ public sealed class AdminApiClient(
         return paged.Items;
     }
 
-    public async Task<PagedResult<AdminReviewDto>> GetReviewsPagedAsync(int page = 1, int pageSize = 20, string? query = null)
+    public async Task<PagedResult<AdminReviewDto>> GetReviewsPagedAsync(
+        int page = 1,
+        int pageSize = 20,
+        string? query = null,
+        string? status = null,
+        int? minRating = null,
+        int? maxRating = null,
+        string? sortBy = null)
     {
         var url = $"api/admin/reviews?page={page}&pageSize={pageSize}";
-        if (!string.IsNullOrWhiteSpace(query)) url += $"&q={Uri.EscapeDataString(query)}";
+        var queryParams = new List<string>();
+        if (!string.IsNullOrWhiteSpace(query)) queryParams.Add($"q={Uri.EscapeDataString(query)}");
+        if (!string.IsNullOrWhiteSpace(status)) queryParams.Add($"status={Uri.EscapeDataString(status)}");
+        if (minRating.HasValue) queryParams.Add($"minRating={minRating.Value}");
+        if (maxRating.HasValue) queryParams.Add($"maxRating={maxRating.Value}");
+        if (!string.IsNullOrWhiteSpace(sortBy)) queryParams.Add($"sortBy={Uri.EscapeDataString(sortBy)}");
+        if (queryParams.Count > 0) url += "&" + string.Join("&", queryParams);
 
         return (await SendAsync<PagedResult<AdminReviewDto>>(HttpMethod.Get, url))?.Data ?? new PagedResult<AdminReviewDto>();
     }

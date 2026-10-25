@@ -1,0 +1,63 @@
+@namespace WebXemPhim.Client.Components.Common
+@using WebXemPhim.Shared.Models
+@*
+    Dải "phim tương tự" dùng chung cho trang thông tin phim và trang xem phim.
+
+    Cùng một kiểu thẻ (ảnh 16:9 + tên đè gradient) ở cả hai nơi để người xem nhận ra ngay
+    đây là cùng một nhóm gợi ý. Đường dẫn được cấu hình theo từng nơi: trang phim dẫn tới
+    /movie/{id}, trang xem dẫn thẳng tới /watch/{id} để xem tiếp mà không phải rời trang.
+*@
+
+<div class="related-strip-heading @HeadingClass">
+    <h2 id="@HeadingId" class="@TitleClass">@Title</h2>
+    @Action
+</div>
+
+<div class="related-strip-track @TrackClass">
+    @foreach (var related in Movies)
+    {
+        <a href="@BuildHref(related)" class="related-strip-card" title="@related.Title">
+            <img src="@related.BackdropUrl" alt="@related.Title" loading="lazy" />
+            <span>@related.Title</span>
+        </a>
+    }
+</div>
+
+@code {
+    /// <summary>Danh sách phim gợi ý.</summary>
+    [Parameter, EditorRequired]
+    public IEnumerable<MovieDto> Movies { get; set; } = [];
+
+    /// <summary>Tiêu đề của dải.</summary>
+    [Parameter]
+    public string Title { get; set; } = "Phim tương tự";
+
+    /// <summary>id của tiêu đề, dùng cho aria-labelledby.</summary>
+    [Parameter]
+    public string HeadingId { get; set; } = "related-strip-title";
+
+    /// <summary>
+    /// Mẫu đường dẫn, {0} là id phim. Ví dụ "/movie/{0}" hoặc "/watch/{0}".
+    /// </summary>
+    [Parameter]
+    public string HrefTemplate { get; set; } = "/movie/{0}";
+
+    /// <summary>Lớp bổ sung cho phần tiêu đề (để mỗi nơi chỉnh kiểu riêng).</summary>
+    [Parameter]
+    public string? HeadingClass { get; set; }
+
+    /// <summary>Lớp CSS của tiêu đề.</summary>
+    [Parameter]
+    public string TitleClass { get; set; } = "section-sub-heading";
+
+    /// <summary>Lớp bổ sung cho hàng thẻ (ví dụ để đổi số cột).</summary>
+    [Parameter]
+    public string? TrackClass { get; set; }
+
+    /// <summary>Nội dung phụ bên cạnh tiêu đề (ví dụ nút "Xem tất cả").</summary>
+    [Parameter]
+    public RenderFragment? Action { get; set; }
+
+    private string BuildHref(MovieDto movie) =>
+        string.Format(System.Globalization.CultureInfo.InvariantCulture, HrefTemplate, movie.Id);
+}

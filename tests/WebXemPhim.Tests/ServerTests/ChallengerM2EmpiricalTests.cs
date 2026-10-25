@@ -330,7 +330,7 @@ public sealed class ChallengerM2EmpiricalTests(TestApiFactory factory) : IClassF
 
             var vipAnd4k = streams.Where(s => s.ServerType == StreamServerType.VipFastServer || (!string.IsNullOrEmpty(s.Quality) && s.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase))).ToList();
             Assert.NotEmpty(vipAnd4k);
-            Assert.All(vipAnd4k, s => Assert.StartsWith("http", s.StreamUrl));
+            Assert.All(vipAnd4k, s => Assert.Equal(string.Empty, s.StreamUrl));
         }
 
         // Test Endpoint B: /api/movies/slug/dune-part-three
@@ -351,7 +351,7 @@ public sealed class ChallengerM2EmpiricalTests(TestApiFactory factory) : IClassF
 
             var vipAnd4k = streams.Where(s => s.ServerType == StreamServerType.VipFastServer || (!string.IsNullOrEmpty(s.Quality) && s.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase))).ToList();
             Assert.NotEmpty(vipAnd4k);
-            Assert.All(vipAnd4k, s => Assert.StartsWith("http", s.StreamUrl));
+            Assert.All(vipAnd4k, s => Assert.Equal(string.Empty, s.StreamUrl));
         }
 
         // Test Endpoint C & D: /api/episodes/movie/1 and /api/episodes/{firstEpId}
@@ -375,7 +375,7 @@ public sealed class ChallengerM2EmpiricalTests(TestApiFactory factory) : IClassF
 
             var vipAnd4k = streams.Where(s => s.ServerType == StreamServerType.VipFastServer || (!string.IsNullOrEmpty(s.Quality) && s.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase))).ToList();
             Assert.NotEmpty(vipAnd4k);
-            Assert.All(vipAnd4k, s => Assert.StartsWith("http", s.StreamUrl));
+            Assert.All(vipAnd4k, s => Assert.Equal(string.Empty, s.StreamUrl));
         }
 
         // Test Endpoint D: /api/episodes/{firstEpId}
@@ -392,7 +392,7 @@ public sealed class ChallengerM2EmpiricalTests(TestApiFactory factory) : IClassF
             var ep = (await client.GetFromJsonAsync<ApiResponse<EpisodeDto>>($"/api/episodes/{firstEpId}"))!.Data!;
             var vipAnd4k = ep.Streams.Where(s => s.ServerType == StreamServerType.VipFastServer || (!string.IsNullOrEmpty(s.Quality) && s.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase))).ToList();
             Assert.NotEmpty(vipAnd4k);
-            Assert.All(vipAnd4k, s => Assert.StartsWith("http", s.StreamUrl));
+            Assert.All(vipAnd4k, s => Assert.Equal(string.Empty, s.StreamUrl));
         }
     }
 
@@ -413,7 +413,7 @@ public sealed class ChallengerM2EmpiricalTests(TestApiFactory factory) : IClassF
         // 2. VIP calls second -> VIP unmasked
         var vip = (await vipClient.GetFromJsonAsync<ApiResponse<MovieDetailDto>>("/api/movies/1"))!.Data!;
         var vipStreams = vip.Episodes.SelectMany(e => e.Streams).Where(s => s.ServerType == StreamServerType.VipFastServer).ToList();
-        Assert.All(vipStreams, s => Assert.StartsWith("http", s.StreamUrl));
+        Assert.All(vipStreams, s => Assert.Equal(string.Empty, s.StreamUrl));
 
         // 3. Guest calls third -> VIP still masked (no cache pollution)
         var guest2 = (await guestClient.GetFromJsonAsync<ApiResponse<MovieDetailDto>>("/api/movies/1"))!.Data!;

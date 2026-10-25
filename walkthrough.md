@@ -13,13 +13,13 @@
    - Hình ảnh: Chiến binh áo tơi dưới mưa đêm huyền bí, ánh đèn bão và trăng đỏ đậm chất Blade Runner / Điện ảnh Noir (`cinemaflow-watch-rain-night.png`).
    - Dải chuyển màu đỏ thẫm (Crimson overlay) cùng hiệu ứng ánh sáng rực rỡ.
 2. **Thẻ 2: Tình cảm lãng mạn (Góc phải trên):**
-   - Hình ảnh: Khung cảnh sân vườn hoàng hôn ấm áp lãng mạn của "Đi Đến Nơi Có Gió" (`movie-28-backdrop.jpg`).
+   - Hình ảnh: Khung cảnh sân vườn hoàng hôn ấm áp lãng mạn của "Đi Đến Nơi Có Gió" (`movie-28-backdrop.webp`).
    - Dải chuyển màu hổ phách / mật ong ấm áp (Amber/Rose overlay).
 3. **Thẻ 3: Anime & hoạt hình (Góc phải giữa):**
-   - Hình ảnh: Thế giới kỳ ảo rộng lớn của "Frieren: Pháp Sư Tiễn Táng" với lâu đài và bầu trời xanh ngát (`movie-33-backdrop.jpg`).
+   - Hình ảnh: Thế giới kỳ ảo rộng lớn của "Frieren: Pháp Sư Tiễn Táng" với lâu đài và bầu trời xanh ngát (`movie-33-backdrop.webp`).
    - Dải chuyển màu xanh ngọc / tím huyền ảo (Sapphire/Violet overlay).
 4. **Thẻ 4: Khoa học viễn tưởng (Tràn viền màn ảnh rộng dưới đáy):**
-   - Hình ảnh: Toàn cảnh đại mạc kỳ vĩ và ánh nhìn sắc sảo của Paul Atreides trong "Xứ Cát: Phần Ba - Dune" (`movie-1-backdrop.jpg`).
+   - Hình ảnh: Toàn cảnh đại mạc kỳ vĩ và ánh nhìn sắc sảo của Paul Atreides trong "Xứ Cát: Phần Ba - Dune" (`movie-1-backdrop.webp`).
    - Dải chuyển màu xanh không gian sâu thẳm (Cosmic Cyan/Obsidian overlay).
 
 ### B. Kiến trúc Bento Box độc lập & hiệu ứng chiều sâu cao cấp
@@ -106,5 +106,5 @@
 ---
 
 ## 5. Kết Quả Kiểm Thử Toàn Diện & Trạng Thái Biên Dịch
-- **`dotnet test WebXemPhim.slnx --no-build`**: **497 / 497 Tests PASS 100% (0 Failed)**.
+- **`dotnet test WebXemPhim.slnx --no-build`**: **1312 / 1312 Tests PASS 100% (0 Failed)**.
 - **`dotnet build WebXemPhim.slnx`**: **Build Succeeded 100% (0 Error, 0 Warning)**.

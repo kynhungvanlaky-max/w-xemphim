@@ -6,13 +6,13 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.OutputCaching;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Npgsql;
 using WebXemPhim.Client.Services;
 using WebXemPhim.Server.Controllers;
 using WebXemPhim.Server.Controllers.Admin;
@@ -32,17 +32,21 @@ namespace WebXemPhim.Tests.ServerTests;
 /// Empirically challenges and stress-tests all 4 pillars of the project:
 /// Pillar 1: R1 Security & Protection (Stream URL tampering, Webhook HMAC rejection, Rate limiter burst 429)
 /// Pillar 2: R2 Data Integrity & Reliability (Non-existent slug 404/null verification, Atomic view counter concurrency, Same-IP deduplication)
-/// Pillar 3: R3 Performance & Caching (OutputCache latency < 15ms, Immediate cache eviction, Single round-trip /api/home, SQLite FTS5 unaccented Vietnamese search)
+/// Pillar 3: R3 Performance & Caching (OutputCache latency < 15ms, Immediate cache eviction, Single round-trip /api/home, PostgreSQL tsvector unaccented Vietnamese search)
 /// Pillar 4: R4 Frontend Assets & Loading (wwwroot/images total size < 15MB, 0 PNGs > 500KB, 0 broken image links across Razor/CSS, App.razor dynamic scripts)
 /// </summary>
-public sealed class ChallengerM5FinalAdversarialTests : IClassFixture<TestApiFactory>
+public sealed class ChallengerM5FinalAdversarialTests : IClassFixture<TestApiFactory>, IClassFixture<PostgresTestDatabaseFixture>
 {
     private readonly TestApiFactory _factory;
+    private readonly PostgresTestDatabaseFixture _fixture;
 
-    public ChallengerM5FinalAdversarialTests(TestApiFactory factory)
+    public ChallengerM5FinalAdversarialTests(TestApiFactory factory, PostgresTestDatabaseFixture fixture)
     {
         _factory = factory;
+        _fixture = fixture;
     }
+
+    private PostgresTestDatabase Database => _fixture.Database;
 
     private static string GetSolutionRoot()
     {
@@ -70,21 +74,17 @@ public sealed class ChallengerM5FinalAdversarialTests : IClassFixture<TestApiFac
         return dir;
     }
 
-    private static async Task<(SqliteConnection Connection, AppDbContext Context, IDbContextFactory<AppDbContext> Factory)> CreateSqliteContextAsync()
+    /// <summary>
+    /// Mở context PostgreSQL thật (Testcontainers) đã nạp catalog chuẩn, đồng bộ identity
+    /// sequence và rebuild lại toàn bộ <c>movies."search_vector"</c>.
+    /// </summary>
+    private async Task<(NpgsqlConnection Connection, AppDbContext Context, IDbContextFactory<AppDbContext> Factory)> CreatePostgresContextAsync()
     {
-        var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connection)
-            .Options;
-        var context = new AppDbContext(options);
-        await context.Database.EnsureCreatedAsync();
-        await DatabaseSchemaHelper.EnsureTablesCreatedAsync(context);
+        var (connection, context, factory) = await Database.CreateOpenContextAsync();
         await DatabaseSeeder.SeedCatalogAsync(context);
-        await DatabaseSchemaHelper.SyncMoviesFtsAsync(context);
-
-        var factoryMock = new TestDbContextFactory(options);
-        return (connection, context, factoryMock);
+        await DatabaseSchemaHelper.SyncIdentitySequencesAsync(context);
+        await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
+        return (connection, context, factory);
     }
 
     // =========================================================================
@@ -282,7 +282,7 @@ public sealed class ChallengerM5FinalAdversarialTests : IClassFixture<TestApiFac
     [Fact]
     public async Task Pillar2_AtomicViewCounter_MultiIpConcurrentRequests_ZeroLostUpdates()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, _) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -298,7 +298,8 @@ public sealed class ChallengerM5FinalAdversarialTests : IClassFixture<TestApiFac
             await context.SaveChangesAsync();
 
             var memoryCache = new MemoryCache(new MemoryCacheOptions());
-            var movieService = new DatabaseMovieService(dbFactory, memoryCache);
+            // 50 request đồng thời: mỗi context dùng connection riêng từ pool để không tranh chấp trên một NpgsqlConnection
+            var movieService = new DatabaseMovieService(Database.CreateFactory(), memoryCache);
 
             const int concurrentCallers = 50;
             var tasks = Enumerable.Range(1, concurrentCallers)
@@ -311,8 +312,8 @@ public sealed class ChallengerM5FinalAdversarialTests : IClassFixture<TestApiFac
             var results = await Task.WhenAll(tasks);
             Assert.All(results, success => Assert.True(success));
 
-            // Verify the view count in SQLite reflects 100 + 50 = exactly 150 (zero lost updates)
-            await using var freshContext = await dbFactory.CreateDbContextAsync();
+            // Verify the view count in PostgreSQL reflects 100 + 50 = exactly 150 (zero lost updates)
+            await using var freshContext = Database.CreateContext();
             var updatedMovie = await freshContext.Movies.FindAsync(testMovie.Id);
             Assert.NotNull(updatedMovie);
             Assert.Equal(150, updatedMovie.ViewCount);
@@ -322,7 +323,7 @@ public sealed class ChallengerM5FinalAdversarialTests : IClassFixture<TestApiFac
     [Fact]
     public async Task Pillar2_AtomicViewCounter_SameIpBurstRequests_DeduplicatesWithinCooldown()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, _) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -338,7 +339,7 @@ public sealed class ChallengerM5FinalAdversarialTests : IClassFixture<TestApiFac
             await context.SaveChangesAsync();
 
             var memoryCache = new MemoryCache(new MemoryCacheOptions());
-            var movieService = new DatabaseMovieService(dbFactory, memoryCache);
+            var movieService = new DatabaseMovieService(Database.CreateFactory(), memoryCache);
 
             const string sameIp = "172.16.88.99";
             const int burstRequests = 30;
@@ -350,7 +351,7 @@ public sealed class ChallengerM5FinalAdversarialTests : IClassFixture<TestApiFac
             Assert.All(results, success => Assert.True(success));
 
             // Verify view count only incremented by 1 due to 10-minute sliding cooldown
-            await using var freshContext = await dbFactory.CreateDbContextAsync();
+            await using var freshContext = Database.CreateContext();
             var updatedMovie = await freshContext.Movies.FindAsync(testMovie.Id);
             Assert.NotNull(updatedMovie);
             Assert.Equal(1, updatedMovie.ViewCount);
@@ -402,7 +403,7 @@ public sealed class ChallengerM5FinalAdversarialTests : IClassFixture<TestApiFac
     [Fact]
     public async Task Pillar3_OutputCache_AdminCatalogUpdate_ImmediatelyEvictsCache()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -456,9 +457,9 @@ public sealed class ChallengerM5FinalAdversarialTests : IClassFixture<TestApiFac
     }
 
     [Fact]
-    public async Task Pillar3_SqliteFts5_UnaccentedVietnameseSearch_EdgeCases()
+    public async Task Pillar3_PostgreSqlTsVector_UnaccentedVietnameseSearch_EdgeCases()
     {
-        var (connection, context, dbFactory) = await CreateSqliteContextAsync();
+        var (connection, context, dbFactory) = await CreatePostgresContextAsync();
         await using (connection)
         await using (context)
         {
@@ -474,7 +475,7 @@ public sealed class ChallengerM5FinalAdversarialTests : IClassFixture<TestApiFac
                 DurationMinutes = 138
             });
             await context.SaveChangesAsync();
-            await DatabaseSchemaHelper.SyncMoviesFtsAsync(context);
+            await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
 
             var movieService = new DatabaseMovieService(dbFactory);
 
@@ -502,7 +503,7 @@ public sealed class ChallengerM5FinalAdversarialTests : IClassFixture<TestApiFac
             });
             Assert.Contains(res3.Items, m => m.Title.Contains("Lật Mặt 7"));
 
-            // Edge Case 4: Punctuation and quotes in keyword must not trigger SQLite FTS syntax errors
+            // Edge Case 4: Punctuation and quotes in keyword must not trigger PostgreSQL tsquery syntax errors
             var res4 = await movieService.FilterMoviesAsync(new MovieFilterRequest
             {
                 Keyword = "\"lat-mat\"*",

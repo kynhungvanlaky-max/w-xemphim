@@ -58,5 +58,6 @@ public enum CinemaIconName
     Sun,
     AlertCircle,
     Grid,
-    MoreHorizontal
+    MoreHorizontal,
+    Image
 }

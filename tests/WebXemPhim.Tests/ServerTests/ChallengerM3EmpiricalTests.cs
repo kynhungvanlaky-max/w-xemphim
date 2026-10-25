@@ -337,10 +337,10 @@ public sealed class ChallengerM3EmpiricalTests(TestApiFactory factory) : IClassF
         });
 
         using var clientA = throttledFactory.CreateClient();
-        clientA.DefaultRequestHeaders.Add("X-Forwarded-For", "198.51.100.100, 10.0.0.1");
+        clientA.DefaultRequestHeaders.Add("X-Forwarded-For", "198.51.100.100");
 
         using var clientB = throttledFactory.CreateClient();
-        clientB.DefaultRequestHeaders.Add("X-Forwarded-For", "198.51.100.200, 10.0.0.1");
+        clientB.DefaultRequestHeaders.Add("X-Forwarded-For", "198.51.100.200");
 
         // Send 5 auth requests from Client A (exhausting its 5/min quota)
         for (var i = 0; i < 5; i++)

@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
@@ -28,8 +27,17 @@ namespace WebXemPhim.Tests.ServerTests;
 /// Guards for the follow-up security review: secrets must never be committed, a concurrency
 /// conflict must not be reported as a wrong password and raw SQL must stay free of user input.
 /// </summary>
-public sealed class SecurityReviewFollowUpTests
+public sealed class SecurityReviewFollowUpTests : IClassFixture<PostgresTestDatabaseFixture>
 {
+    private readonly PostgresTestDatabaseFixture _fixture;
+
+    public SecurityReviewFollowUpTests(PostgresTestDatabaseFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    private PostgresTestDatabase Database => _fixture.Database;
+
     private static string FindSolutionRoot()
     {
         var dir = AppContext.BaseDirectory;
@@ -109,8 +117,8 @@ public sealed class SecurityReviewFollowUpTests
 
         WebSecurityExtensions.ApplyDevelopmentDefaults(configuration, environment.Object, client: false);
 
-        Assert.Equal("Data Source=webxemphim.db", configuration.GetConnectionString("Default"));
-        Assert.Equal("Sqlite", configuration["Database:Provider"]);
+        Assert.Equal("Host=localhost;Port=5432;Database=webxemphim;Username=webxemphim;Password=webxemphim", configuration.GetConnectionString("Default"));
+        Assert.Equal("PostgreSql", configuration["Database:Provider"]);
         Assert.Equal("true", configuration["Database:SeedDemoData"]);
         Assert.NotEmpty(configuration.GetSection("Security:AllowedOrigins").Get<string[]>() ?? []);
     }
@@ -151,16 +159,15 @@ public sealed class SecurityReviewFollowUpTests
     [Fact]
     public async Task LoginAsync_ReturnsTemporarilyUnavailable_OnPersistentConcurrencyConflict()
     {
-        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
+        var database = Database;
+        await database.ResetAsync();
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connection)
+            .UseNpgsql(database.ConnectionString)
             .AddInterceptors(new AlwaysConcurrencyConflictInterceptor())
             .Options;
 
-        await using (var seedContext = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options))
+        await using (var seedContext = new AppDbContext(database.CreateOptions()))
         {
-            await seedContext.Database.EnsureCreatedAsync();
             await DatabaseSchemaHelper.EnsureTablesCreatedAsync(seedContext);
 
             var userId = Guid.NewGuid();
@@ -188,17 +195,15 @@ public sealed class SecurityReviewFollowUpTests
     [Fact]
     public async Task LoginAsync_StillReportsInvalidCredentials_ForRealFailures()
     {
-        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
+        var database = Database;
+        await database.ResetAsync();
 
-        await using (var seedContext = new AppDbContext(options))
+        await using (var seedContext = new AppDbContext(database.CreateOptions()))
         {
-            await seedContext.Database.EnsureCreatedAsync();
             await DatabaseSchemaHelper.EnsureTablesCreatedAsync(seedContext);
         }
 
-        var service = new AuthService(new TestDbContextFactory(options), TimeProvider.System);
+        var service = new AuthService(new TestDbContextFactory(database.CreateOptions()), TimeProvider.System);
         var result = await service.LoginAsync(new LoginRequest { Email = "nobody@example.com", Password = "whatever" });
 
         Assert.Equal(AuthFailure.InvalidCredentials, result.Failure);

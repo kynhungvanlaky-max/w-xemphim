@@ -1,10 +1,11 @@
 @page "/genres"
 @inject IMovieApiClient ApiClient
+@using WebXemPhim.Client.Services
 @using WebXemPhim.Shared.Models
 @using WebXemPhim.Client.Components.Common
 @using WebXemPhim.Client.Components.Icons
 
-<PageTitle>Thể loại phim - CinemaFlow</PageTitle>
+<CinemaPageTitle>Thể loại phim - CinemaFlow</CinemaPageTitle>
 <RouteStylesheet Files="@GenresStyles" />
 
 
@@ -162,7 +163,7 @@
 </section>
 
 @code {
-    private static readonly string[] GenresStyles = ["css/genres-page.css"];
+    private static readonly string[] GenresStyles = RouteStylesheetCatalog.Genres;
 
     private List<GenreDto>? genres;
     private List<MovieDto> movies = [];

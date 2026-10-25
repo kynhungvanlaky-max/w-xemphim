@@ -1,0 +1,51 @@
+@namespace WebXemPhim.Client.Components.Common
+@using WebXemPhim.Shared.Models
+@*
+    Danh sách "phim tương tự" dạng hàng ngang, dùng trong cột phụ của trang xem.
+
+    Ở cột hẹp (~300px) thẻ dọc 16:9 như ở trang thông tin phim làm tên phim quá nhỏ và khó
+    đọc. Ở đây mỗi phim là một hàng: thumbnail bên trái, tên + thông tin bên phải — cùng ngôn
+    ngữ thị giác với danh sách tập ngay phía trên.
+*@
+
+<div class="related-list">
+    @foreach (var related in Movies)
+    {
+        <a href="@BuildHref(related)" class="related-row" title="@related.Title">
+            <span class="related-row-thumb">
+                <img src="@PosterFor(related)" alt="" loading="lazy" />
+            </span>
+            <span class="related-row-copy">
+                <span class="related-row-title">@related.Title</span>
+                <span class="related-row-meta">
+                    <span class="related-row-rating">★ @related.Rating.ToString("0.0")</span>
+                    <span>@related.ReleaseYear</span>
+                    <span>@TypeLabel(related)</span>
+                </span>
+            </span>
+        </a>
+    }
+</div>
+
+@code {
+    /// <summary>Danh sách phim gợi ý.</summary>
+    [Parameter, EditorRequired]
+    public IEnumerable<MovieDto> Movies { get; set; } = [];
+
+    /// <summary>Mẫu đường dẫn, {0} là id phim.</summary>
+    [Parameter]
+    public string HrefTemplate { get; set; } = "/watch/{0}";
+
+    private static string PosterFor(MovieDto movie) =>
+        string.IsNullOrWhiteSpace(movie.PosterUrl) ? movie.BackdropUrl : movie.PosterUrl;
+
+    private static string TypeLabel(MovieDto movie) => movie.Type switch
+    {
+        MovieType.Series => "Phim bộ",
+        MovieType.Anime => "Anime",
+        _ => "Phim lẻ"
+    };
+
+    private string BuildHref(MovieDto movie) =>
+        string.Format(System.Globalization.CultureInfo.InvariantCulture, HrefTemplate, movie.Id);
+}

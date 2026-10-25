@@ -19,7 +19,9 @@ namespace WebXemPhim.Client.Services;
 /// The value is always recomputed server side, so a spoofed browser header can never be
 /// forwarded as-is.
 /// </summary>
-public sealed class ForwardedClientIpHandler(IHttpContextAccessor httpContextAccessor) : DelegatingHandler
+public sealed class ForwardedClientIpHandler(
+    IHttpContextAccessor httpContextAccessor,
+    ICircuitClientIpProvider? circuitIpProvider = null) : DelegatingHandler
 {
     public const string ForwardedForHeader = "X-Forwarded-For";
 
@@ -39,11 +41,23 @@ public sealed class ForwardedClientIpHandler(IHttpContextAccessor httpContextAcc
     private string? ResolveClientIp()
     {
         var context = httpContextAccessor.HttpContext;
-        if (context is null) return null;
+        if (context is null)
+        {
+            return circuitIpProvider?.ClientIp;
+        }
 
         var remoteIp = context.Connection.RemoteIpAddress;
-        if (remoteIp is null) return null;
+        if (remoteIp is null)
+        {
+            return circuitIpProvider?.ClientIp;
+        }
 
+        if (remoteIp.IsIPv4MappedToIPv6)
+        {
+            remoteIp = remoteIp.MapToIPv4();
+        }
+
+        string? resolvedIp = null;
         if (IsTrustedProxy(remoteIp) &&
             context.Request.Headers.TryGetValue(ForwardedForHeader, out var forwarded) &&
             forwarded.Count > 0)
@@ -55,16 +69,29 @@ public sealed class ForwardedClientIpHandler(IHttpContextAccessor httpContextAcc
                     .FirstOrDefault();
                 if (!string.IsNullOrWhiteSpace(candidate) && IPAddress.TryParse(candidate, out var parsed))
                 {
-                    return parsed.ToString();
+                    if (parsed.IsIPv4MappedToIPv6) parsed = parsed.MapToIPv4();
+                    resolvedIp = parsed.ToString();
                 }
             }
         }
 
-        return remoteIp.ToString();
+        resolvedIp ??= remoteIp.ToString();
+
+        if (circuitIpProvider is not null && !string.IsNullOrWhiteSpace(resolvedIp))
+        {
+            circuitIpProvider.ClientIp = resolvedIp;
+        }
+
+        return resolvedIp;
     }
 
-    private static bool IsTrustedProxy(IPAddress address)
+    public static bool IsTrustedProxy(IPAddress address)
     {
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
         if (IPAddress.IsLoopback(address)) return true;
         if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
         {

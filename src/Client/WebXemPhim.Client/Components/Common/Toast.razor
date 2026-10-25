@@ -1,0 +1,98 @@
+@implements IDisposable
+@using WebXemPhim.Client.Services
+@inject IToastService ToastService
+
+@if (Toasts.Count == 0) return;
+
+<div class="toast-container" aria-live="polite" role="alert" aria-label="Thông báo hệ thống">
+    @foreach (var toast in Toasts.ToArray())
+    {
+        var levelClass = toast.Level switch
+        {
+            ToastLevel.Success => "toast-success",
+            ToastLevel.Error => "toast-error",
+            ToastLevel.Warning => "toast-warning",
+            _ => "toast-info"
+        };
+
+        <div class="toast @levelClass" role="alert" aria-label="@toast.Message">
+            <div class="toast-icon">
+                @switch (toast.Level)
+                {
+                    case ToastLevel.Success:
+                        <CinemaIcon Name="CinemaIconName.Check" Size="16" />
+                        break;
+                    case ToastLevel.Error:
+                        <CinemaIcon Name="CinemaIconName.AlertCircle" Size="16" />
+                        break;
+                    case ToastLevel.Warning:
+                        <CinemaIcon Name="CinemaIconName.Clock" Size="16" />
+                        break;
+                    default:
+                        <CinemaIcon Name="CinemaIconName.AlertCircle" Size="16" />
+                        break;
+                }
+            </div>
+            <div class="toast-body">
+                @if (!string.IsNullOrEmpty(toast.Title))
+                {
+                    <div class="toast-title">@toast.Title</div>
+                }
+                <div class="toast-message">@toast.Message</div>
+            </div>
+            <button type="button" class="toast-close" aria-label="Đóng thông báo"
+                    @onclick="() => Dismiss(toast.Id)">×</button>
+        </div>
+    }
+</div>
+
+@code {
+    private List<ToastMessage> Toasts = [];
+    private System.Threading.Timer? _dismissTimer;
+
+    protected override void OnInitialized()
+    {
+        ToastService.OnToastAdded += HandleToastAdded;
+        ToastService.OnToastRemoved += HandleToastRemoved;
+    }
+
+    private void HandleToastAdded(ToastMessage toast)
+    {
+        InvokeAsync(() =>
+        {
+            if (!Toasts.Any(t => t.Id == toast.Id))
+            {
+                Toasts.Add(toast);
+                StateHasChanged();
+
+                // Tự động xóa sau DurationMs
+                _dismissTimer?.Dispose();
+                _dismissTimer = new System.Threading.Timer(_ =>
+                {
+                    InvokeAsync(() => Dismiss(toast.Id));
+                }, null, toast.DurationMs, Timeout.Infinite);
+            }
+        });
+    }
+
+    private void HandleToastRemoved(string id)
+    {
+        InvokeAsync(() =>
+        {
+            Toasts.RemoveAll(t => t.Id == id);
+            StateHasChanged();
+        });
+    }
+
+    private void Dismiss(string id)
+    {
+        ToastService.Dismiss(id);
+    }
+
+    public void Dispose()
+    {
+        ToastService.OnToastAdded -= HandleToastAdded;
+        ToastService.OnToastRemoved -= HandleToastRemoved;
+        _dismissTimer?.Dispose();
+    }
+}

@@ -11,7 +11,7 @@
 @inject IJSRuntime JS
 @implements IDisposable
 
-<PageTitle>Quản lý kho phim - CinemaFlow Admin</PageTitle>
+<CinemaPageTitle>Quản lý kho phim - CinemaFlow Admin</CinemaPageTitle>
 
 <!-- Topbar -->
 <header class="admin-topbar">
@@ -23,10 +23,10 @@
     <div class="topbar-actions">
         <div class="topbar-search-pill">
             <CinemaIcon Name="CinemaIconName.Search" Size="16" Class="search-icon" />
-            <input type="text" placeholder="Tìm phim, diễn viên, thể loại..." @bind="searchQuery" @bind:event="oninput" @onkeydown="HandleSearchKeyDown" />
+            <input type="text" aria-label="Tìm phim, diễn viên, thể loại" placeholder="Tìm phim, diễn viên, thể loại..." @bind="searchQuery" @bind:event="oninput" @bind:after="ScheduleMovieSearch" @onkeydown="HandleSearchKeyDown" />
         </div>
 
-        <button type="button" class="btn-secondary-ghost" @onclick="ExportCsv" title="Xuất dữ liệu phim ra định dạng CSV">
+        <button type="button" class="btn-secondary-ghost" @onclick="ExportCsv" title="Xuất các phim đang hiển thị trên trang này ra định dạng CSV">
             <CinemaIcon Name="CinemaIconName.Bookmark" Size="15" />
             <span>Xuất CSV</span>
         </button>
@@ -75,7 +75,7 @@
             <button type="button" class="btn-batch-action" @onclick='() => ExecuteBulkAction("unset_featured")'>
                 <span>Tắt Nổi bật</span>
             </button>
-            <button type="button" class="btn-batch-action danger" @onclick="ConfirmBulkDelete">
+            <button type="button" class="btn-batch-action danger" @onclick="RequestBulkDelete">
                 <CinemaIcon Name="CinemaIconName.Trash" Size="14" />
                 <span>Xóa hàng loạt</span>
             </button>
@@ -89,7 +89,7 @@
 <section class="admin-table-section">
     <div class="section-title-bar">
         <div class="title-with-dropdown">
-            <h2>Danh sách phim (@filteredMovies.Count)</h2>
+            <h2>Danh sách phim (@totalMovieItems)</h2>
         </div>
     </div>
 
@@ -99,107 +99,211 @@
         <div class="filter-suite-top">
             <div class="status-tabs-row" style="margin-bottom: 0;">
                 <button type="button" class="status-tab-btn @(selectedMovieType == null ? "active" : "")" @onclick="() => FilterByType(null)">
-                    Tất cả định dạng (@allMoviesList.Count)
+                    Tất cả định dạng (@((stats?.TotalMovies ?? 0) + (stats?.TotalSeries ?? 0) + (stats?.TotalAnime ?? 0)))
                 </button>
                 <button type="button" class="status-tab-btn @(selectedMovieType == MovieType.Movie ? "active" : "")" @onclick="() => FilterByType(MovieType.Movie)">
-                    <span class="status-dot green"></span> Phim lẻ (@allMoviesList.Count(m => m.Type == MovieType.Movie))
+                    <span class="status-dot green"></span> Phim lẻ (@(stats?.TotalMovies ?? 0))
                 </button>
                 <button type="button" class="status-tab-btn @(selectedMovieType == MovieType.Series ? "active" : "")" @onclick="() => FilterByType(MovieType.Series)">
-                    <span class="status-dot blue"></span> Phim bộ (@allMoviesList.Count(m => m.Type == MovieType.Series))
+                    <span class="status-dot blue"></span> Phim bộ (@(stats?.TotalSeries ?? 0))
                 </button>
                 <button type="button" class="status-tab-btn @(selectedMovieType == MovieType.Anime ? "active" : "")" @onclick="() => FilterByType(MovieType.Anime)">
-                    <span class="status-dot purple"></span> Anime (@allMoviesList.Count(m => m.Type == MovieType.Anime))
+                    <span class="status-dot purple"></span> Anime (@(stats?.TotalAnime ?? 0))
                 </button>
             </div>
 
-            <div class="filter-count-chip">
-                <span>Hiển thị: <strong>@filteredMovies.Count</strong> / @allMoviesList.Count phim</span>
-            </div>
-        </div>
+            <div class="filter-suite-tools">
+                <div class="filter-count-chip">
+                    <span>Hiển thị: <strong>@filteredMovies.Count</strong> / @totalMovieItems phim</span>
+                </div>
 
-        <!-- Row 2: Detailed Filter Controls Grid -->
-        <div class="filter-controls-grid">
-            <div class="filter-control-item">
-                <label class="filter-label">Thể loại</label>
-                <select class="admin-select-picker" value="@selectedGenreFilter" @onchange="OnGenreFilterChanged">
-                    <option value="">Tất cả thể loại</option>
-                    @foreach (var g in availableGenres)
+                <!-- Tùy chỉnh bộ lọc: bật/tắt từng ô lọc muốn hiển thị -->
+                <div class="filter-settings-anchor">
+                    <button type="button"
+                            class="btn-filter-util @(showFilterSettings ? "is-active" : "")"
+                            aria-haspopup="true"
+                            aria-expanded="@(showFilterSettings ? "true" : "false")"
+                            title="Chọn bộ lọc muốn hiển thị"
+                            @onclick="ToggleFilterSettings">
+                        <CinemaIcon Name="CinemaIconName.Settings" Size="13" />
+                        <span>Bộ lọc</span>
+                        @if (hiddenFilters.Count > 0 && hiddenFilters.Count < FilterOptions.Length)
+                        {
+                            <span class="filter-util-badge" title="@($"{hiddenFilters.Count} bộ lọc đang ẩn")">@hiddenFilters.Count</span>
+                        }
+                    </button>
+
+                    @if (showFilterSettings)
                     {
-                        <option value="@g.Name">@g.Name</option>
+                        <div class="filter-settings-backdrop" @onclick="CloseFilterSettings"></div>
+                        <div class="filter-settings-panel" role="group" aria-label="Tùy chỉnh bộ lọc hiển thị" @onkeydown="OnFilterSettingsKeyDown">
+                            <div class="filter-settings-head">
+                                <strong>Hiển thị bộ lọc</strong>
+                                <button type="button" class="btn-filter-util-reset" disabled="@(hiddenFilters.Count == 0)" @onclick="ShowAllFiltersAsync">
+                                    Hiện tất cả
+                                </button>
+                            </div>
+                            <p class="filter-settings-hint">Bỏ tick để ẩn bộ lọc không dùng. Giá trị đang chọn của bộ lọc bị ẩn sẽ được xóa để danh sách không bị lọc ngầm.</p>
+                            <div class="filter-settings-list">
+                                @foreach (var option in FilterOptions)
+                                {
+                                    <label class="filter-settings-item">
+                                        <input type="checkbox"
+                                               checked="@(!hiddenFilters.Contains(option.Key))"
+                                               @onclick="() => SetFilterVisibility(option.Key, hiddenFilters.Contains(option.Key))" />
+                                        <span>@option.Label</span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
                     }
-                </select>
-            </div>
+                </div>
 
-            <div class="filter-control-item">
-                <label class="filter-label">Chất lượng</label>
-                <select class="admin-select-picker" value="@selectedQualityFilter" @onchange="OnQualityFilterChanged">
-                    <option value="">Tất cả chất lượng</option>
-                    <option value="4K UHD">4K UHD</option>
-                    <option value="1080p FHD">1080p FHD</option>
-                    <option value="720p HD">720p HD</option>
-                    <option value="CAM">Bản CAM</option>
-                </select>
-            </div>
-
-            <div class="filter-control-item">
-                <label class="filter-label">Trạng thái gắn cờ</label>
-                <select class="admin-select-picker" value="@selectedStatusFilter" @onchange="OnStatusFilterChanged">
-                    <option value="">Tất cả trạng thái</option>
-                    <option value="trending">🔥 Đang Thịnh hành</option>
-                    <option value="featured">⭐ Đang Nổi bật</option>
-                    <option value="regular">Phim tiêu chuẩn</option>
-                </select>
-            </div>
-
-            <div class="filter-control-item">
-                <label class="filter-label">Năm phát hành</label>
-                <select class="admin-select-picker" value="@selectedYearFilter" @onchange="OnYearFilterChanged">
-                    <option value="">Tất cả các năm</option>
-                    <option value="2026">2026</option>
-                    <option value="2025">2025</option>
-                    <option value="2024">2024</option>
-                    <option value="2023">2023</option>
-                    <option value="2020-2022">2020 - 2022</option>
-                    <option value="pre-2020">Trước 2020</option>
-                </select>
-            </div>
-
-            <div class="filter-control-item">
-                <label class="filter-label">Quốc gia</label>
-                <select class="admin-select-picker" value="@selectedCountryFilter" @onchange="OnCountryFilterChanged">
-                    <option value="">Tất cả quốc gia</option>
-                    <option value="Việt Nam">Việt Nam</option>
-                    <option value="Âu Mỹ">Âu Mỹ</option>
-                    <option value="Hàn Quốc">Hàn Quốc</option>
-                    <option value="Trung Quốc">Trung Quốc</option>
-                    <option value="Nhật Bản">Nhật Bản</option>
-                    <option value="Thái Lan">Thái Lan</option>
-                </select>
-            </div>
-
-            <div class="filter-control-item">
-                <label class="filter-label">Đánh giá</label>
-                <select class="admin-select-picker" value="@selectedRatingFilter" @onchange="OnRatingFilterChanged">
-                    <option value="">Mọi điểm đánh giá</option>
-                    <option value="8+">★ Từ 8.0 trở lên (Xuất sắc)</option>
-                    <option value="7+">★ Từ 7.0 trở lên (Tốt)</option>
-                    <option value="<7">★ Dưới 7.0</option>
-                </select>
-            </div>
-
-            <div class="filter-control-item">
-                <label class="filter-label">Sắp xếp theo</label>
-                <select class="admin-select-picker" value="@selectedSortBy" @onchange="OnSortByChanged">
-                    <option value="date_desc">Mới thêm gần đây</option>
-                    <option value="year_desc">Năm phát hành mới nhất</option>
-                    <option value="year_asc">Năm phát hành cũ nhất</option>
-                    <option value="rating_desc">Điểm đánh giá cao nhất</option>
-                    <option value="views_desc">Lượt xem nhiều nhất</option>
-                    <option value="title_asc">Tiêu đề (A → Z)</option>
-                    <option value="title_desc">Tiêu đề (Z → A)</option>
-                </select>
+                <button type="button"
+                        class="btn-filter-util"
+                        title="@(filtersCollapsed ? "Mở rộng khối bộ lọc" : "Thu gọn khối bộ lọc")"
+                        aria-expanded="@(filtersCollapsed ? "false" : "true")"
+                        @onclick="ToggleFilterCollapse">
+                    <CinemaIcon Name="@(filtersCollapsed ? CinemaIconName.ChevronRight : CinemaIconName.ChevronDown)" Size="13" />
+                    <span>@(filtersCollapsed ? "Mở rộng" : "Thu gọn")</span>
+                </button>
             </div>
         </div>
+
+        <!-- Row 2: Detailed Filter Controls Grid (từng ô có thể bật/tắt) -->
+        @if (!filtersCollapsed)
+        {
+            <div class="filter-controls-grid">
+                @if (hiddenFilters.Count == FilterOptions.Length)
+                {
+                    <p class="filter-all-hidden-note">
+                        Chưa bật ô lọc nào. Mở <strong>Bộ lọc</strong> và tick những ô bạn cần dùng.
+                    </p>
+                }
+                @if (!hiddenFilters.Contains("search"))
+                {
+                    <div class="filter-control-item filter-control-search">
+                        <label class="filter-label" for="movie-title-search">Tên phim</label>
+                        <div class="filter-search-box">
+                            <CinemaIcon Name="CinemaIconName.Search" Size="14" Class="filter-search-icon" />
+                            <input id="movie-title-search"
+                                   type="text"
+                                   placeholder="Nhập tên phim cần tìm..."
+                                   @bind="searchQuery"
+                                   @bind:event="oninput"
+                                   @bind:after="ScheduleMovieSearch"
+                                   @onkeydown="HandleSearchKeyDown" />
+                            @if (!string.IsNullOrEmpty(searchQuery))
+                            {
+                                <button type="button" class="filter-search-clear" title="Xóa từ khóa tìm kiếm" aria-label="Xóa từ khóa tìm kiếm" @onclick="ClearSearchQuery">&times;</button>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("genre"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Thể loại</label>
+                        <select class="admin-select-picker" value="@selectedGenreFilter" @onchange="OnGenreFilterChanged">
+                            <option value="">Tất cả thể loại</option>
+                            @foreach (var g in availableGenres)
+                            {
+                                <option value="@g.Name">@g.Name</option>
+                            }
+                        </select>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("quality"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Chất lượng</label>
+                        <select class="admin-select-picker" value="@selectedQualityFilter" @onchange="OnQualityFilterChanged">
+                            <option value="">Tất cả chất lượng</option>
+                            <option value="4K UHD">4K UHD</option>
+                            <option value="1080p FHD">1080p FHD</option>
+                            <option value="720p HD">720p HD</option>
+                            <option value="CAM">Bản CAM</option>
+                        </select>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("status"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Trạng thái gắn cờ</label>
+                        <select class="admin-select-picker" value="@selectedStatusFilter" @onchange="OnStatusFilterChanged">
+                            <option value="">Tất cả trạng thái</option>
+                            <option value="trending">🔥 Đang Thịnh hành</option>
+                            <option value="featured">⭐ Đang Nổi bật</option>
+                            <option value="regular">Phim tiêu chuẩn</option>
+                        </select>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("year"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Năm phát hành</label>
+                        <select class="admin-select-picker" value="@selectedYearFilter" @onchange="OnYearFilterChanged">
+                            <option value="">Tất cả các năm</option>
+                            <option value="2026">2026</option>
+                            <option value="2025">2025</option>
+                            <option value="2024">2024</option>
+                            <option value="2023">2023</option>
+                            <option value="2020-2022">2020 - 2022</option>
+                            <option value="pre-2020">Trước 2020</option>
+                        </select>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("country"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Quốc gia</label>
+                        <select class="admin-select-picker" value="@selectedCountryFilter" @onchange="OnCountryFilterChanged">
+                            <option value="">Tất cả quốc gia</option>
+                            <option value="Việt Nam">Việt Nam</option>
+                            <option value="Âu Mỹ">Âu Mỹ</option>
+                            <option value="Hàn Quốc">Hàn Quốc</option>
+                            <option value="Trung Quốc">Trung Quốc</option>
+                            <option value="Nhật Bản">Nhật Bản</option>
+                            <option value="Thái Lan">Thái Lan</option>
+                        </select>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("rating"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Đánh giá</label>
+                        <select class="admin-select-picker" value="@selectedRatingFilter" @onchange="OnRatingFilterChanged">
+                            <option value="">Mọi điểm đánh giá</option>
+                            <option value="8+">★ Từ 8.0 trở lên (Xuất sắc)</option>
+                            <option value="7+">★ Từ 7.0 trở lên (Tốt)</option>
+                            <option value="<7">★ Dưới 7.0</option>
+                        </select>
+                    </div>
+                }
+
+                @if (!hiddenFilters.Contains("sort"))
+                {
+                    <div class="filter-control-item">
+                        <label class="filter-label">Sắp xếp theo</label>
+                        <select class="admin-select-picker" value="@selectedSortBy" @onchange="OnSortByChanged">
+                            <option value="date_desc">Mới thêm gần đây</option>
+                            <option value="year_desc">Năm phát hành mới nhất</option>
+                            <option value="year_asc">Năm phát hành cũ nhất</option>
+                            <option value="rating_desc">Điểm đánh giá cao nhất</option>
+                            <option value="views_desc">Lượt xem nhiều nhất</option>
+                            <option value="title_asc">Tiêu đề (A → Z)</option>
+                            <option value="title_desc">Tiêu đề (Z → A)</option>
+                        </select>
+                    </div>
+                }
+            </div>
+        }
 
         <!-- Row 3: Active Filters Strip & Clear All -->
         @if (HasActiveMovieFilters)
@@ -300,7 +404,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var m in filteredMovies.Skip((currentPage - 1) * pageSize).Take(pageSize))
+                    @foreach (var m in CurrentPageMovies)
                     {
                         var isSelected = selectedMovieIds.Contains(m.Id);
                         <tr class="@(isSelected ? "is-selected-row" : "")">
@@ -355,7 +459,7 @@
                                     <NavLink href="@($"/admin/episodes/{m.Id}")" class="btn-action-icon" title="Quản lý tập phim">
                                         <CinemaIcon Name="CinemaIconName.List" Size="13" />
                                     </NavLink>
-                                    <button type="button" class="btn-action-icon" style="color: #ef4444;" title="Xóa phim" @onclick="() => RequestDeleteMovie(m.Id, m.Title)">
+                                    <button type="button" class="btn-action-icon" style="color: var(--admin-accent-danger);" title="Xóa phim" @onclick="() => RequestDeleteMovie(m.Id, m.Title)">
                                         <CinemaIcon Name="CinemaIconName.Trash" Size="13" />
                                     </button>
                                 </div>
@@ -367,11 +471,33 @@
 
             <AdminPagination CurrentPage="@currentPage"
                              PageSize="@pageSize"
-                             TotalItems="@filteredMovies.Count"
-                             OnPageChanged="p => { currentPage = p; StateHasChanged(); }" />
+                             TotalItems="@totalMovieItems"
+                             PageSizeOptions="@PageSizeChoices"
+                             OnPageChanged="HandlePageChanged"
+                             OnPageSizeChanged="HandlePageSizeChanged" />
         }
     </div>
 </section>
+
+<!-- XÁC NHẬN XÓA: mọi hành động không thể hoàn tác đều phải qua hộp thoại này -->
+<AdminConfirmDialog IsOpen="@showDeleteConfirm"
+                    Title="Xóa phim khỏi kho?"
+                    Message="@deleteConfirmMessage"
+                    ConfirmText="Xóa phim"
+                    CancelText="Giữ lại"
+                    Variant="danger"
+                    OnConfirm="ConfirmDeleteMovie"
+                    OnCancel="CancelDeleteMovie" />
+
+<AdminConfirmDialog IsOpen="@showBulkDeleteConfirm"
+                    Title="Xóa hàng loạt"
+                    Message="@bulkDeleteConfirmMessage"
+                    ConfirmText="Xóa hàng loạt"
+                    CancelText="Giữ lại"
+                    Variant="danger"
+                    OnConfirm="ConfirmBulkDelete"
+                    OnCancel="CancelBulkDelete" />
+
 
 <!-- MODAL THÊM / CHỈNH SỬA PHIM -->
 @if (showMovieModal)
@@ -384,6 +510,10 @@
             </div>
 
             <div class="admin-modal-body">
+                @if (!string.IsNullOrEmpty(movieFormError))
+                {
+                    <div class="form-alert error" style="margin-bottom: 1rem;" role="alert">@movieFormError</div>
+                }
                 <div class="form-row-2">
                     <div class="admin-form-group">
                         <label>Tên phim (Tiếng Việt) *</label>
@@ -510,13 +640,17 @@
 @if (showCloneModal && targetCloneMovie != null)
 {
     <div class="admin-modal-backdrop" @onclick="CloseCloneModal">
-        <div class="admin-modal-card" style="max-width: 500px;" role="dialog" aria-modal="true" @onclick:stopPropagation>
+        <div class="admin-modal-card" style="max-width: 500px;" role="dialog" aria-modal="true" aria-labelledby="clone-movie-modal-title" @onclick:stopPropagation>
             <div class="admin-modal-header">
-                <h3>Nhân bản phim: @targetCloneMovie.Title</h3>
+                <h3 id="clone-movie-modal-title">Nhân bản phim: @targetCloneMovie.Title</h3>
                 <button type="button" class="btn-close-modal" @onclick="CloseCloneModal">&times;</button>
             </div>
             <div class="admin-modal-body">
-                <p style="font-size: 0.85rem; color: rgba(255,255,255,0.6); margin-bottom: 1rem;">
+                @if (!string.IsNullOrEmpty(cloneFormError))
+                {
+                    <div class="form-alert error" style="margin-bottom: 1rem;" role="alert">@cloneFormError</div>
+                }
+                <p style="font-size: 0.85rem; color: var(--admin-text-body); margin-bottom: 1rem;">
                     Hệ thống sẽ sao chép toàn bộ thông số, thể loại, diễn viên và luồng stream sang một bản ghi phim độc lập mới.
                 </p>
                 <div class="admin-form-group">
@@ -572,7 +706,7 @@
                     </div>
                     <div class="drawer-metric-card">
                         <span class="drawer-metric-label">Đánh giá</span>
-                        <span class="drawer-metric-val font-mono-num" style="color: #fbbf24;">★ @inspectingMovie.Rating.ToString("0.0")</span>
+                        <span class="drawer-metric-val font-mono-num" style="color: var(--admin-accent-gold);">★ @inspectingMovie.Rating.ToString("0.0")</span>
                     </div>
                     <div class="drawer-metric-card">
                         <span class="drawer-metric-label">Số tập phim</span>
@@ -580,19 +714,19 @@
                     </div>
                     <div class="drawer-metric-card">
                         <span class="drawer-metric-label">Chất lượng</span>
-                        <span class="drawer-metric-val font-mono-num" style="color: #60a5fa; font-size: 0.95rem;">@inspectingMovie.Quality</span>
+                        <span class="drawer-metric-val font-mono-num" style="color: var(--admin-accent-blue); font-size: 0.95rem;">@inspectingMovie.Quality</span>
                     </div>
                 </div>
 
                 <div>
-                    <h5 style="font-size: 0.75rem; text-transform: uppercase; color: rgba(255,255,255,0.4); margin-bottom: 0.4rem;">Tóm tắt nội dung</h5>
-                    <p style="font-size: 0.85rem; line-height: 1.5; color: rgba(255,255,255,0.75);">
+                    <h5 style="font-size: 0.75rem; text-transform: uppercase; color: var(--admin-text-muted); margin-bottom: 0.4rem;">Tóm tắt nội dung</h5>
+                    <p style="font-size: 0.85rem; line-height: 1.5; color: var(--admin-text-strong);">
                         @inspectingMovie.Overview
                     </p>
                 </div>
 
                 <div>
-                    <h5 style="font-size: 0.75rem; text-transform: uppercase; color: rgba(255,255,255,0.4); margin-bottom: 0.4rem;">Thể loại</h5>
+                    <h5 style="font-size: 0.75rem; text-transform: uppercase; color: var(--admin-text-muted); margin-bottom: 0.4rem;">Thể loại</h5>
                     <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
                         @foreach (var g in inspectingMovie.Genres)
                         {
@@ -604,7 +738,7 @@
                 @if (inspectingMovie.Cast?.Count > 0)
                 {
                     <div>
-                        <h5 style="font-size: 0.75rem; text-transform: uppercase; color: rgba(255,255,255,0.4); margin-bottom: 0.4rem;">Diễn viên</h5>
+                        <h5 style="font-size: 0.75rem; text-transform: uppercase; color: var(--admin-text-muted); margin-bottom: 0.4rem;">Diễn viên</h5>
                         <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
                             @foreach (var actor in inspectingMovie.Cast)
                             {
@@ -631,6 +765,10 @@
 @code {
     private List<MovieDetailDto> allMoviesList = [];
     private List<MovieDetailDto> filteredMovies = [];
+    private int totalMovieItems;
+
+    /// <summary>Số liệu tổng hệ thống (định dạng phim, tổng số phim) lấy từ API dashboard.</summary>
+    private AdminDashboardDto? stats;
     private List<GenreDto> availableGenres = [];
     private MovieType? selectedMovieType = null;
     private string selectedGenreFilter = "";
@@ -641,11 +779,31 @@
     private string selectedRatingFilter = "";
     private string selectedSortBy = "date_desc";
     private string searchQuery = "";
+    private readonly SearchDebouncer movieSearchDebouncer = new();
     private bool isLoadingMovies = true;
     private string? actionAlert;
     private string? actionError;
+    private string? movieFormError;
     private int currentPage = 1;
     private int pageSize = 10;
+
+    // Tùy chỉnh bộ lọc: ẩn/hiện từng ô lọc, lưu lại theo trình duyệt.
+    private const string FilterPrefsStorageKey = "cinemaflow_admin_movie_filter_prefs_v2";
+    private static readonly (string Key, string Label)[] FilterOptions =
+    [
+        ("search", "Tìm theo tên phim"),
+        ("genre", "Thể loại"),
+        ("quality", "Chất lượng"),
+        ("status", "Trạng thái gắn cờ"),
+        ("year", "Năm phát hành"),
+        ("country", "Quốc gia"),
+        ("rating", "Điểm đánh giá"),
+        ("sort", "Sắp xếp")
+    ];
+    // Mặc định ban đầu: chưa bật ô lọc nào (tick trống) — admin tự chọn ô cần dùng.
+    private readonly HashSet<string> hiddenFilters = [.. FilterOptions.Select(o => o.Key)];
+    private bool showFilterSettings;
+    private bool filtersCollapsed;
 
     private bool HasActiveMovieFilters =>
         selectedMovieType != null ||
@@ -671,6 +829,7 @@
     private bool showCloneModal = false;
     private MovieDetailDto? targetCloneMovie;
     private CloneMovieRequest cloneModel = new();
+    private string? cloneFormError;
     private bool isCloning = false;
 
     // Inspector state
@@ -685,17 +844,28 @@
         }
     }
 
-    private List<MovieDetailDto> CurrentPageMovies =>
-        filteredMovies.Skip((currentPage - 1) * pageSize).Take(pageSize).ToList();
+    private List<MovieDetailDto> CurrentPageMovies => filteredMovies;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             await Auth.InitializeAsync();
+            await LoadFilterPrefsAsync();
             await LoadMovies();
+
+            // Lệnh tắt nhanh trong Command Palette mở thẳng modal thêm phim.
+            if (string.Equals(Action, "new", StringComparison.OrdinalIgnoreCase))
+            {
+                OpenAddMovieModal();
+            }
         }
     }
+
+    /// <summary>Được nạp từ query string, ví dụ /admin/movies?action=new.</summary>
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "action")]
+    public string? Action { get; set; }
 
     private async Task LoadMovies()
     {
@@ -703,13 +873,11 @@
         isLoadingMovies = true;
         try
         {
-            var moviesTask = AdminApi.GetMoviesAsync();
             var genresTask = MovieApi.GetGenresAsync();
-            await Task.WhenAll(moviesTask, genresTask);
-
-            allMoviesList = await moviesTask;
+            var statsTask = AdminApi.GetStatsAsync();
             availableGenres = await genresTask;
-            ApplyMovieFilters();
+            await LoadMoviesPageAsync(resetPage: false);
+            stats = await statsTask;
         }
         catch (Exception ex)
         {
@@ -722,77 +890,85 @@
         }
     }
 
+    /// <summary>
+    /// Tải trang hiện tại từ server. Bộ lọc và sắp xếp được áp dụng ở server nên
+    /// tổng số mục luôn khớp với dữ liệu thật thay vì giới hạn ở 1000 bản ghi tải về.
+    /// </summary>
+    private async Task LoadMoviesPageAsync(bool resetPage)
+    {
+        if (!Auth.IsAdmin) return;
+
+        if (resetPage)
+        {
+            currentPage = 1;
+            selectedMovieIds.Clear();
+        }
+
+        isLoadingMovies = true;
+        try
+        {
+            var (yearFrom, yearTo) = ParseYearFilter(selectedYearFilter);
+            var (minRating, maxRating) = ParseRatingFilter(selectedRatingFilter);
+
+            var result = await AdminApi.GetMoviesPagedAsync(
+                page: currentPage,
+                pageSize: pageSize,
+                query: string.IsNullOrWhiteSpace(searchQuery) ? null : searchQuery,
+                type: selectedMovieType,
+                genre: string.IsNullOrWhiteSpace(selectedGenreFilter) ? null : selectedGenreFilter,
+                quality: string.IsNullOrWhiteSpace(selectedQualityFilter) ? null : selectedQualityFilter,
+                status: string.IsNullOrWhiteSpace(selectedStatusFilter) ? null : selectedStatusFilter,
+                sortBy: string.IsNullOrWhiteSpace(selectedSortBy) ? null : selectedSortBy,
+                yearFrom: yearFrom,
+                yearTo: yearTo,
+                country: string.IsNullOrWhiteSpace(selectedCountryFilter) ? null : selectedCountryFilter,
+                minRating: minRating,
+                maxRating: maxRating);
+
+            filteredMovies = result.Items.ToList();
+            totalMovieItems = result.TotalItems;
+        }
+        catch (Exception ex)
+        {
+            actionError = "Không thể tải danh liệu phim: " + ex.Message;
+        }
+        finally
+        {
+            isLoadingMovies = false;
+            StateHasChanged();
+        }
+    }
+
+    private static (int? From, int? To) ParseYearFilter(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return (null, null);
+        if (int.TryParse(value, out var exact)) return (exact, exact);
+        if (value == "2020-2022") return (2020, 2022);
+        if (value == "pre-2020") return (1900, 2019);
+        return (null, null);
+    }
+
+    private static (double? Min, double? Max) ParseRatingFilter(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return (null, null);
+        if (value == "8+") return (8.0, null);
+        if (value == "7+") return (7.0, null);
+        if (value == "<7") return (null, 6.99);
+        return (null, null);
+    }
+
+    /// <summary>Áp dụng toàn bộ bộ lọc đang chọn và tải lại từ server.</summary>
     private void ApplyMovieFilters()
     {
-        var result = allMoviesList.AsEnumerable();
-        if (selectedMovieType.HasValue)
-        {
-            result = result.Where(m => m.Type == selectedMovieType.Value);
-        }
-        if (!string.IsNullOrWhiteSpace(selectedGenreFilter))
-        {
-            result = result.Where(m => m.Genres.Contains(selectedGenreFilter, StringComparer.OrdinalIgnoreCase));
-        }
-        if (!string.IsNullOrWhiteSpace(selectedQualityFilter))
-        {
-            result = result.Where(m => m.Quality.Equals(selectedQualityFilter, StringComparison.OrdinalIgnoreCase));
-        }
-        if (!string.IsNullOrWhiteSpace(selectedStatusFilter))
-        {
-            if (selectedStatusFilter == "trending") result = result.Where(m => m.IsTrending);
-            else if (selectedStatusFilter == "featured") result = result.Where(m => m.IsFeatured);
-            else if (selectedStatusFilter == "regular") result = result.Where(m => !m.IsTrending && !m.IsFeatured);
-        }
-        if (!string.IsNullOrWhiteSpace(selectedYearFilter))
-        {
-            if (int.TryParse(selectedYearFilter, out int exactYear))
-            {
-                result = result.Where(m => m.ReleaseYear == exactYear);
-            }
-            else if (selectedYearFilter == "2020-2022")
-            {
-                result = result.Where(m => m.ReleaseYear >= 2020 && m.ReleaseYear <= 2022);
-            }
-            else if (selectedYearFilter == "pre-2020")
-            {
-                result = result.Where(m => m.ReleaseYear < 2020);
-            }
-        }
-        if (!string.IsNullOrWhiteSpace(selectedCountryFilter))
-        {
-            result = result.Where(m => m.Country.Contains(selectedCountryFilter, StringComparison.OrdinalIgnoreCase));
-        }
-        if (!string.IsNullOrWhiteSpace(selectedRatingFilter))
-        {
-            if (selectedRatingFilter == "8+") result = result.Where(m => m.Rating >= 8.0);
-            else if (selectedRatingFilter == "7+") result = result.Where(m => m.Rating >= 7.0);
-            else if (selectedRatingFilter == "<7") result = result.Where(m => m.Rating < 7.0);
-        }
-        if (!string.IsNullOrWhiteSpace(searchQuery))
-        {
-            var q = searchQuery.Trim();
-            result = result.Where(m => m.Title.Contains(q, StringComparison.OrdinalIgnoreCase)
-                                    || m.OriginalTitle.Contains(q, StringComparison.OrdinalIgnoreCase)
-                                    || m.Genres.Any(g => g.Contains(q, StringComparison.OrdinalIgnoreCase))
-                                    || m.Country.Contains(q, StringComparison.OrdinalIgnoreCase)
-                                    || m.Director.Contains(q, StringComparison.OrdinalIgnoreCase)
-                                    || m.Cast.Any(c => c.Contains(q, StringComparison.OrdinalIgnoreCase)));
-        }
+        _ = ApplyMovieFiltersAsync();
+    }
 
-        result = selectedSortBy switch
-        {
-            "year_desc" => result.OrderByDescending(m => m.ReleaseYear).ThenByDescending(m => m.Id),
-            "year_asc" => result.OrderBy(m => m.ReleaseYear).ThenBy(m => m.Id),
-            "rating_desc" => result.OrderByDescending(m => m.Rating).ThenByDescending(m => m.VoteCount),
-            "views_desc" => result.OrderByDescending(m => m.ViewCount),
-            "title_asc" => result.OrderBy(m => m.Title),
-            "title_desc" => result.OrderByDescending(m => m.Title),
-            _ => result.OrderByDescending(m => m.Id)
-        };
+    private Task ApplyMovieFiltersAsync() => LoadMoviesPageAsync(resetPage: true);
 
-        filteredMovies = result.ToList();
-        currentPage = 1;
-        selectedMovieIds.Clear();
+    /// <summary>Gõ tới đâu tìm tới đó nhưng chỉ gọi API sau khi người dùng ngừng gõ 400ms.</summary>
+    private void ScheduleMovieSearch()
+    {
+        movieSearchDebouncer.Schedule(ApplyMovieFiltersAsync);
     }
 
     private void FilterByType(MovieType? type)
@@ -843,6 +1019,134 @@
         ApplyMovieFilters();
     }
 
+    private void ToggleFilterSettings()
+    {
+        showFilterSettings = !showFilterSettings;
+    }
+
+    private void CloseFilterSettings()
+    {
+        showFilterSettings = false;
+    }
+
+    private void OnFilterSettingsKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            showFilterSettings = false;
+        }
+    }
+
+    private async Task ToggleFilterCollapse()
+    {
+        filtersCollapsed = !filtersCollapsed;
+        await SaveFilterPrefsAsync();
+    }
+
+    /// <summary>Bật/tắt một ô lọc. Ẩn ô lọc sẽ xóa luôn giá trị đang chọn để tránh lọc ngầm.</summary>
+    private async Task SetFilterVisibility(string key, bool visible)
+    {
+        // Bỏ qua sự kiện change phát sinh khi popover đã đóng (tránh tự ẩn bộ lọc ngoài ý muốn).
+        if (!showFilterSettings) return;
+
+        if (visible) hiddenFilters.Remove(key);
+        else hiddenFilters.Add(key);
+
+        var needsReload = !visible && ClearFilterValue(key);
+        await SaveFilterPrefsAsync();
+
+        if (needsReload) await ApplyMovieFiltersAsync();
+        else StateHasChanged();
+    }
+
+    /// <summary>Xóa giá trị của bộ lọc vừa bị ẩn. Trả về true nếu thực sự có thay đổi cần tải lại.</summary>
+    private bool ClearFilterValue(string key)
+    {
+        switch (key)
+        {
+            case "search" when !string.IsNullOrEmpty(searchQuery):
+                searchQuery = "";
+                return true;
+            case "genre" when !string.IsNullOrEmpty(selectedGenreFilter):
+                selectedGenreFilter = "";
+                return true;
+            case "quality" when !string.IsNullOrEmpty(selectedQualityFilter):
+                selectedQualityFilter = "";
+                return true;
+            case "status" when !string.IsNullOrEmpty(selectedStatusFilter):
+                selectedStatusFilter = "";
+                return true;
+            case "year" when !string.IsNullOrEmpty(selectedYearFilter):
+                selectedYearFilter = "";
+                return true;
+            case "country" when !string.IsNullOrEmpty(selectedCountryFilter):
+                selectedCountryFilter = "";
+                return true;
+            case "rating" when !string.IsNullOrEmpty(selectedRatingFilter):
+                selectedRatingFilter = "";
+                return true;
+            case "sort" when selectedSortBy != "date_desc":
+                selectedSortBy = "date_desc";
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private async Task ShowAllFiltersAsync()
+    {
+        if (hiddenFilters.Count == 0) return;
+        hiddenFilters.Clear();
+        await SaveFilterPrefsAsync();
+    }
+
+    private void ClearSearchQuery()
+    {
+        movieSearchDebouncer.Cancel();
+        searchQuery = "";
+        ApplyMovieFilters();
+    }
+
+    /// <summary>Đọc lại lựa chọn ẩn/hiện bộ lọc đã lưu trong localStorage của trình duyệt.</summary>
+    private async Task LoadFilterPrefsAsync()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("adminTools.getStoredJson", FilterPrefsStorageKey);
+            if (string.IsNullOrWhiteSpace(json)) return;
+
+            var prefs = System.Text.Json.JsonSerializer.Deserialize<MovieFilterPrefs>(json);
+            if (prefs is null) return;
+
+            hiddenFilters.Clear();
+            foreach (var key in prefs.Hidden.Where(k => FilterOptions.Any(o => o.Key == k)))
+            {
+                hiddenFilters.Add(key);
+            }
+            filtersCollapsed = prefs.Collapsed;
+        }
+        catch
+        {
+            // Tùy chọn hiển thị chỉ là tiện ích: localStorage bị chặn hoặc dữ liệu hỏng thì dùng mặc định.
+        }
+    }
+
+    private async Task SaveFilterPrefsAsync()
+    {
+        try
+        {
+            var prefs = new MovieFilterPrefs(hiddenFilters.ToList(), filtersCollapsed);
+            var json = System.Text.Json.JsonSerializer.Serialize(prefs);
+            await JS.InvokeVoidAsync("adminTools.setStoredJson", FilterPrefsStorageKey, json);
+        }
+        catch
+        {
+            // Không lưu được thì thôi, không chặn thao tác của admin.
+        }
+    }
+
+    private sealed record MovieFilterPrefs(List<string> Hidden, bool Collapsed);
+
     private void ResetAllMovieFilters()
     {
         selectedMovieType = null;
@@ -861,6 +1165,7 @@
     {
         if (e.Key == "Enter")
         {
+            movieSearchDebouncer.Cancel();
             ApplyMovieFilters();
         }
     }
@@ -913,12 +1218,6 @@
         }
     }
 
-    private async Task ConfirmBulkDelete()
-    {
-        if (selectedMovieIds.Count == 0) return;
-        await ExecuteBulkAction("delete");
-    }
-
     private async Task ToggleTrending(MovieDetailDto movie)
     {
         actionAlert = null;
@@ -954,6 +1253,7 @@
     private void OpenCloneModal(MovieDetailDto movie)
     {
         targetCloneMovie = movie;
+        cloneFormError = null;
         cloneModel = new CloneMovieRequest
         {
             NewTitle = $"{movie.Title} (Bản sao)",
@@ -967,17 +1267,19 @@
     {
         showCloneModal = false;
         targetCloneMovie = null;
+        cloneFormError = null;
     }
 
     private async Task SubmitCloneMovie()
     {
         if (targetCloneMovie == null || string.IsNullOrWhiteSpace(cloneModel.NewTitle))
         {
-            actionError = "Vui lòng nhập tên mới cho phim nhân bản.";
+            cloneFormError = "Vui lòng nhập tên mới cho phim nhân bản.";
             return;
         }
 
         isCloning = true;
+        cloneFormError = null;
         actionAlert = null;
         actionError = null;
 
@@ -992,12 +1294,12 @@
             }
             else
             {
-                actionError = res?.Message ?? "Không thể nhân bản phim.";
+                cloneFormError = res?.Message ?? "Không thể nhân bản phim.";
             }
         }
         catch (Exception ex)
         {
-            actionError = "Lỗi khi nhân bản: " + ex.Message;
+            cloneFormError = "Lỗi khi nhân bản: " + ex.Message;
         }
         finally
         {
@@ -1029,7 +1331,7 @@
                     m.Id, m.Title, m.OriginalTitle, m.Type, m.Quality, m.Rating, m.VoteCount, m.ReleaseYear, m.DurationMinutes, m.IsTrending, m.IsFeatured, genres));
             }
             await JS.InvokeVoidAsync("adminTools.downloadCsv", $"cinemaflow_movies_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv", sb.ToString());
-            actionAlert = $"Đã xuất {filteredMovies.Count} phim thành công!";
+            actionAlert = $"Đã xuất {filteredMovies.Count} phim (trang hiện tại) thành công!";
         }
         catch (Exception ex)
         {
@@ -1040,6 +1342,7 @@
     private void OpenAddMovieModal()
     {
         editingMovieId = null;
+        movieFormError = null;
         movieModel = new UpsertMovieRequest
         {
             ReleaseYear = DateTime.UtcNow.Year,
@@ -1058,6 +1361,7 @@
     private void OpenEditMovieModal(MovieDetailDto movie)
     {
         editingMovieId = movie.Id;
+        movieFormError = null;
         movieModel = new UpsertMovieRequest
         {
             Id = movie.Id,
@@ -1088,6 +1392,7 @@
     {
         showMovieModal = false;
         editingMovieId = null;
+        movieFormError = null;
     }
 
     private void ToggleGenre(int genreId, bool isChecked)
@@ -1102,11 +1407,12 @@
     {
         if (string.IsNullOrWhiteSpace(movieModel.Title))
         {
-            actionError = "Vui lòng nhập tên phim.";
+            movieFormError = "Vui lòng nhập tên phim.";
             return;
         }
 
         isSavingMovie = true;
+        movieFormError = null;
         actionAlert = null;
         actionError = null;
 
@@ -1123,7 +1429,7 @@
                 }
                 else
                 {
-                    actionError = res?.Message ?? "Không thể cập nhật phim.";
+                    movieFormError = res?.Message ?? "Không thể cập nhật phim.";
                 }
             }
             else
@@ -1137,13 +1443,13 @@
                 }
                 else
                 {
-                    actionError = res?.Message ?? "Không thể thêm phim.";
+                    movieFormError = res?.Message ?? "Không thể thêm phim.";
                 }
             }
         }
         catch (Exception ex)
         {
-            actionError = "Có lỗi xảy ra: " + ex.Message;
+            movieFormError = "Có lỗi xảy ra: " + ex.Message;
         }
         finally
         {
@@ -1152,8 +1458,54 @@
         }
     }
 
-    private async Task RequestDeleteMovie(int id, string title)
+
+    private static readonly int[] PageSizeChoices = [10, 20, 50];
+
+    private bool showDeleteConfirm;
+    private bool showBulkDeleteConfirm;
+    private int pendingDeleteMovieId;
+    private string pendingDeleteMovieTitle = string.Empty;
+    private string deleteConfirmMessage = string.Empty;
+    private string bulkDeleteConfirmMessage = string.Empty;
+
+    private void HandlePageChanged(int page)
     {
+        currentPage = page;
+        _ = LoadMoviesPageAsync(resetPage: false);
+    }
+
+    private void HandlePageSizeChanged(int size)
+    {
+        pageSize = size;
+        _ = LoadMoviesPageAsync(resetPage: true);
+    }
+
+    /// <summary>Mở hộp thoại xác nhận trước khi xóa một phim.</summary>
+    private void RequestDeleteMovie(int id, string title)
+    {
+        pendingDeleteMovieId = id;
+        pendingDeleteMovieTitle = title;
+        deleteConfirmMessage = $"Phim \"{title}\" và toàn bộ tập, nguồn phát, đánh giá liên kết sẽ bị xóa vĩnh viễn. Thao tác này không thể hoàn tác.";
+        showDeleteConfirm = true;
+    }
+
+    private void CancelDeleteMovie()
+    {
+        showDeleteConfirm = false;
+        pendingDeleteMovieId = 0;
+        pendingDeleteMovieTitle = string.Empty;
+    }
+
+    private async Task ConfirmDeleteMovie()
+    {
+        showDeleteConfirm = false;
+        var id = pendingDeleteMovieId;
+        var title = pendingDeleteMovieTitle;
+        pendingDeleteMovieId = 0;
+        pendingDeleteMovieTitle = string.Empty;
+
+        if (id <= 0) return;
+
         if (await AdminApi.DeleteMovieAsync(id))
         {
             actionAlert = $"Đã xóa phim '{title}'.";
@@ -1166,7 +1518,27 @@
         StateHasChanged();
     }
 
+    /// <summary>Mở hộp thoại xác nhận trước khi xóa hàng loạt.</summary>
+    private void RequestBulkDelete()
+    {
+        if (selectedMovieIds.Count == 0) return;
+        bulkDeleteConfirmMessage = $"{selectedMovieIds.Count} phim đang được chọn sẽ bị xóa cùng toàn bộ tập và nguồn phát liên kết. Thao tác này không thể hoàn tác.";
+        showBulkDeleteConfirm = true;
+    }
+
+    private void CancelBulkDelete()
+    {
+        showBulkDeleteConfirm = false;
+    }
+
+    private async Task ConfirmBulkDelete()
+    {
+        showBulkDeleteConfirm = false;
+        await ExecuteBulkAction("delete");
+    }
+
     public void Dispose()
     {
+        movieSearchDebouncer.Dispose();
     }
 }
