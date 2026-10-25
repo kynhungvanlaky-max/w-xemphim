@@ -9,6 +9,7 @@
 .env
 .env.*
 !.env.example
+!.env.prod.example
 **/appsettings.Local.json
 # Local development settings may contain real secrets: never commit them.
 **/appsettings.Development.json

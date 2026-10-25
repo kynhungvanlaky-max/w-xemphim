@@ -1,0 +1,172 @@
+name: CinemaFlow CI/CD - Test, Build & Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # ============================================================
+  # 1. RUN TESTS (Testing First Rule)
+  # ============================================================
+  test:
+    name: Run Unit & Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        continue-on-error: true
+        id: setup-dotnet
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: 'preview'
+
+      - name: Run Tests (Native Runner)
+        if: steps.setup-dotnet.outcome == 'success'
+        run: dotnet test WebXemPhim.slnx -c Release --verbosity normal
+
+      - name: Run Tests (Docker Container Fallback)
+        if: steps.setup-dotnet.outcome != 'success'
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v ${{ github.workspace }}:/src \
+            -w /src \
+            mcr.microsoft.com/dotnet/sdk:10.0 \
+            dotnet test WebXemPhim.slnx -c Release --verbosity normal
+
+  # ============================================================
+  # 2. BUILD & PUSH DOCKER IMAGES TO GHCR
+  # ============================================================
+  build-and-push:
+    name: Build & Push Images to GHCR
+    needs: test
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute Lowercase Repository Name
+        id: repo
+        run: echo "NAME=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+
+      - name: Build & Push Server Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Server/WebXemPhim.Server/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.repo.outputs.NAME }}/webxemphim-server:latest
+            ghcr.io/${{ steps.repo.outputs.NAME }}/webxemphim-server:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & Push Client Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Client/WebXemPhim.Client/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.repo.outputs.NAME }}/webxemphim-client:latest
+            ghcr.io/${{ steps.repo.outputs.NAME }}/webxemphim-client:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================================
+  # 3. AUTOMATED DEPLOYMENT TO VPS VIA SSH
+  # ============================================================
+  deploy:
+    name: Deploy to Production VPS
+    needs: build-and-push
+    if: ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch') && secrets.SERVER_HOST != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Compute Lowercase Repository Name
+        id: repo
+        run: echo "NAME=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+
+      - name: Copy Compose & Caddy Files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER || 'root' }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          source: "docker-compose.prod.yml,Caddyfile,database/postgresql/001_initial.sql"
+          target: "~/cinemaflow"
+
+      - name: Execute Remote Deployment via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_REPO: ${{ steps.repo.outputs.NAME }}
+          SERVER_DOMAIN: ${{ vars.DOMAIN || 'localhost' }}
+          SERVER_EMAIL: ${{ vars.ACME_EMAIL || 'admin@cinemaflow.vn' }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER || 'root' }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          envs: GHCR_USER,GHCR_TOKEN,IMAGE_REPO,SERVER_DOMAIN,SERVER_EMAIL
+          script: |
+            set -e
+            cd ~/cinemaflow
+
+            # Authenticate with GHCR to pull private/public container images
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+            # Generate default production .env if it does not exist yet
+            if [ ! -f .env ]; then
+              echo "Generating production .env file..."
+              POSTGRES_PW=$(openssl rand -hex 16)
+              SIGNING_KEY=$(openssl rand -hex 32)
+              WEBHOOK_KEY=$(openssl rand -hex 32)
+              echo "DOMAIN=$SERVER_DOMAIN" > .env
+              echo "ACME_EMAIL=$SERVER_EMAIL" >> .env
+              echo "POSTGRES_USER=webxemphim" >> .env
+              echo "POSTGRES_PASSWORD=$POSTGRES_PW" >> .env
+              echo "POSTGRES_DB=webxemphim" >> .env
+              echo "STREAM_SIGNING_KEY=$SIGNING_KEY" >> .env
+              echo "PAYMENT_WEBHOOK_SECRET=$WEBHOOK_KEY" >> .env
+              echo "IMAGE_REPO=$IMAGE_REPO" >> .env
+              echo "IMAGE_TAG=latest" >> .env
+              echo "PUBLIC_API_BASE_URL=https://$SERVER_DOMAIN" >> .env
+            fi
+
+            export IMAGE_REPO="$IMAGE_REPO"
+            export IMAGE_TAG="latest"
+
+            # Pull newest images from GHCR
+            docker compose -f docker-compose.prod.yml pull
+
+            # Recreate containers with zero unnecessary downtime
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+            # Clean up old unused images to save disk space
+            docker image prune -f

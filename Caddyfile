@@ -1,0 +1,34 @@
+{
+    email {$ACME_EMAIL:admin@cinemaflow.vn}
+}
+
+{$DOMAIN:localhost} {
+    encode zstd gzip
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # SignalR CinemaHub WebSocket
+    handle /hubs/* {
+        reverse_proxy server:8080
+    }
+
+    # REST API endpoints (Movies, Stream, Auth, Admin, etc.)
+    handle /api/* {
+        reverse_proxy server:8080
+    }
+
+    # OpenAPI schema definition
+    handle /openapi/* {
+        reverse_proxy server:8080
+    }
+
+    # Blazor Interactive Server UI, static assets, and /_blazor WebSocket
+    handle {
+        reverse_proxy client:8080
+    }
+}

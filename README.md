@@ -85,6 +85,15 @@ dotnet test WebXemPhim.slnx
 
 ---
 
+## 🐳 Triển Khai Docker & CI/CD Lên Môi Trường Internet
+
+Dự án hỗ trợ sẵn sàng triển khai bằng Docker Compose kèm Caddy (tự động cấp chứng chỉ SSL Let's Encrypt / HTTPS) và quy trình CI/CD tự động từ GitHub Actions:
+
+- **Triển khai Production lên VPS qua GitHub Actions**: Xem hướng dẫn tại [docs/vps-deployment-guide.md](docs/vps-deployment-guide.md).
+- **Triển khai Container Cục bộ (Local Docker)**: Xem chi tiết tại [DEPLOY_DOCKER.md](DEPLOY_DOCKER.md).
+
+---
+
 ## 🔑 Tài Khoản Thử Nghiệm (Development Seed)
 
 | Phân quyền | Email / Tên đăng nhập | Mật khẩu |

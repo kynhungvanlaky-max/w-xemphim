@@ -1,0 +1,128 @@
+services:
+  # ==========================================
+  # Caddy Reverse Proxy & Automatic SSL/TLS
+  # ==========================================
+  caddy:
+    container_name: webxemphim-caddy
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+      - ACME_EMAIL=${ACME_EMAIL:-admin@cinemaflow.vn}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - server
+      - client
+    networks:
+      - cinemaflow-net
+
+  # ==========================================
+  # CinemaFlow REST API Server (.NET 10)
+  # ==========================================
+  server:
+    container_name: webxemphim-server
+    image: ghcr.io/${IMAGE_REPO:-kynhungvanlaky-max/w-xemphim}/webxemphim-server:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: src/Server/WebXemPhim.Server/Dockerfile
+    restart: always
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - DOTNET_RUNNING_IN_CONTAINER=true
+      - Database__Provider=PostgreSql
+      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=${POSTGRES_DB:-webxemphim};Username=${POSTGRES_USER:-webxemphim};Password=${POSTGRES_PASSWORD:-webxemphim_secure_2026!}
+      - Database__SeedDemoData=false
+      - Security__DataProtectionKeyPath=/app/keys
+      - Security__StreamSigningKey=${STREAM_SIGNING_KEY:-CinemaFlow_Production_Stream_Signing_HMAC_Secret_2026_AtLeast32Bytes!}
+      - Security__StreamTtlMinutes=${STREAM_TTL_MINUTES:-10}
+      - Security__PublicApiBaseUrl=${PUBLIC_API_BASE_URL:-https://${DOMAIN:-localhost}}
+      - Payment__WebhookSecret=${PAYMENT_WEBHOOK_SECRET:-CinemaFlow_Production_Payment_Webhook_HMAC_SHA512_Secret_2026_AtLeast32Bytes!}
+      - Security__AllowedOrigins__0=https://${DOMAIN:-localhost}
+      - Security__AllowedOrigins__1=http://${DOMAIN:-localhost}
+      - Security__AllowedOrigins__2=https://${DOMAIN:-localhost}:443
+      - Security__AllowedOrigins__3=http://${DOMAIN:-localhost}:80
+      - Security__AllowedOrigins__4=http://caddy
+      - Security__KnownProxyNetworks__0=172.16.0.0/12
+      - Security__KnownProxyNetworks__1=10.0.0.0/8
+      - Security__KnownProxyNetworks__2=192.168.0.0/16
+      - Security__KnownProxyNetworks__3=127.0.0.1/8
+      - AllowedHosts=*
+    volumes:
+      - server_data:/app/data
+      - server_keys:/app/keys
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cinemaflow-net
+
+  # ==========================================
+  # CinemaFlow Blazor Web Client (.NET 10)
+  # ==========================================
+  client:
+    container_name: webxemphim-client
+    image: ghcr.io/${IMAGE_REPO:-kynhungvanlaky-max/w-xemphim}/webxemphim-client:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: src/Client/WebXemPhim.Client/Dockerfile
+    restart: always
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - DOTNET_RUNNING_IN_CONTAINER=true
+      - ApiBaseUrl=http://server:8080
+      - Security__DataProtectionKeyPath=/app/keys
+      - Security__KnownProxyNetworks__0=172.16.0.0/12
+      - Security__KnownProxyNetworks__1=10.0.0.0/8
+      - Security__KnownProxyNetworks__2=192.168.0.0/16
+      - Security__KnownProxyNetworks__3=127.0.0.1/8
+      - AllowedHosts=*
+    volumes:
+      - client_keys:/app/keys
+    depends_on:
+      - server
+    networks:
+      - cinemaflow-net
+
+  # ==========================================
+  # PostgreSQL 17 Database Engine
+  # ==========================================
+  postgres:
+    container_name: webxemphim-postgres
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-webxemphim}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-webxemphim_secure_2026!}
+      - POSTGRES_DB=${POSTGRES_DB:-webxemphim}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/postgresql/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-webxemphim} -d ${POSTGRES_DB:-webxemphim}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - cinemaflow-net
+
+volumes:
+  caddy_data:
+  caddy_config:
+  postgres_data:
+  server_data:
+  server_keys:
+  client_keys:
+
+networks:
+  cinemaflow-net:
+    driver: bridge
