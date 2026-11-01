@@ -85,6 +85,14 @@ public interface IAdminApiClient
     Task<List<VipPlanDto>> GetVipPlansAsync();
     Task<ApiResponse<VipPlanDto>?> UpsertVipPlanAsync(string id, UpsertVipPlanRequest request);
     Task<ApiResponse<UserDto>?> GrantVipToUserAsync(ManualVipGrantRequest request);
+    Task<AdminTelemetrySummaryDto?> GetTelemetrySummaryAsync(int hours = 24);
+    Task<PagedResult<AdminTelemetryEventDto>> GetTelemetryEventsAsync(
+        string? eventType = null,
+        int? episodeId = null,
+        string? sessionId = null,
+        int hours = 24,
+        int page = 1,
+        int pageSize = 50);
 }
 
 public sealed class AdminApiClient(
@@ -169,6 +177,28 @@ public sealed class AdminApiClient(
 
     public Task<ApiResponse<UserDto>?> GrantVipToUserAsync(ManualVipGrantRequest request) =>
         SendAsync<UserDto>(HttpMethod.Post, "api/admin/users/grant-vip", request);
+
+    public async Task<AdminTelemetrySummaryDto?> GetTelemetrySummaryAsync(int hours = 24) =>
+        (await SendAsync<AdminTelemetrySummaryDto>(
+            HttpMethod.Get,
+            $"api/admin/telemetry/summary?hours={Math.Clamp(hours, 1, 168)}"))?.Data;
+
+    public async Task<PagedResult<AdminTelemetryEventDto>> GetTelemetryEventsAsync(
+        string? eventType = null,
+        int? episodeId = null,
+        string? sessionId = null,
+        int hours = 24,
+        int page = 1,
+        int pageSize = 50)
+    {
+        var url = $"api/admin/telemetry/events?hours={Math.Clamp(hours, 1, 168)}&page={Math.Max(page, 1)}&pageSize={Math.Clamp(pageSize, 1, 200)}";
+        if (!string.IsNullOrWhiteSpace(eventType)) url += $"&eventType={Uri.EscapeDataString(eventType.Trim())}";
+        if (episodeId is > 0) url += $"&episodeId={episodeId.Value}";
+        if (!string.IsNullOrWhiteSpace(sessionId)) url += $"&sessionId={Uri.EscapeDataString(sessionId.Trim())}";
+
+        return (await SendAsync<PagedResult<AdminTelemetryEventDto>>(HttpMethod.Get, url))?.Data
+               ?? new PagedResult<AdminTelemetryEventDto>();
+    }
 
     public async Task<PagedResult<MovieDetailDto>> GetMoviesPagedAsync(
         int page = 1,

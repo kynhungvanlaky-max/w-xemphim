@@ -11,8 +11,32 @@ namespace WebXemPhim.Client.Services;
 public sealed class WatchApiClient(
     IHttpClientFactory factory,
     AuthState auth,
+    ICircuitClientIpProvider? circuitIpProvider = null,
     ILogger<WatchApiClient>? logger = null)
 {
+    private void AttachClientIp(HttpRequestMessage request)
+    {
+        var clientIp = circuitIpProvider?.ClientIp;
+        if (!string.IsNullOrWhiteSpace(clientIp))
+        {
+            request.Headers.Remove("X-Forwarded-For");
+            request.Headers.TryAddWithoutValidation("X-Forwarded-For", clientIp);
+        }
+    }
+    public static string NormalizeStreamUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return string.Empty;
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            var host = uri.Host.ToLowerInvariant();
+            if (host is "localhost" or "127.0.0.1" or "::1" or "server")
+            {
+                return uri.PathAndQuery;
+            }
+        }
+        return url;
+    }
+
     public async Task<MovieDetailDto?> GetMovieAsync(int id)
     {
         using var client = factory.CreateClient("AccountApi");
@@ -26,6 +50,13 @@ public sealed class WatchApiClient(
         response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadFromJsonAsync<ApiResponse<MovieDetailDto>>();
         if (result?.Success != true || result.Data is null) throw new HttpRequestException("Không thể tải phim.");
+        foreach (var ep in result.Data.Episodes)
+        {
+            foreach (var s in ep.Streams)
+            {
+                s.StreamUrl = NormalizeStreamUrl(s.StreamUrl);
+            }
+        }
         return result.Data;
     }
 
@@ -49,13 +80,19 @@ public sealed class WatchApiClient(
                     SessionId = sessionId
                 })
             };
+            AttachClientIp(request);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
 
             using var response = await client.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode) return null;
 
             var result = await response.Content.ReadFromJsonAsync<ApiResponse<SignedStreamDto>>(cancellationToken);
-            return result?.Success == true ? result.Data : null;
+            if (result?.Success == true && result.Data != null)
+            {
+                result.Data.StreamUrl = NormalizeStreamUrl(result.Data.StreamUrl);
+                return result.Data;
+            }
+            return null;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
@@ -88,18 +125,53 @@ public sealed class WatchApiClient(
                     Position = position
                 })
             };
+            AttachClientIp(request);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
 
             using var response = await client.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode) return null;
 
             var result = await response.Content.ReadFromJsonAsync<ApiResponse<SignedStreamDto>>(cancellationToken);
-            return result?.Success == true ? result.Data : null;
+            if (result?.Success == true && result.Data != null)
+            {
+                result.Data.StreamUrl = NormalizeStreamUrl(result.Data.StreamUrl);
+                return result.Data;
+            }
+            return null;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
             logger?.LogWarning(ex, "Failed to refresh stream session {SessionId}", sessionId);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Gửi beacon QoE. Telemetry là best-effort: lỗi mạng/API không được làm gián đoạn
+    /// trải nghiệm xem phim nên mọi ngoại lệ đều bị nuốt và trả về <c>false</c>.
+    /// </summary>
+    public async Task<bool> ReportTelemetryAsync(
+        PlaybackTelemetryRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!auth.IsAuthenticated || string.IsNullOrWhiteSpace(auth.AccessToken)) return false;
+
+        try
+        {
+            using var client = factory.CreateClient("AccountApi");
+            using var message = new HttpRequestMessage(HttpMethod.Post, "api/stream/telemetry")
+            {
+                Content = JsonContent.Create(request)
+            };
+            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+
+            using var response = await client.SendAsync(message, cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            logger?.LogDebug(ex, "Không gửi được telemetry QoE cho tập {EpisodeId}.", request.EpisodeId);
+            return false;
         }
     }
 
@@ -158,6 +230,7 @@ public sealed class WatchApiClient(
             {
                 Content = JsonContent.Create(requestDto)
             };
+            AttachClientIp(request);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
             using var response = await client.SendAsync(request);
             return response.IsSuccessStatusCode;
@@ -229,6 +302,7 @@ public sealed class WatchApiClient(
             {
                 Content = JsonContent.Create(new SignStreamRequest { EpisodeId = episodeId, Position = position })
             };
+            AttachClientIp(request);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
             using var response = await client.SendAsync(request);
             if (!response.IsSuccessStatusCode)
@@ -236,7 +310,12 @@ public sealed class WatchApiClient(
                 var err = await response.Content.ReadFromJsonAsync<ApiResponse<SignedStreamDto>>();
                 return err ?? ApiResponse<SignedStreamDto>.Fail("Không thể tạo liên kết phát video bảo mật.");
             }
-            return await response.Content.ReadFromJsonAsync<ApiResponse<SignedStreamDto>>();
+            var payload = await response.Content.ReadFromJsonAsync<ApiResponse<SignedStreamDto>>();
+            if (payload?.Data != null)
+            {
+                payload.Data.StreamUrl = NormalizeStreamUrl(payload.Data.StreamUrl);
+            }
+            return payload;
         }
         catch (Exception ex)
         {

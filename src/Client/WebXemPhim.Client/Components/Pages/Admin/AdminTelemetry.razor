@@ -1,0 +1,472 @@
+@page "/admin/telemetry"
+@layout WebXemPhim.Client.Components.Layout.AdminLayout
+@using System.Globalization
+@using WebXemPhim.Shared.Models
+@using WebXemPhim.Client.Components.Icons
+@using WebXemPhim.Client.Services
+@inject IAdminApiClient AdminApi
+@inject IJSRuntime JS
+@inject ILogger<AdminTelemetry> Logger
+@implements IDisposable
+
+<CinemaPageTitle>Chất lượng phát (QoE) - CinemaFlow Cockpit</CinemaPageTitle>
+
+<header class="admin-topbar">
+    <div class="topbar-title-group">
+        <div style="display: flex; align-items: center; gap: 0.85rem; margin-bottom: 0.25rem; flex-wrap: wrap;">
+            <h1 class="topbar-title">Chất lượng phát (QoE)</h1>
+            <div class="live-status-pill @(summary is null ? "is-offline" : "")">
+                <span class="live-dot-pulse"></span>
+                <span>@(summary is null ? "Đang tải…" : "Telemetry trực tuyến")</span>
+            </div>
+        </div>
+        <p class="topbar-subtitle">Startup time, rebuffer, bitrate và lỗi phát theo phiên — dữ liệu beacon từ trình phát, không lưu IP/token</p>
+    </div>
+
+    <div class="topbar-actions">
+        <label class="sort-select-pill" title="Khoảng thời gian tổng hợp">
+            <CinemaIcon Name="CinemaIconName.Clock" Size="14" />
+            <select value="@hours" @onchange="OnHoursChanged" aria-label="Khoảng thời gian">
+                <option value="1">1 giờ</option>
+                <option value="6">6 giờ</option>
+                <option value="24">24 giờ</option>
+                <option value="72">3 ngày</option>
+                <option value="168">7 ngày</option>
+            </select>
+        </label>
+
+        <label class="sort-select-pill" title="Tự động làm mới dữ liệu">
+            <CinemaIcon Name="CinemaIconName.Refresh" Size="14" />
+            <select value="@autoRefreshSeconds" @onchange="OnAutoRefreshChanged" aria-label="Tự động làm mới">
+                <option value="0">Tắt tự làm mới</option>
+                <option value="15">Mỗi 15 giây</option>
+                <option value="30">Mỗi 30 giây</option>
+                <option value="60">Mỗi 60 giây</option>
+            </select>
+        </label>
+
+        <button type="button" class="btn-secondary-ghost" @onclick="RefreshAsync" disabled="@loading">
+            <CinemaIcon Name="CinemaIconName.Refresh" Size="15" />
+            <span>@(loading ? "Đang tải…" : "Làm mới")</span>
+        </button>
+    </div>
+</header>
+
+@if (!string.IsNullOrEmpty(loadError))
+{
+    <div class="form-alert error" style="margin-bottom: 1rem;" role="alert">@loadError</div>
+}
+
+@if (summary is not null)
+{
+    <section class="admin-kpi-grid">
+        <div class="kpi-card card-users">
+            <div class="kpi-icon-wrap purple"><CinemaIcon Name="CinemaIconName.Users" Size="22" /></div>
+            <div class="kpi-body">
+                <span class="kpi-value">@summary.Sessions.ToString("N0", CultureInfo.InvariantCulture)</span>
+                <span class="kpi-label">Phiên phát có telemetry</span>
+                <span class="kpi-change">@summary.TotalEvents.ToString("N0", CultureInfo.InvariantCulture) sự kiện trong @summary.Hours giờ</span>
+            </div>
+        </div>
+
+        <div class="kpi-card card-episodes">
+            <div class="kpi-icon-wrap cyan"><CinemaIcon Name="CinemaIconName.Play" Size="22" Filled="true" /></div>
+            <div class="kpi-body">
+                <span class="kpi-value">@FormatMs(summary.AvgStartupMs)</span>
+                <span class="kpi-label">Startup trung bình</span>
+                <span class="kpi-change">P95 @FormatMs(summary.P95StartupMs) · @summary.StartupSamples mẫu</span>
+            </div>
+        </div>
+
+        <div class="kpi-card card-movies">
+            <div class="kpi-icon-wrap amber"><CinemaIcon Name="CinemaIconName.Clock" Size="22" /></div>
+            <div class="kpi-body">
+                <span class="kpi-value">@summary.RebufferRatePerSession.ToString("0.00", CultureInfo.InvariantCulture)</span>
+                <span class="kpi-label">Rebuffer / phiên</span>
+                <span class="kpi-change">@summary.RebufferEvents lần · TB @FormatMs(summary.AvgRebufferMs)</span>
+            </div>
+        </div>
+
+        <div class="kpi-card card-rating">
+            <div class="kpi-icon-wrap red"><CinemaIcon Name="CinemaIconName.AlertCircle" Size="22" /></div>
+            <div class="kpi-body">
+                <span class="kpi-value">@summary.ErrorRatePerSession.ToString("0.00", CultureInfo.InvariantCulture)</span>
+                <span class="kpi-label">Lỗi / phiên</span>
+                <span class="kpi-change">@summary.ErrorEvents lỗi · bitrate TB @FormatBitrate(summary.AvgBitrateBps)</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="admin-charts-grid">
+        <div class="admin-chart-card">
+            <div class="chart-header">
+                <div class="chart-title-group">
+                    <h3><CinemaIcon Name="CinemaIconName.TrendingUp" Size="18" style="color: #e50914;" /> Dòng sự kiện theo giờ</h3>
+                    <p>Số beacon ghi nhận, tô đậm theo lỗi và rebuffer</p>
+                </div>
+                <span class="chart-stat-badge">
+                    <CinemaIcon Name="CinemaIconName.Clock" Size="13" />
+                    <span>@summary.Timeline.Count mốc giờ</span>
+                </span>
+            </div>
+
+            @if (summary.Timeline.Count == 0)
+            {
+                <div class="admin-table-state-msg">Chưa có telemetry trong khoảng thời gian này.</div>
+            }
+            else
+            {
+                var maxEvents = Math.Max(1, summary.Timeline.Max(bucket => bucket.Events));
+                <ul class="admin-genre-bars">
+                    @foreach (var bucket in summary.Timeline)
+                    {
+                        var width = (bucket.Events * 100.0 / maxEvents).ToString("0.0", CultureInfo.InvariantCulture);
+                        <li class="admin-genre-bar-row">
+                            <span class="admin-genre-bar-label" title="@bucket.BucketStartUtc.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture) UTC">
+                                @bucket.BucketStartUtc.ToString("HH:mm", CultureInfo.InvariantCulture)
+                            </span>
+                            <span class="admin-genre-bar-track" title="@($"{bucket.Events} sự kiện · {bucket.Errors} lỗi · {bucket.Rebuffers} rebuffer · startup TB {FormatMs(bucket.AvgStartupMs)}")">
+                                <span class="admin-genre-bar-fill" style="width: @width%;"></span>
+                            </span>
+                            <span class="admin-genre-bar-value font-mono-num">@bucket.Events</span>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+
+        <div class="admin-chart-card">
+            <div class="chart-header">
+                <div class="chart-title-group">
+                    <h3><CinemaIcon Name="CinemaIconName.Filter" Size="18" style="color: #e50914;" /> Cơ cấu sự kiện &amp; nguồn</h3>
+                    <p>Phân bổ loại beacon và tỷ lệ lỗi theo máy chủ</p>
+                </div>
+            </div>
+
+            @if (summary.EventTypes.Count == 0)
+            {
+                <div class="admin-table-state-msg">Chưa có dữ liệu phân bổ.</div>
+            }
+            else
+            {
+                var maxTypeCount = Math.Max(1, summary.EventTypes.Max(item => item.Count));
+                <ul class="admin-genre-bars">
+                    @foreach (var item in summary.EventTypes)
+                    {
+                        var width = (item.Count * 100.0 / maxTypeCount).ToString("0.0", CultureInfo.InvariantCulture);
+                        <li class="admin-genre-bar-row">
+                            <span class="admin-genre-bar-label">@EventLabel(item.EventType)</span>
+                            <span class="admin-genre-bar-track" title="@($"{item.Count} sự kiện")">
+                                <span class="admin-genre-bar-fill" style="width: @width%;"></span>
+                            </span>
+                            <span class="admin-genre-bar-value font-mono-num">@item.Count</span>
+                        </li>
+                    }
+                </ul>
+            }
+
+            @if (summary.TopSources.Count > 0)
+            {
+                <div class="section-title-bar" style="margin-top: 1.25rem; margin-bottom: 0.75rem;">
+                    <h3 style="font-size: 0.95rem; margin: 0;">Nguồn phát</h3>
+                </div>
+                <ul class="admin-genre-bars">
+                    @foreach (var source in summary.TopSources)
+                    {
+                        <li class="admin-genre-bar-row">
+                            <span class="admin-genre-bar-label" title="@source.ServerName">@source.ServerName</span>
+                            <span class="admin-genre-bar-track" title="@($"{source.Events} sự kiện · {source.Errors} lỗi · tỷ lệ {source.ErrorRate:P1}")">
+                                <span class="admin-genre-bar-fill" style="width: @((source.ErrorRate * 100).ToString("0.0", CultureInfo.InvariantCulture))%;"></span>
+                            </span>
+                            <span class="admin-genre-bar-value font-mono-num">@source.ErrorRate.ToString("P1", CultureInfo.InvariantCulture)</span>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </section>
+
+    @if (summary.RecentErrors.Count > 0)
+    {
+        <section class="admin-table-section" style="margin-top: 1.5rem;">
+            <div class="section-title-bar">
+                <div class="title-with-dropdown">
+                    <h2><CinemaIcon Name="CinemaIconName.AlertCircle" Size="18" style="color: #f87171;" /> Lỗi phát gần đây</h2>
+                    <span class="chart-stat-badge">@summary.RecentErrors.Count sự kiện</span>
+                </div>
+            </div>
+            <div class="table-frame">
+                <table class="admin-movies-table">
+                    <thead>
+                        <tr>
+                            <th>Thời điểm (UTC)</th>
+                            <th>Tập</th>
+                            <th>Nguồn</th>
+                            <th>Mã lỗi</th>
+                            <th>Phiên</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in summary.RecentErrors)
+                        {
+                            <tr>
+                                <td class="audit-time-mono">@item.CreatedAtUtc.ToString("dd/MM HH:mm:ss", CultureInfo.InvariantCulture)</td>
+                                <td>#@item.EpisodeId <span class="audit-time-rel">phim @item.MovieId</span></td>
+                                <td>@(string.IsNullOrWhiteSpace(item.ServerName) ? "—" : item.ServerName)</td>
+                                <td><span class="audit-action-badge audit-action-delete">@(item.ErrorCode ?? "UNKNOWN")</span></td>
+                                <td class="audit-time-mono">@ShortSession(item.SessionId)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+
+    <section class="admin-table-section" style="margin-top: 1.5rem;">
+        <div class="section-title-bar">
+            <div class="title-with-dropdown">
+                <h2>Nhật ký beacon QoE</h2>
+                <span class="chart-stat-badge">@events.TotalItems sự kiện</span>
+            </div>
+        </div>
+
+        <div class="status-tabs-row" role="tablist" aria-label="Lọc loại sự kiện">
+            @foreach (var filter in EventFilters)
+            {
+                <button type="button"
+                        class="status-tab-btn @(eventType == filter.Value ? "active" : "")"
+                        role="tab"
+                        aria-selected="@(eventType == filter.Value)"
+                        @onclick="() => SetEventFilterAsync(filter.Value)">
+                    @filter.Label
+                </button>
+            }
+        </div>
+
+        @if (events.Items.Count == 0)
+        {
+            <div class="admin-table-state-msg">Chưa có beacon nào khớp bộ lọc.</div>
+        }
+        else
+        {
+            <div class="table-frame">
+                <table class="admin-movies-table">
+                    <thead>
+                        <tr>
+                            <th>Thời điểm (UTC)</th>
+                            <th>Loại</th>
+                            <th>Tập / nguồn</th>
+                            <th>Giá trị</th>
+                            <th>Chất lượng</th>
+                            <th>Phiên</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in events.Items)
+                        {
+                            <tr>
+                                <td class="audit-time-mono">@item.CreatedAtUtc.ToString("dd/MM HH:mm:ss", CultureInfo.InvariantCulture)</td>
+                                <td><span class="audit-action-badge @EventBadgeClass(item.EventType)">@EventLabel(item.EventType)</span></td>
+                                <td>
+                                    #@item.EpisodeId
+                                    <span class="audit-time-rel">@(string.IsNullOrWhiteSpace(item.ServerName) ? "—" : item.ServerName)</span>
+                                </td>
+                                <td class="font-mono-num">@FormatValue(item)</td>
+                                <td>@(string.IsNullOrWhiteSpace(item.Quality) ? "—" : item.Quality)</td>
+                                <td class="audit-time-mono" title="@item.SessionId">@ShortSession(item.SessionId)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <AdminPagination CurrentPage="@currentPage"
+                             PageSize="@pageSize"
+                             TotalItems="@events.TotalItems"
+                             PageSizeOptions="@(new[] { 20, 50, 100, 200 })"
+                             OnPageChanged="HandlePageChanged"
+                             OnPageSizeChanged="HandlePageSizeChanged" />
+        }
+    </section>
+}
+else if (loading)
+{
+    <div class="admin-table-state-msg" role="status">Đang tải telemetry QoE…</div>
+}
+
+@code {
+    private static readonly (string Label, string Value)[] EventFilters =
+    [
+        ("Tất cả", ""),
+        ("Startup", "startup"),
+        ("Rebuffer", "rebuffer"),
+        ("Bitrate", "bitrate"),
+        ("Lỗi", "error")
+    ];
+
+    private AdminTelemetrySummaryDto? summary;
+    private PagedResult<AdminTelemetryEventDto> events = new();
+    private int hours = 24;
+    private int autoRefreshSeconds;
+    private int currentPage = 1;
+    private int pageSize = 50;
+    private string eventType = string.Empty;
+    private bool loading;
+    private string? loadError;
+    private CancellationTokenSource? refreshCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+        StartAutoRefresh();
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (loading) return;
+        loading = true;
+        loadError = null;
+        try
+        {
+            var summaryTask = AdminApi.GetTelemetrySummaryAsync(hours);
+            var eventsTask = AdminApi.GetTelemetryEventsAsync(
+                eventType: eventType,
+                hours: hours,
+                page: currentPage,
+                pageSize: pageSize);
+
+            await Task.WhenAll(summaryTask, eventsTask);
+            summary = await summaryTask;
+            events = await eventsTask;
+
+            if (summary is null)
+            {
+                loadError = "Chưa tải được tổng hợp telemetry. Vui lòng thử lại.";
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = "Không thể tải telemetry QoE. Vui lòng thử lại.";
+            Logger.LogWarning(ex, "Không tải được telemetry QoE cho {Hours} giờ.", hours);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task OnHoursChanged(ChangeEventArgs args)
+    {
+        if (!int.TryParse(args.Value?.ToString(), out var value)) return;
+        hours = Math.Clamp(value, 1, 168);
+        currentPage = 1;
+        await RefreshAsync();
+    }
+
+    private void OnAutoRefreshChanged(ChangeEventArgs args)
+    {
+        autoRefreshSeconds = int.TryParse(args.Value?.ToString(), out var value) ? Math.Max(0, value) : 0;
+        StartAutoRefresh();
+    }
+
+    private void StartAutoRefresh()
+    {
+        refreshCts?.Cancel();
+        refreshCts?.Dispose();
+        refreshCts = null;
+        if (autoRefreshSeconds <= 0) return;
+
+        refreshCts = new CancellationTokenSource();
+        _ = RunAutoRefreshAsync(refreshCts.Token);
+    }
+
+    private async Task RunAutoRefreshAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(autoRefreshSeconds), cancellationToken);
+                await InvokeAsync(async () =>
+                {
+                    await RefreshAsync();
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when the timer or component is disposed.
+        }
+    }
+
+    private async Task SetEventFilterAsync(string value)
+    {
+        if (eventType == value) return;
+        eventType = value;
+        currentPage = 1;
+        await RefreshAsync();
+    }
+
+    private async Task HandlePageChanged(int page)
+    {
+        currentPage = Math.Max(1, page);
+        await RefreshAsync();
+    }
+
+    private async Task HandlePageSizeChanged(int size)
+    {
+        if (size == pageSize) return;
+        pageSize = size;
+        currentPage = 1;
+        await RefreshAsync();
+    }
+
+    private static string FormatMs(double value) =>
+        value <= 0 ? "0 ms" : value >= 1000
+            ? $"{value / 1000.0:0.00} s"
+            : $"{value:0} ms";
+
+    private static string FormatBitrate(long bps) =>
+        bps <= 0 ? "—" : bps >= 1_000_000
+            ? $"{bps / 1_000_000.0:0.00} Mbps"
+            : $"{bps / 1000.0:0} kbps";
+
+    private static string FormatValue(AdminTelemetryEventDto item) => item.EventType switch
+    {
+        "bitrate" => FormatBitrate(item.Value),
+        "error" => item.ErrorCode ?? "Lỗi",
+        _ => FormatMs(item.Value)
+    };
+
+    private static string EventLabel(string value) => value switch
+    {
+        "startup" => "Startup",
+        "rebuffer" => "Rebuffer",
+        "bitrate" => "Bitrate",
+        "error" => "Lỗi",
+        "stall" => "Stall",
+        "ended" => "Kết thúc",
+        "seek" => "Tua",
+        _ => value
+    };
+
+    private static string EventBadgeClass(string value) => value switch
+    {
+        "error" => "audit-action-delete",
+        "rebuffer" or "stall" => "audit-action-bulk",
+        "bitrate" => "audit-action-probe",
+        "startup" => "audit-action-create",
+        _ => "audit-action-update"
+    };
+
+    private static string ShortSession(string? sessionId) =>
+        string.IsNullOrWhiteSpace(sessionId) ? "—" : sessionId[..Math.Min(8, sessionId.Length)];
+
+    public void Dispose()
+    {
+        refreshCts?.Cancel();
+        refreshCts?.Dispose();
+    }
+}

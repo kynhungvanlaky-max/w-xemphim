@@ -62,7 +62,9 @@
                                       OnQualityChanged="SelectQuality"
                                       OnEnded="OnVideoEnded"
                                       OnPause="HandlePlayerPause"
-                                      OnProgress="HandlePlayerProgress" />
+                                      OnProgress="HandlePlayerProgress"
+                                      OnTelemetry="HandlePlaybackTelemetry"
+                                      OnFatalError="HandlePlayerFatalError" />
                     }
                     else if (playback.Source is not null && !playback.IsVipUser && WatchPlaybackState.IsVipStream(playback.Source))
                     {
@@ -361,6 +363,14 @@
     private string? currentStreamSessionId;
     private bool isEvicted;
     private ForceDisconnectNotice? evictionNotice;
+    private int failoverAttempts;
+    private DateTime lastFailoverAt = DateTime.MinValue;
+
+    /// <summary>Giới hạn số lần tự chuyển nguồn mỗi tập để tránh flapping vô hạn.</summary>
+    private const int MaxAutoFailoverAttempts = 2;
+
+    /// <summary>Khoảng nghỉ tối thiểu giữa hai lần tự chuyển nguồn.</summary>
+    private static readonly TimeSpan FailoverCooldown = TimeSpan.FromSeconds(10);
     private string ReturnUrl => $"/watch/{MovieId}" + (playback.Current is null ? "" : $"?ep={playback.Current.EpisodeNumber}");
     private string PlayerKey => $"{playback.Current?.Id}:{playback.Source?.StreamUrl}";
     private string PlayerPoster => !string.IsNullOrWhiteSpace(playback.Current?.ThumbnailUrl) ? playback.Current.ThumbnailUrl
@@ -525,8 +535,15 @@
             _ = SaveCurrentProgressAsync(immediate: true);
         }
         autoPlayEpisodeId = episode.Id; resumeSeconds = 0; currentCursorSeconds = 0;
+        ResetFailoverBudget();
         Nav.NavigateTo($"/watch/{MovieId}?ep={episode.EpisodeNumber}");
         await AcquireLeaseAndStartHeartbeatAsync();
+    }
+
+    private void ResetFailoverBudget()
+    {
+        failoverAttempts = 0;
+        lastFailoverAt = DateTime.MinValue;
     }
 
     private async Task PreserveCursor()
@@ -549,6 +566,7 @@
             return;
         }
         await PreserveCursor();
+        ResetFailoverBudget();
         playback.SetServer(server);
         await AcquireLeaseAndStartHeartbeatAsync();
     }
@@ -563,6 +581,7 @@
             return;
         }
         await PreserveCursor();
+        ResetFailoverBudget();
         playback.SetQuality(quality);
         await AcquireLeaseAndStartHeartbeatAsync();
     }
@@ -572,10 +591,114 @@
         var nonVip = playback.Sources.FirstOrDefault(s => !WatchPlaybackState.IsVipStream(s) && !string.IsNullOrEmpty(s.StreamUrl));
         if (nonVip is not null)
         {
+            ResetFailoverBudget();
             playback.SetServer(nonVip.ServerName);
             playback.SetQuality(nonVip.Quality);
             await AcquireLeaseAndStartHeartbeatAsync();
         }
+    }
+
+    /// <summary>
+    /// Chuyển beacon QoE từ player thành request telemetry. Việc gửi là best-effort và
+    /// không chặn luồng phát; metadata nguồn/tập lấy từ trạng thái hiện tại của trang.
+    /// </summary>
+    private void HandlePlaybackTelemetry(PlaybackTelemetrySignal signal)
+    {
+        if (!Auth.IsAuthenticated) return;
+        var episode = playback.Current;
+        var source = playback.Source;
+        if (episode is null || source is null || string.IsNullOrWhiteSpace(signal.EventType)) return;
+
+        var request = new PlaybackTelemetryRequest
+        {
+            EventType = signal.EventType,
+            MovieId = MovieId,
+            EpisodeId = episode.Id,
+            SessionId = currentStreamSessionId,
+            Position = source.Position,
+            ServerName = source.ServerName,
+            Quality = source.Quality,
+            Value = signal.Value,
+            ErrorCode = signal.ErrorCode
+        };
+
+        _ = ReportTelemetrySafeAsync(request);
+    }
+
+    private async Task ReportTelemetrySafeAsync(PlaybackTelemetryRequest request)
+    {
+        try
+        {
+            await Api.ReportTelemetryAsync(request);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JSException or InvalidOperationException)
+        {
+            Logger.LogDebug(ex, "Không gửi được telemetry QoE cho tập {EpisodeId}.", request.EpisodeId);
+        }
+    }
+
+    /// <summary>
+    /// Tự chuyển nguồn khi player báo lỗi không thể phục hồi. Có cooldown 10 giây và tối đa
+    /// 2 lần mỗi tập để tránh vòng lặp flapping; ưu tiên server khác trước, sau đó mới đổi
+    /// chất lượng trên cùng server. Vị trí xem được giữ lại để người dùng không mất chỗ.
+    /// </summary>
+    private async Task HandlePlayerFatalError(string details)
+    {
+        if (!Auth.IsAuthenticated || playback.Current is null) return;
+
+        var now = DateTime.UtcNow;
+        if (now - lastFailoverAt < FailoverCooldown) return;
+
+        if (failoverAttempts >= MaxAutoFailoverAttempts)
+        {
+            status = "Nguồn phát liên tục gặp sự cố. Vui lòng chọn nguồn khác hoặc thử lại sau.";
+            return;
+        }
+
+        var current = playback.Source;
+        var candidates = playback.Sources
+            .Where(source => playback.CanPlay(source))
+            .Where(source => !string.Equals(source.ServerName, current?.ServerName, StringComparison.OrdinalIgnoreCase)
+                             || !string.Equals(source.Quality, current?.Quality, StringComparison.Ordinal))
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            status = "Không còn nguồn dự phòng khả dụng cho tập này.";
+            return;
+        }
+
+        var next = candidates.FirstOrDefault(source =>
+                       !string.Equals(source.ServerName, current?.ServerName, StringComparison.OrdinalIgnoreCase))
+                   ?? candidates[0];
+
+        failoverAttempts++;
+        lastFailoverAt = now;
+        Logger.LogWarning(
+            "Tự chuyển nguồn phát cho phim {MovieId} tập {EpisodeId} sau lỗi: {Details}",
+            MovieId,
+            playback.Current.Id,
+            details);
+
+        status = "Nguồn phát gặp sự cố. Đang tự chuyển sang nguồn dự phòng...";
+
+        try
+        {
+            await PreserveCursor();
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException)
+        {
+            Logger.LogDebug(ex, "Không đọc được vị trí phát trước khi chuyển nguồn.");
+        }
+
+        autoPlayEpisodeId = playback.Current.Id;
+        playback.SetServer(next.ServerName);
+        if (!string.Equals(playback.Source?.Quality, next.Quality, StringComparison.Ordinal))
+        {
+            playback.SetQuality(next.Quality);
+        }
+
+        await AcquireLeaseAndStartHeartbeatAsync();
     }
 
     private async Task ChangeServer(ChangeEventArgs e)
@@ -583,7 +706,6 @@
         var server = e.Value?.ToString() ?? "";
         await SelectServer(server);
     }
-
     private async Task ChangeQuality(ChangeEventArgs e)
     {
         var quality = e.Value?.ToString() ?? "";

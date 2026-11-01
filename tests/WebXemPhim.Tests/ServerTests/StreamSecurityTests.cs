@@ -164,6 +164,38 @@ public sealed class StreamSecurityTests(TestApiFactory factory) : IClassFixture<
     }
 
     [Fact]
+    public void Unit_ComputeIpHash_NormalizesIpv4MappedAddress()
+    {
+        var signer = new StreamUrlSigner();
+
+        Assert.Equal(
+            signer.ComputeIpHash("172.18.0.1"),
+            signer.ComputeIpHash("::ffff:172.18.0.1"));
+        Assert.Equal(
+            signer.ComputeIpHash("127.0.0.1"),
+            signer.ComputeIpHash("::1"));
+    }
+
+    [Fact]
+    public void Unit_Validate_AcceptsIpv4MappedClientAddress()
+    {
+        var signer = new StreamUrlSigner();
+        var signed = signer.Sign("https://cinemaflow.test", 101, 1, "172.18.0.1");
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri(signed.StreamUrl).Query);
+
+        var result = signer.Validate(
+            101,
+            1,
+            long.Parse(query["exp"]!),
+            query["ip"]!,
+            query["sig"]!,
+            "::ffff:172.18.0.1");
+
+        Assert.True(result.IsValid);
+        Assert.Equal(StreamValidationStatus.Valid, result.Status);
+    }
+
+    [Fact]
     public async Task Integration_PlayStream_WithValidSignature_ProxiesVideoWithoutLeakingUpstreamUrl()
     {
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions

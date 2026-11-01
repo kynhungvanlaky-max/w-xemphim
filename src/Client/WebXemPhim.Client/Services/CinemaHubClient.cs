@@ -10,6 +10,7 @@ public sealed class CinemaHubClient : IAsyncDisposable
     private readonly AuthState _auth;
     private readonly string _hubUrl;
     private readonly ILogger<CinemaHubClient> _logger;
+    private readonly ICircuitClientIpProvider? _circuitIpProvider;
     private HubConnection? _hubConnection;
     private bool _disposed;
 
@@ -17,10 +18,15 @@ public sealed class CinemaHubClient : IAsyncDisposable
     public event Action<ForceDisconnectNotice>? OnForceDisconnectReceived;
     public bool IsConnected => _hubConnection?.State == HubConnectionState.Connected;
 
-    public CinemaHubClient(AuthState auth, IConfiguration configuration, ILogger<CinemaHubClient> logger)
+    public CinemaHubClient(
+        AuthState auth,
+        IConfiguration configuration,
+        ILogger<CinemaHubClient> logger,
+        ICircuitClientIpProvider? circuitIpProvider = null)
     {
         _auth = auth;
         _logger = logger;
+        _circuitIpProvider = circuitIpProvider;
         var baseUrl = configuration["ApiBaseUrl"] ?? "http://localhost:5085";
         _hubUrl = baseUrl.TrimEnd('/') + "/hubs/cinema";
         _auth.OnChange += HandleAuthChanged;
@@ -37,6 +43,12 @@ public sealed class CinemaHubClient : IAsyncDisposable
                 .WithUrl(_hubUrl, options =>
                 {
                     options.AccessTokenProvider = () => Task.FromResult<string?>(_auth.AccessToken);
+                    var clientIp = _circuitIpProvider?.ClientIp;
+                    if (!string.IsNullOrWhiteSpace(clientIp))
+                    {
+                        options.Headers.Add("X-Forwarded-For", clientIp);
+                        options.Headers.Add("X-Client-IP", clientIp);
+                    }
                 })
                 .WithAutomaticReconnect()
                 .Build();

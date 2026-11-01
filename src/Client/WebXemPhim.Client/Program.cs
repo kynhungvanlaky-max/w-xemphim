@@ -8,6 +8,7 @@ using System.Net.Http;
 using Microsoft.Extensions.Http.Resilience;
 using Polly;
 using WebXemPhim.Shared.Security;
+using Yarp.ReverseProxy.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 WebSecurityExtensions.ApplyDevelopmentDefaults(builder.Configuration, builder.Environment, client: true);
@@ -93,6 +94,42 @@ builder.Services.AddHttpClient<IAdminApiClient, AdminApiClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(15);
 }).AddHttpMessageHandler<ForwardedClientIpHandler>();
 
+// Configure YARP Reverse Proxy to transparently forward /api, /hubs, /openapi to Server REST API
+builder.Services.AddReverseProxy()
+    .LoadFromMemory(
+        routes:
+        [
+            new RouteConfig
+            {
+                RouteId = "api-route",
+                ClusterId = "server-cluster",
+                Match = new RouteMatch { Path = "/api/{**catch-all}" }
+            },
+            new RouteConfig
+            {
+                RouteId = "hubs-route",
+                ClusterId = "server-cluster",
+                Match = new RouteMatch { Path = "/hubs/{**catch-all}" }
+            },
+            new RouteConfig
+            {
+                RouteId = "openapi-route",
+                ClusterId = "server-cluster",
+                Match = new RouteMatch { Path = "/openapi/{**catch-all}" }
+            }
+        ],
+        clusters:
+        [
+            new ClusterConfig
+            {
+                ClusterId = "server-cluster",
+                Destinations = new Dictionary<string, DestinationConfig>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["server-destination"] = new DestinationConfig { Address = apiBaseUrl }
+                }
+            }
+        ]);
+
 // Register reactive state
 builder.Services.AddScoped<IAccountApiClient>(services => new AccountApiClient(
     services.GetRequiredService<IHttpClientFactory>().CreateClient("AccountApi"),
@@ -111,7 +148,8 @@ var app = builder.Build();
 
 var forwardedHeadersOptions = new ForwardedHeadersOptions
 {
-    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedHost,
+    ForwardLimit = null
 };
 forwardedHeadersOptions.KnownIPNetworks.Clear();
 forwardedHeadersOptions.KnownProxies.Clear();
@@ -142,6 +180,29 @@ if (clientNetworks is { Length: > 0 })
     }
 }
 app.UseForwardedHeaders(forwardedHeadersOptions);
+app.Use(async (context, next) =>
+{
+    var remoteIp = context.Connection.RemoteIpAddress;
+    string? clientIp = null;
+    if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var fwd) && fwd.Count > 0)
+    {
+        var first = fwd[0]?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(first) && IPAddress.TryParse(first, out var parsed))
+        {
+            clientIp = parsed.ToString();
+        }
+    }
+    clientIp ??= remoteIp?.ToString();
+    if (!string.IsNullOrWhiteSpace(clientIp))
+    {
+        var ipProvider = context.RequestServices.GetService<ICircuitClientIpProvider>();
+        if (ipProvider != null)
+        {
+            ipProvider.ClientIp = clientIp;
+        }
+    }
+    await next(context);
+});
 app.UseSiteSecurity(client: true, app.Environment.IsDevelopment(), app.Configuration);
 app.UseResponseCompression();
 
@@ -156,6 +217,7 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+app.MapReverseProxy();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

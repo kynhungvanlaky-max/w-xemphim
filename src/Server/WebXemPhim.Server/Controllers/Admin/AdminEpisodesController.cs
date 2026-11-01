@@ -511,6 +511,18 @@ public sealed class AdminEpisodesController(
     public async Task<ActionResult<ApiResponse<ProbeStreamResultDto>>> ProbeStream([FromBody] ProbeStreamRequest request)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        if (request.StreamUrl?.StartsWith("local://", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            sw.Stop();
+            return Ok(ApiResponse<ProbeStreamResultDto>.Ok(new ProbeStreamResultDto
+            {
+                IsSuccess = true,
+                StatusCode = 200,
+                LatencyMs = 1,
+                ContentType = "video/mp4"
+            }));
+        }
+
         try
         {
             var (isSafe, errorMessage, validatedUri) = await SafeStreamUrlValidator.ValidateUrlAsync(request.StreamUrl);
@@ -690,6 +702,11 @@ public sealed class AdminEpisodesController(
         string? streamUrl,
         CancellationToken cancellationToken = default)
     {
+        if (streamUrl?.StartsWith("local://", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return (true, null);
+        }
+
         var result = await SafeStreamUrlValidator.ValidateUrlAsync(
             streamUrl,
             cancellationToken,

@@ -36,7 +36,8 @@ public interface IStreamUrlSigner
         string? clientIp,
         TimeSpan? ttl = null,
         string? sessionId = null,
-        string? scope = null);
+        string? scope = null,
+        bool isHls = false);
 
     string GeneratePlaybackUrl(
         string baseUrl,
@@ -45,7 +46,8 @@ public interface IStreamUrlSigner
         string? clientIp,
         TimeSpan? ttl = null,
         string? sessionId = null,
-        string? scope = null);
+        string? scope = null,
+        bool isHls = false);
 
     string ComputeIpHash(string? clientIp);
 
@@ -213,7 +215,8 @@ public sealed class StreamUrlSigner : IStreamUrlSigner
         string? clientIp,
         TimeSpan? ttl = null,
         string? sessionId = null,
-        string? scope = null)
+        string? scope = null,
+        bool isHls = false)
     {
         var effectiveTtl = ttl ?? TimeSpan.FromMinutes(_ttlMinutes);
         var now = _timeProvider.GetUtcNow();
@@ -222,14 +225,15 @@ public sealed class StreamUrlSigner : IStreamUrlSigner
         var ipHash = ComputeIpHash(clientIp);
         var sig = ComputeSignature(episodeId, position, exp, ipHash, sessionId, scope, _activeKid);
 
-        var playbackUrl = BuildPlaybackUrl(baseUrl, episodeId, position, exp, ipHash, sig, sessionId, scope, _activeKid);
+        var playbackUrl = BuildPlaybackUrl(baseUrl, episodeId, position, exp, ipHash, sig, sessionId, scope, _activeKid, isHls);
 
         return new SignedStreamDto
         {
             StreamUrl = playbackUrl,
             SessionId = sessionId,
             ExpiresAt = expiresAt,
-            ExpiresInSeconds = (int)effectiveTtl.TotalSeconds
+            ExpiresInSeconds = (int)effectiveTtl.TotalSeconds,
+            IsHls = isHls
         };
     }
 
@@ -240,9 +244,10 @@ public sealed class StreamUrlSigner : IStreamUrlSigner
         string? clientIp,
         TimeSpan? ttl = null,
         string? sessionId = null,
-        string? scope = null)
+        string? scope = null,
+        bool isHls = false)
     {
-        var signed = Sign(baseUrl, episodeId, position, clientIp, ttl, sessionId, scope);
+        var signed = Sign(baseUrl, episodeId, position, clientIp, ttl, sessionId, scope, isHls);
         return signed.StreamUrl;
     }
 
@@ -359,10 +364,16 @@ public sealed class StreamUrlSigner : IStreamUrlSigner
         string sig,
         string? sessionId,
         string? scope,
-        string? keyId)
+        string? keyId,
+        bool isHls)
     {
         var cleanBase = string.IsNullOrWhiteSpace(baseUrl) ? "http://localhost" : baseUrl.TrimEnd('/');
         var url = new StringBuilder($"{cleanBase}/api/stream/play?episodeId={episodeId}&pos={position}&exp={exp}&ip={ipHash}");
+
+        if (isHls)
+        {
+            url.Append("&hls=1");
+        }
 
         if (!string.IsNullOrWhiteSpace(sessionId))
         {
@@ -409,8 +420,27 @@ public sealed class StreamUrlSigner : IStreamUrlSigner
     private static string NormalizeIp(string? ip)
     {
         if (string.IsNullOrWhiteSpace(ip)) return "127.0.0.1";
+
         var clean = ip.Trim();
-        if (clean == "::1" || clean == "0:0:0:0:0:0:0:1") return "127.0.0.1";
+        // Kestrel/Docker có thể báo IPv4 dưới dạng IPv4-mapped IPv6
+        // (::ffff:172.18.0.1). Nếu không quy đổi, hash lúc ký (từ X-Forwarded-For
+        // đã chuẩn hoá) sẽ khác hash lúc phát (RemoteIpAddress thô) và mọi
+        // segment bị 403 dù cùng một thiết bị.
+        if (System.Net.IPAddress.TryParse(clean, out var address))
+        {
+            if (address.IsIPv4MappedToIPv6)
+            {
+                address = address.MapToIPv4();
+            }
+
+            if (System.Net.IPAddress.IsLoopback(address))
+            {
+                return "127.0.0.1";
+            }
+
+            return address.ToString();
+        }
+
         return clean;
     }
 }

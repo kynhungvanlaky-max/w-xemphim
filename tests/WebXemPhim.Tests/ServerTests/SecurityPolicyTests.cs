@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Builder;
@@ -101,6 +101,68 @@ public sealed class SecurityPolicyTests
         var same = new DefaultHttpContext { RequestServices = services }; same.Request.Path = "/_blazor/negotiate"; same.Request.Host = context.Request.Host; same.Request.Scheme = "http"; same.Request.Headers.Origin = "http://localhost:5229";
         await pipeline(same); Assert.Equal(204, same.Response.StatusCode);
         Assert.NotEqual(context.Items[WebSecurityExtensions.NonceKey], same.Items[WebSecurityExtensions.NonceKey]);
+    }
+
+    [Fact]
+    public async Task BlazorAllowsReverseProxyAndTunnels()
+    {
+        var services = new ServiceCollection().AddLogging().BuildServiceProvider();
+        var builder = new ApplicationBuilder(services);
+        var config = new ConfigurationBuilder().Build();
+        builder.UseSiteSecurity(client: true, development: true, config);
+        builder.Run(context => { context.Response.StatusCode = 204; return Task.CompletedTask; });
+        var pipeline = builder.Build();
+
+        // 1. SSL Offloading tunnel (Cloudflare Tunnel: public https, internal http, same host)
+        var tunnelCtx = new DefaultHttpContext { RequestServices = services };
+        tunnelCtx.Request.Path = "/_blazor/negotiate";
+        tunnelCtx.Request.Host = new HostString("my-tunnel.trycloudflare.com");
+        tunnelCtx.Request.Scheme = "http";
+        tunnelCtx.Request.Headers.Origin = "https://my-tunnel.trycloudflare.com";
+        await pipeline(tunnelCtx);
+        Assert.Equal(204, tunnelCtx.Response.StatusCode);
+
+        // 2. Reverse proxy with X-Forwarded-Host & X-Forwarded-Proto
+        var proxyCtx = new DefaultHttpContext { RequestServices = services };
+        proxyCtx.Request.Path = "/_blazor/negotiate";
+        proxyCtx.Request.Host = new HostString("client", 8080);
+        proxyCtx.Request.Scheme = "http";
+        proxyCtx.Request.Headers["X-Forwarded-Host"] = "cinemaflow.vn";
+        proxyCtx.Request.Headers["X-Forwarded-Proto"] = "https";
+        proxyCtx.Request.Headers.Origin = "https://cinemaflow.vn";
+        await pipeline(proxyCtx);
+        Assert.Equal(204, proxyCtx.Response.StatusCode);
+
+        // 3. Reverse proxy still rejects cross-origin attackers
+        var attackerCtx = new DefaultHttpContext { RequestServices = services };
+        attackerCtx.Request.Path = "/_blazor/negotiate";
+        attackerCtx.Request.Host = new HostString("my-tunnel.trycloudflare.com");
+        attackerCtx.Request.Scheme = "http";
+        attackerCtx.Request.Headers.Origin = "https://evil-attacker.test";
+        await pipeline(attackerCtx);
+        Assert.Equal(403, attackerCtx.Response.StatusCode);
+
+        // 4. Ngrok development tunnel with SSL offloading to internal dev port 5229
+        var ngrokCtx = new DefaultHttpContext { RequestServices = services };
+        ngrokCtx.Request.Path = "/_blazor/negotiate";
+        ngrokCtx.Request.Host = new HostString("demo-1234.ngrok-free.app");
+        ngrokCtx.Request.Scheme = "http";
+        ngrokCtx.Request.Headers["X-Forwarded-Proto"] = "https";
+        ngrokCtx.Request.Headers["X-Forwarded-For"] = "1.2.3.4";
+        ngrokCtx.Request.Headers.Origin = "https://demo-1234.ngrok-free.app";
+        await pipeline(ngrokCtx);
+        Assert.Equal(204, ngrokCtx.Response.StatusCode);
+
+        // 5. Ngrok with rewritten host header to localhost:5229 and X-Original-Host
+        var ngrokRewriteCtx = new DefaultHttpContext { RequestServices = services };
+        ngrokRewriteCtx.Request.Path = "/_blazor/negotiate";
+        ngrokRewriteCtx.Request.Host = new HostString("localhost", 5229);
+        ngrokRewriteCtx.Request.Scheme = "http";
+        ngrokRewriteCtx.Request.Headers["X-Forwarded-Proto"] = "https";
+        ngrokRewriteCtx.Request.Headers["X-Original-Host"] = "demo-1234.ngrok-free.app";
+        ngrokRewriteCtx.Request.Headers.Origin = "https://demo-1234.ngrok-free.app";
+        await pipeline(ngrokRewriteCtx);
+        Assert.Equal(204, ngrokRewriteCtx.Response.StatusCode);
     }
 
     [Fact]

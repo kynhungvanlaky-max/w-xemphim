@@ -92,9 +92,28 @@ public class CinemaHub : Hub
         try
         {
             var httpContext = Context.GetHttpContext();
-            if (httpContext?.Connection?.RemoteIpAddress != null)
+            if (httpContext != null)
             {
-                ipAddress = httpContext.Connection.RemoteIpAddress.ToString();
+                if (httpContext.Request.Headers.TryGetValue("X-Forwarded-For", out var forwardedFor) && forwardedFor.Count > 0)
+                {
+                    var firstIp = forwardedFor[0]?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+                    if (!string.IsNullOrWhiteSpace(firstIp) && System.Net.IPAddress.TryParse(firstIp, out var parsedIp))
+                    {
+                        ipAddress = parsedIp.ToString();
+                    }
+                }
+                else if (httpContext.Request.Headers.TryGetValue("X-Client-IP", out var clientIpHeader) && clientIpHeader.Count > 0)
+                {
+                    var firstIp = clientIpHeader[0]?.Trim();
+                    if (!string.IsNullOrWhiteSpace(firstIp) && System.Net.IPAddress.TryParse(firstIp, out var parsedIp))
+                    {
+                        ipAddress = parsedIp.ToString();
+                    }
+                }
+                else if (httpContext.Connection?.RemoteIpAddress != null)
+                {
+                    ipAddress = httpContext.Connection.RemoteIpAddress.ToString();
+                }
             }
         }
         catch

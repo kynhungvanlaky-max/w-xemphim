@@ -1,0 +1,114 @@
+@inject NavigationManager Nav
+@inject AuthState Auth
+@inject WatchlistState Watchlist
+@implements IDisposable
+
+<nav class="mobile-bottom-nav" aria-label="Điều hướng chính di động">
+    <div class="mobile-bottom-nav-inner">
+        <!-- 1. Trang chủ -->
+        <a href="/" class="mobile-nav-item @(IsActive("/") ? "active" : "")" aria-current="@(IsActive("/") ? "page" : null)" title="Trang chủ">
+            <span class="mobile-nav-icon-wrap">
+                <CinemaIcon Name="CinemaIconName.Home" Size="20" />
+            </span>
+            <span class="mobile-nav-label">Trang chủ</span>
+        </a>
+
+        <!-- 2. Khám phá -->
+        <a href="/explore" class="mobile-nav-item @(IsActive("/explore") ? "active" : "")" aria-current="@(IsActive("/explore") ? "page" : null)" title="Khám phá">
+            <span class="mobile-nav-icon-wrap">
+                <CinemaIcon Name="CinemaIconName.Compass" Size="20" />
+            </span>
+            <span class="mobile-nav-label">Khám phá</span>
+        </a>
+
+        <!-- 3. Thể loại -->
+        <a href="/genres" class="mobile-nav-item @(IsActive("/genres") ? "active" : "")" aria-current="@(IsActive("/genres") ? "page" : null)" title="Thể loại">
+            <span class="mobile-nav-icon-wrap">
+                <CinemaIcon Name="CinemaIconName.Film" Size="20" />
+            </span>
+            <span class="mobile-nav-label">Thể loại</span>
+        </a>
+
+        <!-- 4. Tủ phim -->
+        <a href="/watchlist" class="mobile-nav-item @(IsActive("/watchlist") ? "active" : "")" aria-current="@(IsActive("/watchlist") ? "page" : null)" title="Tủ phim">
+            <span class="mobile-nav-icon-wrap">
+                <CinemaIcon Name="CinemaIconName.Bookmark" Size="20" />
+                @if (Watchlist.Count > 0)
+                {
+                    <span class="mobile-nav-badge">@(Watchlist.Count > 99 ? "99+" : Watchlist.Count)</span>
+                }
+            </span>
+            <span class="mobile-nav-label">Tủ phim</span>
+        </a>
+
+        <!-- 5. Tài khoản -->
+        @if (Auth.IsAuthenticated)
+        {
+            <a href="/account" class="mobile-nav-item @(IsActive("/account") || IsActive("/profile") || IsActive("/vip") ? "active" : "")" aria-current="@(IsActive("/account") ? "page" : null)" title="Tài khoản cá nhân">
+                <span class="mobile-nav-icon-wrap">
+                    @if (!string.IsNullOrWhiteSpace(Auth.User?.Initials))
+                    {
+                        <span class="mobile-nav-avatar">@Auth.User.Initials</span>
+                    }
+                    else
+                    {
+                        <CinemaIcon Name="CinemaIconName.User" Size="20" />
+                    }
+                    @if (Auth.User?.IsVip == true)
+                    {
+                        <span class="mobile-nav-vip-indicator" title="VIP"><CinemaIcon Name="CinemaIconName.Crown" Size="10" /></span>
+                    }
+                </span>
+                <span class="mobile-nav-label">Tài khoản</span>
+            </a>
+        }
+        else
+        {
+            <a href="/login" class="mobile-nav-item @(IsActive("/login") || IsActive("/register") ? "active" : "")" aria-current="@(IsActive("/login") ? "page" : null)" title="Đăng nhập">
+                <span class="mobile-nav-icon-wrap">
+                    <CinemaIcon Name="CinemaIconName.User" Size="20" />
+                </span>
+                <span class="mobile-nav-label">Đăng nhập</span>
+            </a>
+        }
+    </div>
+</nav>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += HandleLocationChanged;
+        Auth.OnChange += HandleStateChanged;
+        Watchlist.OnChange += HandleStateChanged;
+    }
+
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleStateChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private bool IsActive(string path)
+    {
+        var relative = Nav.ToBaseRelativePath(Nav.Uri).TrimStart('/');
+        var target = path.TrimStart('/');
+
+        if (string.IsNullOrEmpty(target))
+        {
+            return string.IsNullOrEmpty(relative) || relative.StartsWith('?');
+        }
+
+        return relative.StartsWith(target, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= HandleLocationChanged;
+        Auth.OnChange -= HandleStateChanged;
+        Watchlist.OnChange -= HandleStateChanged;
+    }
+}
