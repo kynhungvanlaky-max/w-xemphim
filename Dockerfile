@@ -45,20 +45,21 @@ ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
 
-# Initialize PostgreSQL cluster during build so it never fails at runtime
-RUN mkdir -p /var/lib/postgresql/data /var/run/postgresql /var/log/postgresql && \
-    chown -R postgres:postgres /var/lib/postgresql /var/run/postgresql /var/log/postgresql && \
-    chmod 0700 /var/lib/postgresql/data && \
+# Configure PostgreSQL trust authentication and pre-create database & user
+RUN sed -i 's/scram-sha-256/trust/g' /etc/postgresql/*/main/pg_hba.conf && \
+    sed -i 's/md5/trust/g' /etc/postgresql/*/main/pg_hba.conf && \
+    mkdir -p /var/run/postgresql /var/log/postgresql && \
+    chown -R postgres:postgres /var/run/postgresql /var/log/postgresql /var/lib/postgresql && \
     chmod 0775 /var/run/postgresql && \
-    PG_BIN=$(dirname $(find /usr/lib/postgresql/ -name postgres | sort -V | tail -n 1)) && \
-    su - postgres -c "$PG_BIN/initdb -D /var/lib/postgresql/data --locale=en_US.UTF-8 --encoding=UTF8 --auth-local=trust --auth-host=trust" && \
-    su - postgres -c "$PG_BIN/pg_ctl -D /var/lib/postgresql/data -l /var/log/postgresql/init.log start" && \
-    su - postgres -c "$PG_BIN/psql -c 'CREATE DATABASE webxemphim;'" && \
-    su - postgres -c "$PG_BIN/psql -c \"CREATE USER webxemphim WITH PASSWORD 'webxemphim';\"" && \
-    su - postgres -c "$PG_BIN/psql -c 'GRANT ALL PRIVILEGES ON DATABASE webxemphim TO webxemphim;'" && \
-    su - postgres -c "$PG_BIN/psql -c 'ALTER USER webxemphim CREATEDB;'" && \
-    su - postgres -c "$PG_BIN/psql -d webxemphim -c 'GRANT ALL ON SCHEMA public TO webxemphim;'" && \
-    su - postgres -c "$PG_BIN/pg_ctl -D /var/lib/postgresql/data stop"
+    PG_DIR=$(ls -d /usr/lib/postgresql/* | sort -V | tail -n 1) && \
+    DATA_DIR=$(ls -d /var/lib/postgresql/*/main | sort -V | tail -n 1) && \
+    su - postgres -c "$PG_DIR/bin/pg_ctl -D $DATA_DIR -l /var/log/postgresql/init.log start" && \
+    su - postgres -c "psql -c 'CREATE DATABASE webxemphim;'" && \
+    su - postgres -c "psql -c \"CREATE USER webxemphim WITH PASSWORD 'webxemphim';\"" && \
+    su - postgres -c "psql -c 'GRANT ALL PRIVILEGES ON DATABASE webxemphim TO webxemphim;'" && \
+    su - postgres -c "psql -c 'ALTER USER webxemphim CREATEDB;'" && \
+    su - postgres -c "psql -d webxemphim -c 'GRANT ALL ON SCHEMA public TO webxemphim;'" && \
+    su - postgres -c "$PG_DIR/bin/pg_ctl -D $DATA_DIR stop"
 
 # Setup application directories and persistent storage
 RUN mkdir -p /app/server /app/client /app/keys /app/data
