@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
@@ -58,8 +59,12 @@ public static class WebSecurityExtensions
     public static void ValidateProduction(IConfiguration config, IWebHostEnvironment environment, bool client)
     {
         if (!environment.IsProduction()) return;
+
+        var behindProxy = config.GetValue<bool>("Security:BehindReverseProxy")
+            || string.Equals(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"), "true", StringComparison.OrdinalIgnoreCase);
+
         var hosts = config["AllowedHosts"]?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (hosts is null || hosts.Length == 0 || hosts.Any(host => host.Contains('*')))
+        if (hosts is null || hosts.Length == 0 || (!behindProxy && hosts.Any(host => host.Contains('*'))))
             throw new InvalidOperationException("Production requires an explicit AllowedHosts allowlist.");
         var keyPath = config["Security:DataProtectionKeyPath"];
         if (string.IsNullOrWhiteSpace(keyPath) || !Path.IsPathFullyQualified(keyPath))
@@ -71,10 +76,34 @@ public static class WebSecurityExtensions
         if (config.GetValue<bool>("Database:SeedDemoData") || config.GetValue<bool>("Security:AllowDemoPayments"))
             throw new InvalidOperationException("Demo data and simulated payments are forbidden in Production.");
         foreach (var origin in config.GetSection("Security:AllowedOrigins").Get<string[]>() ?? [])
-            if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || origin != uri.GetLeftPart(UriPartial.Authority))
+        {
+            if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri) || origin != uri.GetLeftPart(UriPartial.Authority))
                 throw new InvalidOperationException("Production origins must be explicit HTTPS origins without paths or wildcards.");
-        if (client && (!Uri.TryCreate(config["ApiBaseUrl"], UriKind.Absolute, out var api) || api.Scheme != Uri.UriSchemeHttps))
-            throw new InvalidOperationException("Production ApiBaseUrl must use HTTPS.");
+
+            var isInternalOrigin = uri.IsLoopback
+                || uri.Host.Equals("caddy", StringComparison.OrdinalIgnoreCase)
+                || uri.Host.Equals("server", StringComparison.OrdinalIgnoreCase)
+                || uri.Host.EndsWith(".local", StringComparison.OrdinalIgnoreCase)
+                || uri.Host.EndsWith(".internal", StringComparison.OrdinalIgnoreCase);
+
+            if (uri.Scheme != Uri.UriSchemeHttps && !isInternalOrigin)
+                throw new InvalidOperationException("Production origins must be explicit HTTPS origins without paths or wildcards.");
+        }
+        if (client)
+        {
+            var apiBaseUrl = config["ApiBaseUrl"];
+            if (!Uri.TryCreate(apiBaseUrl, UriKind.Absolute, out var api))
+                throw new InvalidOperationException("Production ApiBaseUrl must use HTTPS.");
+
+            var isInternalApi = api.IsLoopback
+                || api.Host.Equals("server", StringComparison.OrdinalIgnoreCase)
+                || api.Host.EndsWith(".local", StringComparison.OrdinalIgnoreCase)
+                || api.Host.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)
+                || behindProxy;
+
+            if (api.Scheme != Uri.UriSchemeHttps && !isInternalApi)
+                throw new InvalidOperationException("Production ApiBaseUrl must use HTTPS.");
+        }
 
         if (!client)
         {
@@ -82,10 +111,12 @@ public static class WebSecurityExtensions
                 ? config.GetConnectionString("Default")
                 : (!string.IsNullOrWhiteSpace(config["ConnectionStrings:Default"])
                     ? config["ConnectionStrings:Default"]
-                    : config["DATABASE_CONNECTION_STRING"]);
+                    : (!string.IsNullOrWhiteSpace(config["DATABASE_URL"])
+                        ? config["DATABASE_URL"]
+                        : config["DATABASE_CONNECTION_STRING"]));
             if (string.IsNullOrWhiteSpace(defaultConnectionString))
             {
-                throw new InvalidOperationException("Production database connection string (ConnectionStrings:Default) cannot be empty.");
+                throw new InvalidOperationException("Production database connection string (ConnectionStrings:Default or DATABASE_URL) cannot be empty.");
             }
 
             const string defaultStreamKey = "CinemaFlow_Secure_Stream_HMAC_Secret_Key_2026_AtLeast32Bytes!";
@@ -170,9 +201,48 @@ public static class WebSecurityExtensions
 
     public static IApplicationBuilder RequireHttpsTransport(this IApplicationBuilder app) => app.Use(async (context, next) =>
     {
-        if (!context.Request.IsHttps) { context.Response.StatusCode = StatusCodes.Status400BadRequest; await context.Response.WriteAsync("HTTPS is required."); return; }
+        if (!context.Request.IsHttps)
+        {
+            var isHealthCheck = context.Request.Path.StartsWithSegments("/health");
+            var remoteIp = context.Connection.RemoteIpAddress;
+            var isLoopback = remoteIp is not null && System.Net.IPAddress.IsLoopback(remoteIp);
+            var isPrivate = remoteIp is not null && IsPrivateIpAddress(remoteIp);
+
+            if (!isHealthCheck && !isLoopback && !isPrivate)
+            {
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                await context.Response.WriteAsync("HTTPS is required.");
+                return;
+            }
+        }
         await next(context);
     });
+
+    private static bool IsPrivateIpAddress(System.Net.IPAddress address)
+    {
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        if (System.Net.IPAddress.IsLoopback(address)) return true;
+
+        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            var bytes = address.GetAddressBytes();
+            if (bytes[0] == 10) return true;
+            if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true;
+            if (bytes[0] == 192 && bytes[1] == 168) return true;
+            if (bytes[0] == 127) return true;
+        }
+        else if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+        {
+            var bytes = address.GetAddressBytes();
+            if ((bytes[0] & 0xFE) == 0xFC) return true;
+        }
+
+        return false;
+    }
 
     public static IApplicationBuilder UseSiteSecurity(this IApplicationBuilder app, bool client, bool development, IConfiguration config) =>
         app.Use(async (context, next) =>
@@ -182,6 +252,7 @@ public static class WebSecurityExtensions
             context.Response.OnStarting(() =>
             {
                 var headers = context.Response.Headers;
+                headers["ngrok-skip-browser-warning"] = "true";
                 headers["X-Content-Type-Options"] = "nosniff";
                 headers["X-Frame-Options"] = "DENY";
                 headers["Referrer-Policy"] = client ? "strict-origin-when-cross-origin" : "no-referrer";
@@ -206,9 +277,98 @@ public static class WebSecurityExtensions
             // CORS alone doesn't protect WebSocket handshakes used by Blazor Server.
             if (client && context.Request.Path.StartsWithSegments("/_blazor") && context.Request.Headers.TryGetValue("Origin", out var origin))
             {
-                var requestOrigin = $"{context.Request.Scheme}://{context.Request.Host}";
+                var originStr = origin.ToString();
                 var allowed = config.GetSection("Security:AllowedOrigins").Get<string[]>() ?? [];
-                if (!origin.ToString().Equals(requestOrigin, StringComparison.OrdinalIgnoreCase) && !allowed.Contains(origin.ToString(), StringComparer.OrdinalIgnoreCase))
+
+                var requestOrigin = $"{context.Request.Scheme}://{context.Request.Host}";
+                var isAllowed = originStr.Equals(requestOrigin, StringComparison.OrdinalIgnoreCase)
+                    || allowed.Contains(originStr, StringComparer.OrdinalIgnoreCase);
+
+                if (!isAllowed)
+                {
+                    // Check effective scheme & host if behind reverse proxy / tunnel / SSL offloader
+                    var effectiveScheme = context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var fProto) && !string.IsNullOrWhiteSpace(fProto)
+                        ? fProto.ToString()
+                        : context.Request.Scheme;
+
+                    var effectiveHost = context.Request.Headers.TryGetValue("X-Forwarded-Host", out var fHost) && !string.IsNullOrWhiteSpace(fHost)
+                        ? fHost.ToString()
+                        : context.Request.Host.Value;
+
+                    var forwardedOrigin = $"{effectiveScheme}://{effectiveHost}";
+                    if (originStr.Equals(forwardedOrigin, StringComparison.OrdinalIgnoreCase))
+                    {
+                        isAllowed = true;
+                    }
+                    else if (Uri.TryCreate(originStr, UriKind.Absolute, out var originUri))
+                    {
+                        // Check if origin host matches either request host or forwarded host (e.g. reverse proxy offloading TLS)
+                        var reqHost = context.Request.Host.Host;
+                        var hostMatches = originUri.Host.Equals(reqHost, StringComparison.OrdinalIgnoreCase);
+
+                        if (!hostMatches && !string.IsNullOrWhiteSpace(effectiveHost))
+                        {
+                            var fHostOnly = effectiveHost.Split(':')[0];
+                            hostMatches = originUri.Host.Equals(fHostOnly, StringComparison.OrdinalIgnoreCase);
+                        }
+
+                        if (!hostMatches && context.Request.Headers.TryGetValue("X-Original-Host", out var origHost) && !string.IsNullOrWhiteSpace(origHost))
+                        {
+                            var oHostOnly = origHost.ToString().Split(':')[0];
+                            hostMatches = originUri.Host.Equals(oHostOnly, StringComparison.OrdinalIgnoreCase);
+                        }
+
+                        if (hostMatches)
+                        {
+                            var hasForwardedHeader = context.Request.Headers.ContainsKey("X-Forwarded-Proto")
+                                || context.Request.Headers.ContainsKey("X-Forwarded-For")
+                                || context.Request.Headers.ContainsKey("X-Forwarded-Host")
+                                || context.Request.Headers.ContainsKey("X-Original-Host");
+
+                            var originPort = originUri.Port;
+                            var reqPort = context.Request.Host.Port;
+                            var isDefaultOriginPort = originPort == 80 || originPort == 443 || originUri.IsDefaultPort;
+                            var isDefaultReqPort = !reqPort.HasValue || reqPort.Value == 80 || reqPort.Value == 443;
+
+                            if (originPort == reqPort || (isDefaultOriginPort && (isDefaultReqPort || hasForwardedHeader)))
+                            {
+                                isAllowed = true;
+                            }
+                        }
+
+                        // In development or when explicitly enabled, permit dev tunnels and LAN connections
+                        if (!isAllowed && (development || config.GetValue<bool>("Security:AllowDevTunnels")))
+                        {
+                            var host = originUri.Host;
+                            var isDevTunnel = host.EndsWith(".ngrok-free.app", StringComparison.OrdinalIgnoreCase)
+                                || host.EndsWith(".ngrok-free.dev", StringComparison.OrdinalIgnoreCase)
+                                || host.EndsWith(".ngrok.app", StringComparison.OrdinalIgnoreCase)
+                                || host.EndsWith(".ngrok.io", StringComparison.OrdinalIgnoreCase)
+                                || host.EndsWith(".trycloudflare.com", StringComparison.OrdinalIgnoreCase)
+                                || host.EndsWith(".loca.lt", StringComparison.OrdinalIgnoreCase);
+
+                            var isLocalOrPrivate = originUri.IsLoopback
+                                || host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                                || (IPAddress.TryParse(host, out var ip) && (IPAddress.IsLoopback(ip) || IsPrivateIpAddress(ip)));
+
+                            if (isDevTunnel || isLocalOrPrivate)
+                            {
+                                var isProxied = context.Request.Headers.ContainsKey("X-Forwarded-For")
+                                    || context.Request.Headers.ContainsKey("X-Forwarded-Proto")
+                                    || context.Request.Headers.ContainsKey("X-Forwarded-Host")
+                                    || context.Request.Headers.ContainsKey("X-Original-Host")
+                                    || (context.Connection.RemoteIpAddress is not null && IPAddress.IsLoopback(context.Connection.RemoteIpAddress));
+
+                                if (isProxied)
+                                {
+                                    isAllowed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!isAllowed)
                 {
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     return;

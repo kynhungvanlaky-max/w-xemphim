@@ -188,7 +188,8 @@ public class MoviesController(
 
                 // Mọi nguồn — kể cả nguồn thường — đều được ký trước khi đưa ra, nếu không
                 // URL CDN gốc của nguồn thường sẽ bị lộ nguyên vẹn.
-                s.StreamUrl = _urlSigner.GeneratePlaybackUrl(baseUrl, s.EpisodeId, s.Position, clientIp, scope: "play");
+                var isHls = HlsManifestRewriter.LooksLikeHlsUrl(s.StreamUrl);
+                s.StreamUrl = _urlSigner.GeneratePlaybackUrl(baseUrl, s.EpisodeId, s.Position, clientIp, scope: "play", isHls: isHls);
             }
         }
     }

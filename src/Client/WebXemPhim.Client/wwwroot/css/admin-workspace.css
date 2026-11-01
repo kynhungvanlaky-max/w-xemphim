@@ -2604,6 +2604,17 @@ body[data-theme="light"] .admin-access-gate .admin-gate-hint {
     font-variant-numeric: tabular-nums;
 }
 
+.audit-action-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    font-family: var(--admin-font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
 .audit-action-create { background: rgba(16, 185, 129, 0.18); color: #34d399; }
 .audit-action-update { background: rgba(59, 130, 246, 0.18); color: #60a5fa; }
 .audit-action-delete { background: rgba(239, 68, 68, 0.18); color: #f87171; }

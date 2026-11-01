@@ -582,3 +582,259 @@
         animation: none !important;
     }
 }
+
+
+/* ============================================================ */
+/* MOBILE-FIRST CINEMA EXPERIENCE & BOTTOM NAVIGATION DOCK     */
+/* ============================================================ */
+
+/* Hide Bottom Dock by default on Desktop/Tablet (> 768px) */
+.mobile-bottom-nav {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    /* 1. Page Bounds & Prevent Horizontal Shake */
+    html, body {
+        max-width: 100vw;
+        overflow-x: hidden;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    /* 2. Content Clearance so Bottom Dock does not obscure buttons or footers */
+    body .site-main {
+        padding-bottom: calc(66px + env(safe-area-inset-bottom, 0px)) !important;
+    }
+
+    body .cinema-minimal-footer {
+        padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
+    }
+
+    /* On Watch page, Bottom Dock is omitted via MainLayout */
+    body .site-main:has(.watch-v2),
+    body .site-main .watch-v2 {
+        padding-bottom: 24px !important;
+    }
+
+    /* 3. Sticky Mobile Bottom Navigation Dock */
+    .mobile-bottom-nav {
+        display: block;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 990;
+        background: rgba(9, 10, 14, 0.94);
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.65);
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        user-select: none;
+    }
+
+    .mobile-bottom-nav-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-around;
+        height: 56px;
+        max-width: 560px;
+        margin: 0 auto;
+        padding-inline: 4px;
+        box-sizing: border-box;
+    }
+
+    .mobile-nav-item {
+        flex: 1 1 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        height: 100%;
+        min-height: 48px;
+        min-width: 0;
+        padding: 5px 2px;
+        color: #94a3b8;
+        text-decoration: none;
+        border-radius: 8px;
+        transition: color 0.15s ease, transform 0.12s ease;
+        position: relative;
+    }
+
+    .mobile-nav-item:active {
+        transform: scale(0.92);
+    }
+
+    .mobile-nav-icon-wrap {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 24px;
+    }
+
+    .mobile-nav-icon-wrap .cinema-icon {
+        transition: transform 0.18s ease, stroke 0.18s ease, filter 0.18s ease;
+        stroke: currentColor;
+    }
+
+    .mobile-nav-label {
+        font-size: 10.5px;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        line-height: 1.1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+        color: inherit;
+    }
+
+    /* Active Tab Highlight */
+    .mobile-nav-item.active {
+        color: #ff334b;
+    }
+
+    .mobile-nav-item.active .mobile-nav-icon-wrap .cinema-icon {
+        transform: translateY(-1px);
+        stroke: #ff334b;
+        filter: drop-shadow(0 2px 8px rgba(255, 51, 75, 0.45));
+    }
+
+    .mobile-nav-item.active .mobile-nav-label {
+        font-weight: 700;
+        color: #ffffff;
+    }
+
+    /* Watchlist Counter Badge */
+    .mobile-nav-badge {
+        position: absolute;
+        top: -3px;
+        right: -8px;
+        min-width: 15px;
+        height: 15px;
+        padding: 0 4px;
+        border-radius: 9999px;
+        background: #e50914;
+        color: #ffffff;
+        font-size: 9px;
+        font-weight: 700;
+        line-height: 15px;
+        text-align: center;
+        box-shadow: 0 0 6px rgba(229, 9, 20, 0.7);
+    }
+
+    /* User Avatar & VIP Indicator */
+    .mobile-nav-avatar {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #b72d40, #5c141e);
+        color: #ffffff;
+        font-size: 10px;
+        font-weight: 700;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .mobile-nav-vip-indicator {
+        position: absolute;
+        top: -4px;
+        right: -5px;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #f59e0b;
+        color: #000000;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+    }
+
+    /* 4. Touch Targets Ergonomics (>= 44px min tap targets) */
+    .btn-mobile-search-toggle,
+    .btn-theme-toggle,
+    .nav-notification-trigger,
+    .mobile-toggle-btn {
+        min-height: 44px !important;
+        min-width: 44px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
+    .wv-view-btn {
+        min-height: 38px;
+        min-width: 38px;
+    }
+
+    /* 5. Mobile Episode Grid Optimization */
+    .wv-grid-episodes {
+        grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)) !important;
+        gap: 8px !important;
+        padding: 4px !important;
+    }
+
+    .wv-grid-episodes .wv-grid-item {
+        height: 44px !important;
+        min-width: 44px !important;
+        font-size: 14px !important;
+        border-radius: 8px !important;
+    }
+
+    /* 6. Smooth Native Touch Momentum Rails */
+    .home-movie-rail,
+    .tonight-picks-grid,
+    .continue-strip,
+    .filter-pill-bar,
+    .watchlist-library-switch,
+    .wv-sc-server-pills {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+        touch-action: pan-x pan-y;
+    }
+}
+
+/* ============================================================ */
+/* LIGHT THEME DUAL-CONTRAST FOR MOBILE DOCK (Rule 7)           */
+/* ============================================================ */
+body[data-theme="light"] .mobile-bottom-nav,
+[data-theme="light"] .mobile-bottom-nav {
+    background: rgba(255, 255, 255, 0.96) !important;
+    border-top: 1px solid #cbd5e1 !important;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08) !important;
+}
+
+body[data-theme="light"] .mobile-nav-item,
+[data-theme="light"] .mobile-nav-item {
+    color: #64748b !important;
+}
+
+body[data-theme="light"] .mobile-nav-item.active,
+[data-theme="light"] .mobile-nav-item.active {
+    color: #dc2626 !important;
+}
+
+body[data-theme="light"] .mobile-nav-item.active .mobile-nav-icon-wrap .cinema-icon,
+[data-theme="light"] .mobile-nav-item.active .mobile-nav-icon-wrap .cinema-icon {
+    stroke: #dc2626 !important;
+    filter: drop-shadow(0 2px 6px rgba(220, 38, 38, 0.35)) !important;
+}
+
+body[data-theme="light"] .mobile-nav-item.active .mobile-nav-label,
+[data-theme="light"] .mobile-nav-item.active .mobile-nav-label {
+    color: #0f172a !important;
+    font-weight: 700 !important;
+}
+
+body[data-theme="light"] .mobile-nav-avatar,
+[data-theme="light"] .mobile-nav-avatar {
+    background: linear-gradient(135deg, #dc2626, #991b1b) !important;
+    color: #ffffff !important;
+    border: 1px solid #fca5a5 !important;
+}

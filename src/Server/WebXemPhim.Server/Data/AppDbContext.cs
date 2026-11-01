@@ -30,6 +30,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<MfaVerifiedSessionEntity> MfaVerifiedSessions => Set<MfaVerifiedSessionEntity>();
     public DbSet<SecurityAuditEventEntity> SecurityAuditEvents => Set<SecurityAuditEventEntity>();
     public DbSet<PlaybackIssueEntity> PlaybackIssues => Set<PlaybackIssueEntity>();
+    public DbSet<PlaybackTelemetryEntity> PlaybackTelemetry => Set<PlaybackTelemetryEntity>();
     public DbSet<UserLibraryEntity> UserLibrary => Set<UserLibraryEntity>();
     public DbSet<AccessTokenEntity> AccessTokens => Set<AccessTokenEntity>();
     public DbSet<PasswordResetTokenEntity> PasswordResetTokens => Set<PasswordResetTokenEntity>();
@@ -110,6 +111,20 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne<MovieEntity>().WithMany().HasForeignKey(item => item.MovieId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<EpisodeEntity>().WithMany().HasForeignKey(item => item.EpisodeId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(item => new { item.UserId, item.MovieId });
+        });
+        modelBuilder.Entity<PlaybackTelemetryEntity>(entity =>
+        {
+            entity.ToTable("playback_telemetry");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Id).ValueGeneratedOnAdd();
+            entity.Property(item => item.EventType).HasMaxLength(32).IsRequired();
+            entity.Property(item => item.SessionId).HasMaxLength(64);
+            entity.Property(item => item.ServerName).HasMaxLength(120);
+            entity.Property(item => item.Quality).HasMaxLength(32);
+            entity.Property(item => item.ErrorCode).HasMaxLength(240);
+            entity.HasIndex(item => item.CreatedAtUtc);
+            entity.HasIndex(item => new { item.EventType, item.CreatedAtUtc });
+            entity.HasIndex(item => item.EpisodeId);
         });
         modelBuilder.Entity<UserLibraryEntity>(entity =>
         {

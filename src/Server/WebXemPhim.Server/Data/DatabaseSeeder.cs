@@ -1492,20 +1492,32 @@ public static class DatabaseSeeder
 
     public static List<StreamSourceDto> GenerateMultiServerStreams(int seed = 1)
     {
-        var urls = new[]
+        // Danh sách phim thật đã tải về máy chủ điện thoại cục bộ (0ms latency)
+        // và các luồng HLS CDN phim thật trực tuyến Full HD / 4K.
+        var localSources = new[]
         {
-            "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4",
-            "https://vjs.zencdn.net/v/oceans.mp4",
-            "https://media.w3.org/2010/05/sintel/trailer.mp4",
-            "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4",
-            "https://www.w3schools.com/html/mov_bbb.mp4"
+            "local://tears_of_steel_720p.mp4",
+            "local://sintel_full.mp4",
+            "local://big_buck_bunny_720p.mp4"
         };
 
-        var u0 = urls[Math.Abs(seed) % urls.Length];
-        var u1 = urls[Math.Abs(seed + 1) % urls.Length];
-        var u2 = urls[Math.Abs(seed + 2) % urls.Length];
-        var u3 = urls[Math.Abs(seed + 3) % urls.Length];
-        var u4 = urls[Math.Abs(seed + 4) % urls.Length];
+        var onlineSources = new[]
+        {
+            "https://s3.phim1280.tv/20240407/nwypt43V/index.m3u8", // Dune: Part Two Full FHD Vietsub
+            "https://s2.phim1280.tv/20230920/MjQp8ZWM/index.m3u8", // Oppenheimer Full Vietsub
+            "https://s1.phim1280.tv/20231021/aV8FmFTN/index.m3u8", // The Dark Knight Full Vietsub
+            "https://s4.phim1280.tv/20250302/eUGu2byt/index.m3u8", // Interstellar Full Vietsub
+            "https://s5.phim1280.tv/20250511/jOXh1s8R/index.m3u8", // Top Gun: Maverick Full Vietsub
+            "https://archive.org/download/Tears-of-Steel/tears_of_steel_720p.mp4",
+            "https://archive.org/download/BigBuckBunny_124/Content/big_buck_bunny_720p_surround.mp4",
+            "https://archive.org/download/Sintel/sintel-2048-stereo.mp4"
+        };
+
+        var u0 = localSources[Math.Abs(seed) % localSources.Length];
+        var u1 = onlineSources[Math.Abs(seed) % onlineSources.Length];
+        var u2 = onlineSources[Math.Abs(seed + 1) % onlineSources.Length];
+        var u3 = onlineSources[Math.Abs(seed + 2) % onlineSources.Length];
+        var u4 = localSources[Math.Abs(seed + 1) % localSources.Length];
 
         return
         [
@@ -1711,6 +1723,34 @@ public static class DatabaseSeeder
             await context.SaveChangesAsync(cancellationToken);
         }
 
+        var demoStreamsToUpdate = await context.StreamSources
+            .Where(s => s.StreamUrl.Contains("cdn.plyr.io") || s.StreamUrl.Contains("w3schools.com") || s.StreamUrl.Contains("vjs.zencdn.net") || s.StreamUrl.Contains("w3.org"))
+            .ToListAsync(cancellationToken);
+
+        if (demoStreamsToUpdate.Count > 0)
+        {
+            var episodeIds = demoStreamsToUpdate.Select(s => s.EpisodeId).Distinct().ToList();
+            foreach (var epId in episodeIds)
+            {
+                var currentStreams = await context.StreamSources.Where(s => s.EpisodeId == epId).ToListAsync(cancellationToken);
+                context.StreamSources.RemoveRange(currentStreams);
+                var newStreams = GenerateMultiServerStreams(epId);
+                foreach (var s in newStreams)
+                {
+                    context.StreamSources.Add(new StreamSourceEntity
+                    {
+                        EpisodeId = epId,
+                        Position = s.Position,
+                        ServerName = s.ServerName,
+                        ServerType = s.ServerType,
+                        Quality = s.Quality,
+                        StreamUrl = s.StreamUrl
+                    });
+                }
+            }
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
         await RepairMissingEpisodesAsync(context, cancellationToken);
         await RepairEpisodeThumbnailsAsync(context, cancellationToken);
     }
@@ -1750,7 +1790,7 @@ public static class DatabaseSeeder
     private static async Task RepairMissingEpisodesAsync(AppDbContext context, CancellationToken cancellationToken = default)
     {
         var movies = await context.Movies
-            .Include(movie => movie.Episodes).ThenInclude(episode => episode.Streams)
+            .Include(movie => movie.Episodes)
             .ToListAsync(cancellationToken);
 
         var createdEpisodes = new List<EpisodeEntity>();
@@ -1840,6 +1880,111 @@ public static class DatabaseSeeder
 
         await context.SaveChangesAsync(cancellationToken);
         return movies.Count;
+    }
+
+    public static async Task SeedEssentialAsync(AppDbContext context, TimeProvider? timeProvider = null, CancellationToken cancellationToken = default)
+    {
+        var provider = timeProvider ?? TimeProvider.System;
+        var now = provider.GetUtcNow().UtcDateTime;
+
+        // 1. Seed catalog (Movies, Genres, Episodes, Streams)
+        await SeedCatalogAsync(context, cancellationToken);
+
+        // 2. Seed VIP plans
+        if (!await context.VipPlans.AnyAsync(cancellationToken))
+        {
+            context.VipPlans.AddRange(
+                new VipPlanEntity
+                {
+                    Id = "vip-30",
+                    Name = "Một tháng",
+                    Description = "Linh hoạt, dễ bắt đầu - 30 ngày trải nghiệm xem phim không giới hạn",
+                    PriceVnd = 79000m,
+                    DurationDays = 30,
+                    IsActive = true,
+                    DisplayOrder = 1
+                },
+                new VipPlanEntity
+                {
+                    Id = "vip-90",
+                    Name = "Ba tháng",
+                    Description = "Tiết kiệm hơn, trải nghiệm dài hơn - 90 ngày xem phim chất lượng cao",
+                    PriceVnd = 199000m,
+                    DurationDays = 90,
+                    IsActive = true,
+                    DisplayOrder = 2
+                },
+                new VipPlanEntity
+                {
+                    Id = "vip-180",
+                    Name = "Sáu tháng",
+                    Description = "Bán chạy nhất cho người luyện phim - 180 ngày đặc quyền VIP",
+                    PriceVnd = 349000m,
+                    DurationDays = 180,
+                    IsActive = true,
+                    DisplayOrder = 3
+                },
+                new VipPlanEntity
+                {
+                    Id = "vip-365",
+                    Name = "Một năm",
+                    Description = "Lựa chọn tốt nhất cho người yêu phim - 365 ngày đặc quyền tối thượng",
+                    PriceVnd = 499000m,
+                    DurationDays = 365,
+                    IsActive = true,
+                    DisplayOrder = 4
+                }
+            );
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 3. Seed default coupons
+        if (!await context.Coupons.AnyAsync(cancellationToken))
+        {
+            var validUntil = now.AddYears(5);
+            context.Coupons.AddRange(
+                new CouponEntity
+                {
+                    Code = "CINEMA2026",
+                    DiscountType = "percent",
+                    DiscountValue = 20m,
+                    ValidUntilUtc = validUntil,
+                    IsActive = true
+                },
+                new CouponEntity
+                {
+                    Code = "VIPPRO",
+                    DiscountType = "percent",
+                    DiscountValue = 15m,
+                    ValidUntilUtc = validUntil,
+                    IsActive = true
+                }
+            );
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 4. Seed initial Admin account if Users table is empty
+        if (!await context.Users.AnyAsync(cancellationToken))
+        {
+            var (saltAdmin, hashAdmin) = HashPassword("Password123!");
+            var adminUser = new UserEntity
+            {
+                Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                FullName = "Quản Trị Viên",
+                Email = "admin@cinemaflow.vn",
+                NormalizedEmail = "admin@cinemaflow.vn",
+                EmailLookupHash = FieldEncryptor.Current.ComputeLookupHash("admin@cinemaflow.vn"),
+                PasswordSalt = saltAdmin,
+                PasswordHash = hashAdmin,
+                Membership = MembershipTier.Vip,
+                VipExpiresAtUtc = now.AddYears(1),
+                CreatedAtUtc = now
+            };
+
+            context.Users.Add(adminUser);
+            context.UserSecurity.Add(new UserSecurityEntity { UserId = adminUser.Id, IsAdmin = true });
+            await context.SaveChangesAsync(cancellationToken);
+        }
     }
 
     public static async Task SeedAsync(AppDbContext context, TimeProvider? timeProvider = null, CancellationToken cancellationToken = default)
@@ -2013,6 +2158,7 @@ public static class DatabaseSeeder
                 Membership = MembershipTier.Free,
                 CreatedAtUtc = now.AddDays(-20)
             };
+
 
             context.Users.AddRange(adminUser, vipUser1, vipUser2, regularUser1, regularUser2);
             context.UserSecurity.Add(new UserSecurityEntity { UserId = adminUser.Id, IsAdmin = true });

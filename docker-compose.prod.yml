@@ -46,10 +46,10 @@ services:
       - Security__PublicApiBaseUrl=${PUBLIC_API_BASE_URL:-https://${DOMAIN:-localhost}}
       - Payment__WebhookSecret=${PAYMENT_WEBHOOK_SECRET:-CinemaFlow_Production_Payment_Webhook_HMAC_SHA512_Secret_2026_AtLeast32Bytes!}
       - Security__AllowedOrigins__0=https://${DOMAIN:-localhost}
-      - Security__AllowedOrigins__1=http://${DOMAIN:-localhost}
-      - Security__AllowedOrigins__2=https://${DOMAIN:-localhost}:443
-      - Security__AllowedOrigins__3=http://${DOMAIN:-localhost}:80
-      - Security__AllowedOrigins__4=http://caddy
+      - Security__AllowedOrigins__1=https://${DOMAIN:-localhost}:443
+      - Security__AllowedOrigins__2=http://localhost
+      - Security__AllowedOrigins__3=http://127.0.0.1
+      - Security__BehindReverseProxy=true
       - Security__KnownProxyNetworks__0=172.16.0.0/12
       - Security__KnownProxyNetworks__1=10.0.0.0/8
       - Security__KnownProxyNetworks__2=192.168.0.0/16
@@ -79,6 +79,7 @@ services:
       - ASPNETCORE_URLS=http://+:8080
       - DOTNET_RUNNING_IN_CONTAINER=true
       - ApiBaseUrl=http://server:8080
+      - Security__BehindReverseProxy=true
       - Security__DataProtectionKeyPath=/app/keys
       - Security__KnownProxyNetworks__0=172.16.0.0/12
       - Security__KnownProxyNetworks__1=10.0.0.0/8

@@ -42,8 +42,21 @@ public sealed class PublicUrlResolver(IConfiguration configuration)
         var configured = ConfiguredBaseUrl;
         if (!string.IsNullOrWhiteSpace(configured)) return configured;
 
-        return request is not null && request.Host.HasValue
-            ? $"{request.Scheme}://{request.Host}"
-            : "http://localhost";
+        if (request is not null && request.Host.HasValue)
+        {
+            var fProto = request.Headers["X-Forwarded-Proto"].ToString();
+            var fHost = request.Headers["X-Forwarded-Host"].ToString();
+
+            if (!string.IsNullOrWhiteSpace(fHost))
+            {
+                var proto = !string.IsNullOrWhiteSpace(fProto) ? fProto : request.Scheme;
+                return $"{proto}://{fHost}";
+            }
+
+            var scheme = !string.IsNullOrWhiteSpace(fProto) ? fProto : request.Scheme;
+            return $"{scheme}://{request.Host}";
+        }
+
+        return "http://localhost";
     }
 }

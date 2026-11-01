@@ -1,5 +1,6 @@
 @using WebXemPhim.Shared.Models
 @using WebXemPhim.Client.Components.Icons
+@using WebXemPhim.Client.Services
 @inject IJSRuntime JS
 @inject ILogger<CinemaPlayer> Logger
 @implements IAsyncDisposable
@@ -294,6 +295,15 @@
     [Parameter] public EventCallback<double> OnPause { get; set; }
     [Parameter] public EventCallback<double> OnProgress { get; set; }
 
+    /// <summary>Beacon QoE (startup/rebuffer/bitrate/error) do JS gửi lên.</summary>
+    [Parameter] public EventCallback<PlaybackTelemetrySignal> OnTelemetry { get; set; }
+
+    /// <summary>
+    /// Lỗi phát không thể tự phục hồi. Trang Watch dùng sự kiện này để tự chuyển nguồn
+    /// dự phòng với cooldown và giới hạn số lần thử.
+    /// </summary>
+    [Parameter] public EventCallback<string> OnFatalError { get; set; }
+
     private ElementReference containerRef;
     private ElementReference videoRef;
     private ElementReference qualityTriggerRef;
@@ -555,11 +565,15 @@
     }
 
     [JSInvokable]
-    public void OnHlsFatalError(string details)
+    public async Task OnHlsFatalError(string details)
     {
         mediaFailed = true;
         mediaErrorDetails = details;
         SafeStateHasChanged();
+        if (OnFatalError.HasDelegate)
+        {
+            await OnFatalError.InvokeAsync(details);
+        }
     }
 
     /// <summary>
@@ -568,11 +582,23 @@
     /// thay vì chỉ dựa vào <c>@onerror</c> — nếu không người dùng chỉ thấy màn hình đen.
     /// </summary>
     [JSInvokable]
-    public void OnMediaError(string details)
+    public async Task OnMediaError(string details)
     {
         mediaFailed = true;
         mediaErrorDetails = details;
         SafeStateHasChanged();
+        if (OnFatalError.HasDelegate)
+        {
+            await OnFatalError.InvokeAsync(details);
+        }
+    }
+
+    /// <summary>Nhận beacon QoE từ JS và chuyển tiếp cho trang Watch.</summary>
+    [JSInvokable]
+    public async Task OnPlaybackTelemetry(string eventType, long value, string? errorCode)
+    {
+        if (!OnTelemetry.HasDelegate || string.IsNullOrWhiteSpace(eventType)) return;
+        await OnTelemetry.InvokeAsync(new PlaybackTelemetrySignal(eventType, value, errorCode));
     }
 
     /// <summary>

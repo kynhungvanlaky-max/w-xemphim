@@ -115,7 +115,10 @@ public static class ApiRateLimits
     }
 
     private static bool IsStreamPlaybackPath(PathString path) =>
-        path.StartsWithSegments("/api/stream/play", StringComparison.OrdinalIgnoreCase);
+        path.StartsWithSegments("/api/stream/play", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/api/stream/segment", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/api/stream/manifest", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/api/stream/edge", StringComparison.OrdinalIgnoreCase);
 
     public static IServiceCollection AddApiRateLimits(this IServiceCollection services, IConfiguration config)
     {

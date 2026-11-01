@@ -1,0 +1,157 @@
+# =============================================================================
+# CinemaFlow - Nginx edge mẫu cho HLS segment/manifest (P1-03)
+#
+# Mục đích:
+#   - Trình duyệt chỉ thấy URL cùng origin /api/stream/segment|manifest.
+#   - Nginx gọi nội bộ /api/stream/edge/authorize (auth_request) trước khi trả
+#     bytes đã cache. Endpoint này kiểm tra token AES-GCM, IP hash, lease và
+#     cookie cf_play; không trả nội dung.
+#   - Segment immutable được cache ngắn tại edge để giảm tải origin; manifest
+#     cache rất ngắn vì URI token thay đổi theo thời gian.
+#
+# Yêu cầu module: ngx_http_auth_request_module (có trong nginx chính thức).
+# API và web client PHẢI cùng site (reverse proxy) để cookie HttpOnly
+# SameSite=Lax được gửi kèm request media.
+#
+# LƯU Ý QUAN TRỌNG:
+#   - Thêm IP của Nginx vào Security:KnownProxies (hoặc dải mạng vào
+#     Security:KnownProxyNetworks) để API tin X-Forwarded-For. Nếu không, IP dùng
+#     để ký/kiểm tra stream sẽ là IP của Nginx và mọi phiên sẽ bị coi là cùng IP.
+#   - Segment/manifest trả Set-Cookie cf_play. Khi bật cache phải ẩn header này
+#     (proxy_hide_header Set-Cookie) để không phát lại cookie của phiên khác.
+#     Cookie được cấp/gia hạn qua /api/stream/play (không cache) và vòng refresh
+#     70% TTL của client.
+#   - Token segment gắn IP + phiên nên cache chỉ có lợi cho các lần tua/lặp lại
+#     trong cùng phiên; đây là cache edge ngắn, không phải cache chia sẻ toàn cầu.
+# =============================================================================
+
+proxy_cache_path /var/cache/nginx/cinemaflow
+                 levels=1:2
+                 keys_zone=cinema_stream:100m
+                 inactive=10m
+                 max_size=20g
+                 use_temp_path=off;
+
+upstream cinemaflow_api {
+    server webxemphim-server:8080;
+    keepalive 64;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name cinemaflow.vn;
+
+    ssl_certificate     /etc/letsencrypt/live/cinemaflow.vn/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/cinemaflow.vn/privkey.pem;
+
+    # -------------------------------------------------------------------------
+    # Endpoint nội bộ: chỉ Nginx gọi, không lộ ra ngoài.
+    # -------------------------------------------------------------------------
+    location = /_stream_auth {
+        internal;
+
+        proxy_pass http://cinemaflow_api/api/stream/edge/authorize;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Original-URI $request_uri;
+        # Cookie cf_play là HttpOnly; auth_request phải chuyển tiếp để endpoint
+        # gia hạn/kiểm tra phiên khi token URL đã hết hạn.
+        proxy_set_header Cookie $http_cookie;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 5s;
+    }
+
+    # -------------------------------------------------------------------------
+    # HLS segment/key/init-map. Cache theo Range để không trộn partial response.
+    # -------------------------------------------------------------------------
+    location ^~ /api/stream/segment/ {
+        auth_request /_stream_auth;
+        auth_request_set $auth_status $upstream_status;
+
+        proxy_pass http://cinemaflow_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Range $http_range;
+        proxy_set_header If-Range $http_if_range;
+
+        proxy_cache cinema_stream;
+        proxy_cache_key "$scheme$request_method$host$request_uri|$http_range";
+        proxy_cache_valid 200 206 5m;
+        proxy_cache_lock on;
+        proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+        proxy_cache_background_update on;
+        # Cookie phiên do /api/stream/play cấp; không cache/không phát lại Set-Cookie
+        # từ response segment để tránh rò cookie giữa các phiên.
+        proxy_ignore_headers Set-Cookie Cache-Control Expires;
+        proxy_hide_header Set-Cookie;
+        add_header X-Stream-Cache $upstream_cache_status always;
+
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 30s;
+        proxy_send_timeout 30s;
+    }
+
+    # -------------------------------------------------------------------------
+    # Playlist HLS con. Token trong URL đã gắn thời hạn ngắn nên chỉ cache vài
+    # giây; manifest thay đổi liên tục với live.
+    # -------------------------------------------------------------------------
+    location ^~ /api/stream/manifest/ {
+        auth_request /_stream_auth;
+        auth_request_set $auth_status $upstream_status;
+
+        proxy_pass http://cinemaflow_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_cache cinema_stream;
+        proxy_cache_key "$scheme$request_method$host$request_uri";
+        proxy_cache_valid 200 2s;
+        proxy_cache_lock on;
+        proxy_ignore_headers Set-Cookie Cache-Control Expires;
+        proxy_hide_header Set-Cookie;
+        add_header X-Stream-Cache $upstream_cache_status always;
+
+        proxy_buffering off;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 15s;
+    }
+
+    # -------------------------------------------------------------------------
+    # /play và các API còn lại: không cache, chuyển thẳng tới API.
+    # -------------------------------------------------------------------------
+    location /api/ {
+        proxy_pass http://cinemaflow_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_read_timeout 600s;
+    }
+
+    # Blazor client tĩnh (nếu Nginx phục vụ cùng domain).
+    location / {
+        proxy_pass http://webxemphim-client:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}

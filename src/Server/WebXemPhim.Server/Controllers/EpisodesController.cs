@@ -172,7 +172,8 @@ public class EpisodesController(
                 // Mọi nguồn — kể cả nguồn thường — đều được ký trước khi đưa ra. Nếu chỉ ký
                 // nguồn VIP thì URL CDN gốc của nguồn thường bị lộ nguyên vẹn và ai cũng tải
                 // trực tiếp được, khiến cơ chế ký và giới hạn thời hạn mất tác dụng.
-                s.StreamUrl = _urlSigner.GeneratePlaybackUrl(baseUrl, s.EpisodeId, s.Position, clientIp, scope: "play");
+                var isHls = HlsManifestRewriter.LooksLikeHlsUrl(s.StreamUrl);
+                s.StreamUrl = _urlSigner.GeneratePlaybackUrl(baseUrl, s.EpisodeId, s.Position, clientIp, scope: "play", isHls: isHls);
             }
         }
     }

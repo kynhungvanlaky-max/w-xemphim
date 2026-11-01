@@ -22,3 +22,6 @@ scratch/
 .autohand/
 .agents/
 **/TestResults/
+publish-arm64/
+Caddyfile.local
+tools/

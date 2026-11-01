@@ -104,6 +104,8 @@ builder.Services.AddScoped<ISecurityAuditService, SecurityAuditService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IReviewService, ReviewService>();
 builder.Services.AddSingleton<IStreamUrlSigner, StreamUrlSigner>();
+builder.Services.AddSingleton<IStreamSegmentTokenProtector, StreamSegmentTokenProtector>();
+builder.Services.AddSingleton<StreamOriginCircuitBreaker>();
 builder.Services.AddSingleton<PublicUrlResolver>();
 // Ảnh nền tập do quản trị viên tải lên nằm trong volume server_data (/app/data) nên
 // không mất khi build lại container.
@@ -246,7 +248,8 @@ if (app.Environment.IsDevelopment())
 
 var forwardedHeadersOptions = new ForwardedHeadersOptions
 {
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
+    ForwardLimit = null
 };
 // Không tin toàn bộ dải mạng riêng: bất kỳ máy nào trong cùng VPC/LAN/Docker network đều
 // có thể gửi X-Forwarded-For giả để vượt rate limit hoặc làm sai lệch IP dùng để ký stream.
@@ -327,6 +330,28 @@ if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Databas
     catch (Exception ex)
     {
         app.Logger.LogWarning(ex, "Could not automatically seed database. Ensure database server is running or run seed scripts manually.");
+    }
+}
+else if (!app.Environment.IsEnvironment("Testing"))
+{
+    try
+    {
+        var factory = app.Services.GetService<IDbContextFactory<AppDbContext>>();
+        if (factory is not null)
+        {
+            await using var context = await factory.CreateDbContextAsync();
+            var timeProvider = app.Services.GetRequiredService<TimeProvider>();
+            await DatabaseSeeder.SeedEssentialAsync(context, timeProvider);
+            if (context.Database.IsNpgsql())
+            {
+                await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
+                await DatabaseSchemaHelper.SyncIdentitySequencesAsync(context);
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Could not automatically seed essential production data.");
     }
 }
 

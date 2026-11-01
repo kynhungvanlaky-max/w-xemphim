@@ -1,6 +1,7 @@
 @using WebXemPhim.Client.Components.Common
 @inherits LayoutComponentBase
 @inject NavigationManager Nav
+@implements IDisposable
 
 <div class="page-wrapper" id="top">
     <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
@@ -21,13 +22,29 @@
                 </div>
             </div>
         </footer>
+        <MobileBottomNav />
     }
 </div>
 
 @code {
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += HandleLocationChanged;
+    }
+
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
     private bool IsWatchPage()
     {
         var uri = Nav.Uri.ToLowerInvariant();
         return uri.Contains("/watch");
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= HandleLocationChanged;
     }
 }

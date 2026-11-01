@@ -42,6 +42,8 @@
             let startTime = null;
             let firstFrameReported = false;
             let rebufferCount = 0;
+            let rebufferStartedAt = 0;
+            let hasPlayed = false;
 
             function formatTime(seconds) {
                 if (isNaN(seconds) || seconds < 0) return '00:00';
@@ -58,7 +60,8 @@
             function sendTelemetry(eventType, value, errorCode) {
                 if (!dotNetHelper) return;
                 try {
-                    dotNetHelper.invokeMethodAsync('OnPlaybackTelemetry', eventType, value, errorCode);
+                    const numericValue = Number.isFinite(Number(value)) ? Math.max(0, Math.round(Number(value))) : 0;
+                    dotNetHelper.invokeMethodAsync('OnPlaybackTelemetry', eventType, numericValue, errorCode || null);
                 } catch (e) { }
             }
 
@@ -66,6 +69,22 @@
                 if (firstFrameReported || !startTime) return;
                 firstFrameReported = true;
                 sendTelemetry('startup', Date.now() - startTime);
+            }
+
+            function beginRebuffer() {
+                if (!hasPlayed || rebufferStartedAt > 0 || videoEl.ended) return;
+                rebufferStartedAt = Date.now();
+            }
+
+            function endRebuffer() {
+                if (rebufferStartedAt <= 0) return;
+                const duration = Date.now() - rebufferStartedAt;
+                rebufferStartedAt = 0;
+                // Bỏ qua các lần ngắt cực ngắn (< 500 ms) để không làm nhiễu chỉ số QoE.
+                if (duration >= 500) {
+                    rebufferCount += 1;
+                    sendTelemetry('rebuffer', duration);
+                }
             }
 
             function setBuffering(buffering) {
@@ -242,11 +261,19 @@
             videoEl.addEventListener('loadstart', () => {
                 if (!videoEl.paused) setBuffering(true);
             });
-            videoEl.addEventListener('waiting', () => setBuffering(true));
+            videoEl.addEventListener('waiting', () => {
+                setBuffering(true);
+                beginRebuffer();
+            });
             videoEl.addEventListener('seeking', () => {
                 if (videoEl.readyState < 3) setBuffering(true);
             });
-            videoEl.addEventListener('playing', () => setBuffering(false));
+            videoEl.addEventListener('playing', () => {
+                setBuffering(false);
+                hasPlayed = true;
+                endRebuffer();
+                reportStartup();
+            });
             videoEl.addEventListener('canplay', () => setBuffering(false));
             videoEl.addEventListener('canplaythrough', () => setBuffering(false));
             videoEl.addEventListener('seeked', () => {
@@ -261,6 +288,7 @@
                 // screen.
                 const code = videoEl.error ? videoEl.error.code : 0;
                 const message = videoEl.error && videoEl.error.message ? videoEl.error.message : 'MEDIA_ERR_UNKNOWN';
+                sendTelemetry('error', 0, 'MEDIA_ERR_' + code);
                 if (dotNetHelper) {
                     try {
                         dotNetHelper.invokeMethodAsync('OnMediaError', 'MEDIA_ERR_' + code + ' ' + message);
@@ -668,7 +696,7 @@
                         abrEwmaDefaultEstimate: 800000,
                         abrBandWidthFactor: 0.7,
                         abrBandWidthUpFactor: 0.7,
-                        lowLatencyMode: false,
+                        lowLatencyMode: true,
                         debug: false
                     });
                     containerEl._cinemaHls = hls;
@@ -700,8 +728,6 @@
                             } catch (_) {}
                         }
 
-                        reportStartup();
-
                         if (resumeSeconds > 0) {
                             videoEl.currentTime = resumeSeconds;
                         }
@@ -712,6 +738,11 @@
                     });
 
                     hls.on(window.Hls.Events.LEVEL_SWITCHED, function (event, data) {
+                        const level = hls.levels && hls.levels[data.level];
+                        const bitrate = level && level.bitrate ? level.bitrate : 0;
+                        if (bitrate > 0) {
+                            sendTelemetry('bitrate', bitrate);
+                        }
                         if (dotNetHelper) {
                             try {
                                 dotNetHelper.invokeMethodAsync('OnHlsLevelSwitched', data.level);
@@ -735,6 +766,7 @@
                                 hlsNetworkRetries += 1;
                                 if (hlsNetworkRetries > 3) {
                                     console.error('[CinemaPlayer] HLS network error kept failing, giving up.');
+                                    sendTelemetry('error', 0, 'HLS_NETWORK_' + (errorDetails || 'FATAL'));
                                     try { hls.destroy(); } catch (_) {}
                                     containerEl._cinemaHls = null;
                                     if (dotNetHelper) {
@@ -754,6 +786,7 @@
                                 hlsMediaRetries += 1;
                                 if (hlsMediaRetries > 2) {
                                     console.error('[CinemaPlayer] HLS media error kept failing, giving up.');
+                                    sendTelemetry('error', 0, 'HLS_MEDIA_' + (errorDetails || 'FATAL'));
                                     try { hls.destroy(); } catch (_) {}
                                     containerEl._cinemaHls = null;
                                     if (dotNetHelper) {
@@ -767,6 +800,7 @@
                                 break;
                             default:
                                 console.error('[CinemaPlayer] Unrecoverable HLS fatal error (' + errorDetails + ').');
+                                sendTelemetry('error', 0, 'HLS_' + (errorType || 'UNKNOWN') + '_' + (errorDetails || 'FATAL'));
                                 try { hls.destroy(); } catch (_) {}
                                 containerEl._cinemaHls = null;
                                 if (dotNetHelper) {

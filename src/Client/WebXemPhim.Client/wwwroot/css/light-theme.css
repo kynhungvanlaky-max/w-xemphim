@@ -4917,6 +4917,37 @@ body[data-theme="light"] .status-tab-btn.active .tab-badge {
     color: #ffffff !important;
 }
 
+/* Badge QoE/audit: nền pastel + chữ đậm để đạt tương phản trên nền sáng. */
+[data-theme="light"] .audit-action-create,
+body[data-theme="light"] .audit-action-create {
+    background: #d1fae5 !important;
+    color: #047857 !important;
+}
+
+[data-theme="light"] .audit-action-update,
+body[data-theme="light"] .audit-action-update {
+    background: #dbeafe !important;
+    color: #1d4ed8 !important;
+}
+
+[data-theme="light"] .audit-action-delete,
+body[data-theme="light"] .audit-action-delete {
+    background: #fee2e2 !important;
+    color: #b91c1c !important;
+}
+
+[data-theme="light"] .audit-action-bulk,
+body[data-theme="light"] .audit-action-bulk {
+    background: #fef3c7 !important;
+    color: #b45309 !important;
+}
+
+[data-theme="light"] .audit-action-probe,
+body[data-theme="light"] .audit-action-probe {
+    background: #ede9fe !important;
+    color: #6d28d9 !important;
+}
+
 [data-theme="light"] .section-title-bar select,
 body[data-theme="light"] .section-title-bar select {
     background: #f1f5f9 !important;
