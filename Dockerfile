@@ -45,21 +45,13 @@ ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
 
-# Configure PostgreSQL trust authentication and pre-create database & user
-RUN sed -i 's/scram-sha-256/trust/g' /etc/postgresql/*/main/pg_hba.conf && \
+# Configure PostgreSQL trust authentication and prepare runtime directories
+RUN sed -i 's/peer/trust/g' /etc/postgresql/*/main/pg_hba.conf && \
+    sed -i 's/scram-sha-256/trust/g' /etc/postgresql/*/main/pg_hba.conf && \
     sed -i 's/md5/trust/g' /etc/postgresql/*/main/pg_hba.conf && \
     mkdir -p /var/run/postgresql /var/log/postgresql && \
     chown -R postgres:postgres /var/run/postgresql /var/log/postgresql /var/lib/postgresql && \
-    chmod 0775 /var/run/postgresql && \
-    PG_DIR=$(ls -d /usr/lib/postgresql/* | sort -V | tail -n 1) && \
-    DATA_DIR=$(ls -d /var/lib/postgresql/*/main | sort -V | tail -n 1) && \
-    su - postgres -c "$PG_DIR/bin/pg_ctl -D $DATA_DIR -l /var/log/postgresql/init.log start" && \
-    su - postgres -c "psql -c 'CREATE DATABASE webxemphim;'" && \
-    su - postgres -c "psql -c \"CREATE USER webxemphim WITH PASSWORD 'webxemphim';\"" && \
-    su - postgres -c "psql -c 'GRANT ALL PRIVILEGES ON DATABASE webxemphim TO webxemphim;'" && \
-    su - postgres -c "psql -c 'ALTER USER webxemphim CREATEDB;'" && \
-    su - postgres -c "psql -d webxemphim -c 'GRANT ALL ON SCHEMA public TO webxemphim;'" && \
-    su - postgres -c "$PG_DIR/bin/pg_ctl -D $DATA_DIR stop"
+    chmod 0775 /var/run/postgresql
 
 # Setup application directories and persistent storage
 RUN mkdir -p /app/server /app/client /app/keys /app/data
