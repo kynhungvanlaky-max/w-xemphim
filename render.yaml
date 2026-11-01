@@ -21,13 +21,7 @@ services:
       - key: Database__Provider
         value: PostgreSql
       - key: DATABASE_URL
-        fromDatabase:
-          name: webxemphim-db
-          property: connectionString
-      - key: ConnectionStrings__Default
-        fromDatabase:
-          name: webxemphim-db
-          property: connectionString
+        sync: false
       - key: Security__StreamSigningKey
         generateValue: true
       - key: Payment__WebhookSecret
@@ -36,13 +30,3 @@ services:
         value: "true"
       - key: AllowedHosts
         value: "*"
-
-databases:
-  # --------------------------------------------------------
-  # Managed PostgreSQL 17 Database Engine
-  # --------------------------------------------------------
-  - name: webxemphim-db
-    databaseName: webxemphim
-    user: webxemphim
-    plan: free
-    region: singapore
