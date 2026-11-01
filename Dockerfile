@@ -28,8 +28,15 @@ RUN dotnet publish "WebXemPhim.Client.csproj" -c Release -o /app/client /p:UseAp
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
-# Install curl and ca-certificates for health checks
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates procps && rm -rf /var/lib/apt/lists/*
+# Install PostgreSQL, curl, ca-certificates, and procps
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql \
+    postgresql-contrib \
+    curl \
+    ca-certificates \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
 
 # Setup application directories and persistent storage
 RUN mkdir -p /app/server /app/client /app/keys /app/data

@@ -1,11 +1,11 @@
 # ==========================================================
-# CinemaFlow (WebXemPhim) - Render Blueprint
+# CinemaFlow (WebXemPhim) - Render Blueprint (Zero-Config)
 # Docs: https://render.com/docs/blueprint-spec
 # ==========================================================
 
 services:
   # --------------------------------------------------------
-  # Web Service: CinemaFlow All-in-One (.NET 10 Blazor + REST API)
+  # Web Service: CinemaFlow All-in-One (.NET 10 + PostgreSQL)
   # --------------------------------------------------------
   - type: web
     name: w-phim
@@ -20,8 +20,6 @@ services:
         value: Production
       - key: Database__Provider
         value: PostgreSql
-      - key: DATABASE_URL
-        sync: false
       - key: Security__StreamSigningKey
         generateValue: true
       - key: Payment__WebhookSecret
