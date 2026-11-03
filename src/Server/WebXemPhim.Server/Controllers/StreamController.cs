@@ -316,19 +316,36 @@ public class StreamController(
             && !string.IsNullOrWhiteSpace(sid)
             && string.Equals(scope, PlaybackScope, StringComparison.Ordinal))
         {
-            var loopbackV4Valid = urlSigner.Validate(
-                episodeId,
-                pos,
-                exp,
-                ip ?? string.Empty,
-                sig ?? string.Empty,
-                "127.0.0.1",
-                sessionId: sid,
-                scope: scope,
-                keyId: kid);
+            var lease = await streamSessionService.GetActiveLeaseAsync(sid, cancellationToken);
+            if (lease != null && lease.EpisodeId == episodeId)
+            {
+                // Kiểm tra xem chữ ký có hợp lệ với:
+                // 1. IP đã lưu trong phiên lease (được gán lúc client tạo lease)
+                // 2. Hoặc Loopback 127.0.0.1 / ::1
+                var leaseIp = lease.IpAddress ?? string.Empty;
+                var leaseIpValid = !string.IsNullOrWhiteSpace(leaseIp) && urlSigner.Validate(
+                    episodeId,
+                    pos,
+                    exp,
+                    ip ?? string.Empty,
+                    sig ?? string.Empty,
+                    leaseIp,
+                    sessionId: sid,
+                    scope: scope,
+                    keyId: kid).IsValid;
 
-            var loopbackV6Valid = !loopbackV4Valid.IsValid
-                ? urlSigner.Validate(
+                var loopbackV4Valid = leaseIpValid || urlSigner.Validate(
+                    episodeId,
+                    pos,
+                    exp,
+                    ip ?? string.Empty,
+                    sig ?? string.Empty,
+                    "127.0.0.1",
+                    sessionId: sid,
+                    scope: scope,
+                    keyId: kid).IsValid;
+
+                var loopbackV6Valid = loopbackV4Valid || urlSigner.Validate(
                     episodeId,
                     pos,
                     exp,
@@ -337,13 +354,9 @@ public class StreamController(
                     "::1",
                     sessionId: sid,
                     scope: scope,
-                    keyId: kid)
-                : loopbackV4Valid;
+                    keyId: kid).IsValid;
 
-            if (loopbackV4Valid.IsValid || loopbackV6Valid.IsValid)
-            {
-                var lease = await streamSessionService.GetActiveLeaseAsync(sid, cancellationToken);
-                if (lease != null && lease.EpisodeId == episodeId)
+                if (leaseIpValid || loopbackV4Valid || loopbackV6Valid)
                 {
                     validation = StreamValidationResult.Success();
                 }

@@ -28,6 +28,12 @@ services:
         generateValue: true
       - key: Security__BehindReverseProxy
         value: "true"
+      - key: Security__AllowedOrigins__0
+        value: "https://w-phim-client.onrender.com"
+      - key: Security__AllowedOrigins__1
+        value: "http://localhost:5229"
+      - key: Security__PublicApiBaseUrl
+        value: "https://w-phim-api.onrender.com"
       - key: AllowedHosts
         value: "*"
 
@@ -47,6 +53,12 @@ services:
         value: Production
       - key: Security__BehindReverseProxy
         value: "true"
+      - key: Security__AllowedOrigins__0
+        value: "https://w-phim-client.onrender.com"
+      - key: Security__AllowedOrigins__1
+        value: "http://localhost:5229"
+      - key: Security__PublicApiBaseUrl
+        value: "https://w-phim-api.onrender.com"
       - key: AllowedHosts
         value: "*"
       - key: ApiBaseUrl
