@@ -260,13 +260,28 @@ var forwardedHeadersOptions = new ForwardedHeadersOptions
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
     ForwardLimit = null
 };
-// Không tin toàn bộ dải mạng riêng: bất kỳ máy nào trong cùng VPC/LAN/Docker network đều
-// có thể gửi X-Forwarded-For giả để vượt rate limit hoặc làm sai lệch IP dùng để ký stream.
-// Chỉ loopback và proxy được cấu hình tường minh mới được tin.
-forwardedHeadersOptions.KnownIPNetworks.Clear();
-forwardedHeadersOptions.KnownProxies.Clear();
-forwardedHeadersOptions.KnownProxies.Add(System.Net.IPAddress.Loopback);
-forwardedHeadersOptions.KnownProxies.Add(System.Net.IPAddress.IPv6Loopback);
+
+var behindProxy = app.Configuration.GetValue<bool>("Security:BehindReverseProxy")
+    || string.Equals(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"), "true", StringComparison.OrdinalIgnoreCase);
+
+if (behindProxy)
+{
+    // Khi chạy trong container đằng sau reverse proxy (Render, Cloudflare, Fly.io, etc.),
+    // xóa ràng buộc KnownIPNetworks/KnownProxies mặc định để HTTP proxy biên chuyển tiếp đúng IP thật của client
+    // và nhận diện đúng HTTPS protocol.
+    forwardedHeadersOptions.KnownIPNetworks.Clear();
+    forwardedHeadersOptions.KnownProxies.Clear();
+}
+else
+{
+    // Không tin toàn bộ dải mạng riêng: bất kỳ máy nào trong cùng VPC/LAN/Docker network đều
+    // có thể gửi X-Forwarded-For giả để vượt rate limit hoặc làm sai lệch IP dùng để ký stream.
+    // Chỉ loopback và proxy được cấu hình tường minh mới được tin.
+    forwardedHeadersOptions.KnownIPNetworks.Clear();
+    forwardedHeadersOptions.KnownProxies.Clear();
+    forwardedHeadersOptions.KnownProxies.Add(System.Net.IPAddress.Loopback);
+    forwardedHeadersOptions.KnownProxies.Add(System.Net.IPAddress.IPv6Loopback);
+}
 
 var configuredProxies = app.Configuration.GetSection("Security:KnownProxies").Get<string[]>();
 if (configuredProxies is { Length: > 0 })
