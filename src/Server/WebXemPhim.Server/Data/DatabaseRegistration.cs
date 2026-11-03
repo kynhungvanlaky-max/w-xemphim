@@ -19,10 +19,13 @@ public static class DatabaseRegistration
             provider.Equals("Postgres", StringComparison.OrdinalIgnoreCase) ||
             provider.Equals("Npgsql", StringComparison.OrdinalIgnoreCase))
         {
-            var rawConnectionString = configuration.GetConnectionString("Default")
-                ?? configuration.GetConnectionString("PostgreSql")
-                ?? configuration["DATABASE_URL"]
-                ?? configuration["DATABASE_CONNECTION_STRING"];
+            var rawConnectionString = new[]
+            {
+                configuration.GetConnectionString("Default"),
+                configuration.GetConnectionString("PostgreSql"),
+                configuration["DATABASE_URL"],
+                configuration["DATABASE_CONNECTION_STRING"]
+            }.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s));
             if (string.IsNullOrWhiteSpace(rawConnectionString))
             {
                 throw new InvalidOperationException(
