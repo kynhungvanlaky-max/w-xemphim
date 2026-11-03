@@ -1492,7 +1492,7 @@ public static class DatabaseSeeder
 
     public static List<StreamSourceDto> GenerateMultiServerStreams(int seed = 1)
     {
-        // Danh sách phim thật đã tải về máy chủ điện thoại cục bộ (0ms latency)
+        // Danh sách phim cục bộ (0ms latency)
         // và các luồng HLS CDN phim thật trực tuyến Full HD / 4K.
         var localSources = new[]
         {
