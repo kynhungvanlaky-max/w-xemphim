@@ -149,6 +149,15 @@ if (!app.Environment.IsEnvironment("Testing"))
     var schemaStartedAt = DateTime.UtcNow;
     if (db.Database.IsNpgsql())
     {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("CREATE SCHEMA IF NOT EXISTS webxemphim;");
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning(ex, "Could not ensure schema 'webxemphim' exists. Will use current default schema.");
+        }
+
         // PostgreSQL validates foreign keys when a table is created, so the schema is applied
         // through the migrations (which know the dependency order) instead of EnsureCreated.
         await DatabaseSchemaHelper.BaselineMigrationsAsync(db);

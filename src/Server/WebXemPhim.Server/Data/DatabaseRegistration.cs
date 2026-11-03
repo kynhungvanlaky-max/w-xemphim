@@ -73,14 +73,21 @@ public static class DatabaseRegistration
             var database = uri.AbsolutePath.TrimStart('/');
             var port = uri.Port > 0 ? uri.Port : 5432;
 
+            var host = uri.Host;
+            if (host.StartsWith("dpg-", StringComparison.OrdinalIgnoreCase) && !host.Contains('.'))
+            {
+                host = $"{host}.singapore-postgres.render.com";
+            }
+
             var builder = new NpgsqlConnectionStringBuilder
             {
-                Host = uri.Host,
+                Host = host,
                 Port = port,
                 Database = database,
                 Username = username,
                 Password = password,
-                SslMode = SslMode.Prefer
+                SslMode = SslMode.Prefer,
+                SearchPath = "webxemphim,public"
             };
 
             if (!string.IsNullOrEmpty(uri.Query))
@@ -93,6 +100,14 @@ public static class DatabaseRegistration
                     {
                         builder.SslMode = parsedMode;
                     }
+                }
+                if (queryParams.TryGetValue("searchpath", out var searchPathValues))
+                {
+                    builder.SearchPath = searchPathValues.ToString();
+                }
+                else if (queryParams.TryGetValue("schema", out var schemaValues))
+                {
+                    builder.SearchPath = $"{schemaValues},public";
                 }
             }
 

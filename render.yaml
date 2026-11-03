@@ -21,7 +21,7 @@ services:
       - key: Database__Provider
         value: PostgreSql
       - key: DATABASE_URL
-        sync: false
+        value: postgresql://gamestore_user:***REMOVED***@dpg-dbji4967bikc73fhaao0-a.singapore-postgres.render.com/gamestore_3t6q
       - key: Security__StreamSigningKey
         generateValue: true
       - key: Payment__WebhookSecret

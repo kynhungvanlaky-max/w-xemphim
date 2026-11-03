@@ -48,6 +48,17 @@ public class DatabaseRegistrationTests
         Assert.Equal(standard, result);
     }
 
+    [Fact]
+    public void NormalizePostgresConnectionString_WithShortRenderDpgHost_AppendsSingaporeDomain()
+    {
+        var uri = "postgresql://gamestore_user:***REMOVED***@dpg-dbji4967bikc73fhaao0-a/gamestore_3t6q";
+        var result = DatabaseRegistration.NormalizePostgresConnectionString(uri);
+
+        Assert.Contains("Search Path=webxemphim,public", result);
+        Assert.Contains("Host=dpg-dbji4967bikc73fhaao0-a.singapore-postgres.render.com", result);
+        Assert.Contains("Database=gamestore_3t6q", result);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
