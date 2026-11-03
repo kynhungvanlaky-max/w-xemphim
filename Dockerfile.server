@@ -1,0 +1,41 @@
+# Dockerfile for CinemaFlow REST API Server (.NET 10)
+# Build Context: Root directory of repository
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# Step 1: Restore dependencies with layer caching
+COPY ["src/Shared/WebXemPhim.Shared/WebXemPhim.Shared.csproj", "src/Shared/WebXemPhim.Shared/"]
+COPY ["src/Server/WebXemPhim.Server/WebXemPhim.Server.csproj", "src/Server/WebXemPhim.Server/"]
+RUN dotnet restore "src/Server/WebXemPhim.Server/WebXemPhim.Server.csproj"
+
+# Step 2: Build and publish Server in Release mode
+COPY src/Shared/ src/Shared/
+COPY src/Server/WebXemPhim.Server/ src/Server/WebXemPhim.Server/
+
+WORKDIR "/src/src/Server/WebXemPhim.Server"
+RUN dotnet publish "WebXemPhim.Server.csproj" -c Release -o /app/publish /p:UseAppHost=false
+
+# Step 3: Runtime image
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /app/keys
+COPY --from=build /app/publish .
+
+ENV ASPNETCORE_ENVIRONMENT=Production \
+    DOTNET_ENVIRONMENT=Production \
+    DOTNET_RUNNING_IN_CONTAINER=true \
+    Security__DataProtectionKeyPath=/app/keys \
+    Security__BehindReverseProxy=true \
+    AllowedHosts=* \
+    PORT=10000
+
+EXPOSE 10000
+
+ENTRYPOINT ["sh", "-c", "exec dotnet WebXemPhim.Server.dll --urls http://0.0.0.0:${PORT}"]

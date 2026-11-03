@@ -5,14 +5,14 @@
 
 services:
   # --------------------------------------------------------
-  # Web Service: CinemaFlow (.NET 10 Blazor + REST API)
+  # Web Service 1: CinemaFlow REST API Server
   # --------------------------------------------------------
   - type: web
-    name: w-phim
+    name: w-phim-api
     runtime: docker
     plan: free
     region: singapore
-    dockerfilePath: Dockerfile
+    dockerfilePath: Dockerfile.server
     dockerContext: .
     healthCheckPath: /api/health
     envVars:
@@ -30,3 +30,27 @@ services:
         value: "true"
       - key: AllowedHosts
         value: "*"
+
+  # --------------------------------------------------------
+  # Web Service 2: CinemaFlow Blazor Web Client
+  # --------------------------------------------------------
+  - type: web
+    name: w-phim-client
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: Dockerfile.client
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: Security__BehindReverseProxy
+        value: "true"
+      - key: AllowedHosts
+        value: "*"
+      - key: ApiBaseUrl
+        fromService:
+          type: web
+          name: w-phim-api
+          property: host
