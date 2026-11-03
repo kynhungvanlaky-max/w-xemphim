@@ -1985,6 +1985,8 @@ public static class DatabaseSeeder
             context.UserSecurity.Add(new UserSecurityEntity { UserId = adminUser.Id, IsAdmin = true });
             await context.SaveChangesAsync(cancellationToken);
         }
+
+        await RepairUnreadableDemoIdentitiesAsync(context, cancellationToken);
     }
 
     public static async Task SeedAsync(AppDbContext context, TimeProvider? timeProvider = null, CancellationToken cancellationToken = default)

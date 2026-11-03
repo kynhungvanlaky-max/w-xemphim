@@ -130,6 +130,7 @@
             model.Email = "admin@cinemaflow.vn";
         }
         else if (emailInput.Equals("demo", StringComparison.OrdinalIgnoreCase) ||
+                 emailInput.Equals("demo@cinemaflow.vn", StringComparison.OrdinalIgnoreCase) ||
                  emailInput.Equals("vip", StringComparison.OrdinalIgnoreCase))
         {
             model.Email = "vip@cinemaflow.vn";
@@ -148,19 +149,10 @@
             }
             else if (response?.Success == true)
             {
-                var target = AuthNavigation.ReturnPath(ReturnUrl, "/admin");
-                if (response.Data?.User?.IsAdmin == true)
-                {
-                    // The cockpit stylesheet is linked from the admin layout head. A client side
-                    // navigation paints the cockpit before that sheet arrives, which shows a flash
-                    // of unstyled content on the very first entry — the admin area is therefore
-                    // entered with a full document load.
-                    Nav.NavigateTo(target, forceLoad: IsAdminRoute(target));
-                }
-                else
-                {
-                    Nav.NavigateTo(target);
-                }
+                var target = response.Data?.User?.IsAdmin == true
+                    ? AuthNavigation.ReturnPath(ReturnUrl, "/admin")
+                    : AuthNavigation.ReturnPath(ReturnUrl, "/watchlist");
+                Nav.NavigateTo(target);
             }
             else
             {
