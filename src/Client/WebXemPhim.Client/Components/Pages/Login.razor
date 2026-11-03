@@ -1,7 +1,6 @@
 @page "/login"
 @inject AuthState Auth
 @inject NavigationManager Nav
-@inject IWebHostEnvironment Environment
 @using WebXemPhim.Client.Components.Common
 
 <CinemaPageTitle>Đăng nhập - CinemaFlow</CinemaPageTitle>
@@ -39,40 +38,56 @@
         }
         else
         {
-        <EditForm Model="model" FormName="login" OnValidSubmit="Submit">
-            <DataAnnotationsValidator />
-            <div class="form-field">
-                <label for="login-email">Email hoặc Tên đăng nhập</label>
-                <InputText id="login-email" type="text" autocomplete="username" @bind-Value="model.Email" placeholder="Email của bạn" maxlength="160" />
-                <ValidationMessage For="() => model.Email" />
-            </div>
-            <div class="form-field">
-                <div class="label-row"><label for="login-password">Mật khẩu</label><a href="/forgot-password">Quên mật khẩu?</a></div>
-                <InputText id="login-password" type="password" autocomplete="current-password" @bind-Value="model.Password" placeholder="Mật khẩu của bạn" maxlength="100" />
-                <ValidationMessage For="() => model.Password" />
-            </div>
-            @if (!string.IsNullOrWhiteSpace(error)) { <p class="form-alert error" role="alert">@error</p> }
-            <button class="button primary wide" type="submit" disabled="@submitting"><CinemaIcon Name="CinemaIconName.Login" Size="18" />@(submitting ? "Đang xác thực..." : "Đăng nhập")</button>
-        </EditForm>
-        @if (Environment.IsDevelopment())
-        {
-            <div class="auth-quick-card">
+            <EditForm Model="model" FormName="login" OnValidSubmit="Submit">
+                <DataAnnotationsValidator />
+                <div class="form-field">
+                    <label for="login-email">Email hoặc Tên đăng nhập</label>
+                    <InputText id="login-email" type="text" autocomplete="username" @bind-Value="model.Email" placeholder="Email của bạn hoặc 'admin' / 'vip'" maxlength="160" />
+                    <ValidationMessage For="() => model.Email" />
+                </div>
+                <div class="form-field">
+                    <div class="label-row"><label for="login-password">Mật khẩu</label><a href="/forgot-password">Quên mật khẩu?</a></div>
+                    <InputText id="login-password" type="password" autocomplete="current-password" @bind-Value="model.Password" placeholder="Mật khẩu của bạn" maxlength="100" />
+                    <ValidationMessage For="() => model.Password" />
+                </div>
+                @if (!string.IsNullOrWhiteSpace(error)) { <p class="form-alert error" role="alert">@error</p> }
+                <button class="button primary wide" type="submit" disabled="@submitting"><CinemaIcon Name="CinemaIconName.Login" Size="18" />@(submitting && activeDemoAccount is null ? "Đang xác thực..." : "Đăng nhập")</button>
+            </EditForm>
+
+            <div class="auth-divider"><span>Hoặc trải nghiệm nhanh (Demo)</span></div>
+
+            <div class="auth-quick-card" role="region" aria-label="Tài khoản dùng thử một chạm">
                 <div class="auth-quick-header">
-                    <CinemaIcon Name="CinemaIconName.Shield" Size="16" Class="text-danger" />
-                    <span>Tài khoản thử nghiệm (Bấm để điền ngay):</span>
+                    <div class="auth-quick-title">
+                        <CinemaIcon Name="CinemaIconName.Sparkles" Size="15" />
+                        <span>Đăng nhập 1 chạm Demo:</span>
+                    </div>
+                    <span class="auth-quick-pwd">Pass: <code>Password123!</code></span>
                 </div>
                 <div class="auth-quick-buttons">
-                    <button type="button" class="quick-chip admin" @onclick='() => QuickFill("admin@cinemaflow.vn", "Password123!")'>
-                        <CinemaIcon Name="CinemaIconName.Shield" Size="14" />
-                        <strong>Admin</strong>: admin@cinemaflow.vn
+                    <button type="button" class="quick-chip admin" @onclick='() => QuickLogin("admin@cinemaflow.vn", "Password123!")' disabled="@submitting" title="Đăng nhập ngay với quyền Quản trị viên">
+                        <div class="quick-chip-head">
+                            <span class="quick-chip-badge"><CinemaIcon Name="CinemaIconName.Shield" Size="14" /> Admin</span>
+                            <span class="quick-chip-action">@(submitting && activeDemoAccount == "admin@cinemaflow.vn" ? "Đang vào..." : "Vào ngay ➜")</span>
+                        </div>
+                        <span class="quick-chip-email">admin@cinemaflow.vn</span>
                     </button>
-                    <button type="button" class="quick-chip vip" @onclick='() => QuickFill("demo@cinemaflow.vn", "Password123!")'>
-                        <CinemaIcon Name="CinemaIconName.Crown" Size="14" />
-                        <strong>Khách VIP</strong>: demo@cinemaflow.vn
+                    <button type="button" class="quick-chip vip" @onclick='() => QuickLogin("vip@cinemaflow.vn", "Password123!")' disabled="@submitting" title="Đăng nhập ngay với quyền Khách VIP">
+                        <div class="quick-chip-head">
+                            <span class="quick-chip-badge"><CinemaIcon Name="CinemaIconName.Crown" Size="14" /> Khách VIP</span>
+                            <span class="quick-chip-action">@(submitting && activeDemoAccount == "vip@cinemaflow.vn" ? "Đang vào..." : "Vào ngay ➜")</span>
+                        </div>
+                        <span class="quick-chip-email">vip@cinemaflow.vn</span>
+                    </button>
+                    <button type="button" class="quick-chip member" @onclick='() => QuickLogin("hoangnam@cinemaflow.vn", "Password123!")' disabled="@submitting" title="Đăng nhập ngay với quyền Thành viên">
+                        <div class="quick-chip-head">
+                            <span class="quick-chip-badge"><CinemaIcon Name="CinemaIconName.User" Size="14" /> Thành viên</span>
+                            <span class="quick-chip-action">@(submitting && activeDemoAccount == "hoangnam@cinemaflow.vn" ? "Đang vào..." : "Vào ngay ➜")</span>
+                        </div>
+                        <span class="quick-chip-email">hoangnam@cinemaflow.vn</span>
                     </button>
                 </div>
             </div>
-        }
         }
     </section>
 </main>
@@ -84,9 +99,19 @@
     private bool submitting;
     private bool mfaRequired;
     private string? error;
+    private string? activeDemoAccount;
 
     private static bool IsAdminRoute(string path) =>
         path.StartsWith("/admin", StringComparison.OrdinalIgnoreCase);
+
+    private async Task QuickLogin(string email, string password)
+    {
+        activeDemoAccount = email;
+        model.Email = email;
+        model.Password = password;
+        error = null;
+        await Submit();
+    }
 
     private void QuickFill(string email, string password)
     {
@@ -99,42 +124,54 @@
     {
         submitting = true;
         error = null;
-        if (model.Email.Trim().Equals("admin", StringComparison.OrdinalIgnoreCase))
+        var emailInput = model.Email?.Trim() ?? string.Empty;
+        if (emailInput.Equals("admin", StringComparison.OrdinalIgnoreCase))
         {
             model.Email = "admin@cinemaflow.vn";
         }
-        else if (model.Email.Trim().Equals("demo", StringComparison.OrdinalIgnoreCase))
+        else if (emailInput.Equals("demo", StringComparison.OrdinalIgnoreCase) ||
+                 emailInput.Equals("vip", StringComparison.OrdinalIgnoreCase))
         {
-            model.Email = "demo@cinemaflow.vn";
+            model.Email = "vip@cinemaflow.vn";
         }
 
-        var response = await Auth.LoginAsync(model);
-        submitting = false;
-        if (response?.Success == true && response.Data?.RequiresMfa == true)
+        try
         {
-            mfaModel.ChallengeToken = response.Data.MfaChallengeToken;
-            mfaRequired = true;
-            error = null;
-        }
-        else if (response?.Success == true)
-        {
-            var target = AuthNavigation.ReturnPath(ReturnUrl, "/admin");
-            if (response.Data?.User?.IsAdmin == true)
+            var response = await Auth.LoginAsync(model);
+            submitting = false;
+            activeDemoAccount = null;
+            if (response?.Success == true && response.Data?.RequiresMfa == true)
             {
-                // The cockpit stylesheet is linked from the admin layout head. A client side
-                // navigation paints the cockpit before that sheet arrives, which shows a flash
-                // of unstyled content on the very first entry — the admin area is therefore
-                // entered with a full document load.
-                Nav.NavigateTo(target, forceLoad: IsAdminRoute(target));
+                mfaModel.ChallengeToken = response.Data.MfaChallengeToken;
+                mfaRequired = true;
+                error = null;
+            }
+            else if (response?.Success == true)
+            {
+                var target = AuthNavigation.ReturnPath(ReturnUrl, "/admin");
+                if (response.Data?.User?.IsAdmin == true)
+                {
+                    // The cockpit stylesheet is linked from the admin layout head. A client side
+                    // navigation paints the cockpit before that sheet arrives, which shows a flash
+                    // of unstyled content on the very first entry — the admin area is therefore
+                    // entered with a full document load.
+                    Nav.NavigateTo(target, forceLoad: IsAdminRoute(target));
+                }
+                else
+                {
+                    Nav.NavigateTo(target);
+                }
             }
             else
             {
-                Nav.NavigateTo(target);
+                error = response?.Message ?? "Không thể kết nối máy chủ hoặc thông tin đăng nhập không chính xác. Vui lòng thử lại.";
             }
         }
-        else
+        catch (Exception ex)
         {
-            error = response?.Message ?? "Không thể kết nối máy chủ hoặc thông tin đăng nhập không chính xác. Vui lòng thử lại.";
+            submitting = false;
+            activeDemoAccount = null;
+            error = "Không thể kết nối máy chủ hoặc dịch vụ đang khởi động. Vui lòng thử lại sau giây lát: " + ex.Message;
         }
     }
 
