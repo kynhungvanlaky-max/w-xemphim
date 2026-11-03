@@ -5,7 +5,7 @@
 [![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17%20Alpine-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Caddy](https://img.shields.io/badge/Caddy-2.8%20Auto%20HTTPS-1F88C0?logo=caddy&logoColor=white)](https://caddyserver.com/)
 [![Cloudflare Tunnel](https://img.shields.io/badge/Cloudflare-Tunnel%20Zero%20Trust-F38020?logo=cloudflare&logoColor=white)](https://www.cloudflare.com/)
-[![Tests](https://img.shields.io/badge/Tests-1%2C343%20PASS%20(100%25)-brightgreen?logo=xunit&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-1%2C351%20PASS%20(100%25)-brightgreen?logo=xunit&logoColor=white)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **CinemaFlow (WebXemPhim)** là nền tảng streaming phim trực tuyến thế hệ mới, được kiến trúc hóa theo mô hình phân tách độc lập giữa **Server (ASP.NET Core Web API)** và **Client (Blazor Web App)** hoàn toàn bằng ngôn ngữ C# (.NET 10). 
@@ -25,7 +25,7 @@ Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao c�
 4. [🚀 Hướng Dẫn Cài Đặt & Chạy Cục Bộ (Local Development)](#-hướng-dẫn-cài-đặt--chạy-cục-bộ-local-development)
 5. [📱 Triển Khai Máy Chủ Trên Điện Thoại Android (Phone Host)](#-triển-khai-máy-chủ-trên-điện-thoại-android-phone-host)
 6. [🐳 Triển Khai Docker VPS & CI/CD (Production Deployment)](#-triển-khai-docker-vps--cicd-production-deployment)
-7. [🧪 Kiểm Thử Tự Động (1,343 Tests 100% PASS)](#-kiểm-thử-tự-động-1343-tests-100-pass)
+7. [🧪 Kiểm Thử Tự Động (1,351 Tests 100% PASS)](#-kiểm-thử-tự-động-1351-tests-100-pass)
 8. [🔑 Danh Sách Tài Khoản Thử Nghiệm (Seed Accounts)](#-danh-sách-tài-khoản-thử-nghiệm-seed-accounts)
 9. [📐 Quy Chuẩn Lập Trình & Thiết Kế (Standards & Discipline)](#-quy-chuẩn-lập-trình--thiết-kế-standards--discipline)
 
@@ -132,7 +132,7 @@ WebXemPhim Solution
 ├── docs/                          # Tài liệu kiến trúc, bảo mật stream, deployment, audit di động
 ├── scripts/                       # Shell scripts chạy daemon, setup Android Termux, Quick Tunnel
 ├── tests/
-│   └── WebXemPhim.Tests/          # 1,343 Unit & Integration Testcases (Testcontainers PostgreSQL)
+│   └── WebXemPhim.Tests/          # 1,351 Unit & Integration Testcases (Testcontainers PostgreSQL)
 └── WebXemPhim.slnx                # Solution định dạng mới của .NET 10
 ```
 
@@ -264,7 +264,7 @@ Xem hướng dẫn chi tiết từng bước thiết lập SSH, cấu hình tư�
 
 ---
 
-## 🧪 Kiểm Thử Tự Động (1,343 Tests 100% PASS)
+## 🧪 Kiểm Thử Tự Động (1,351 Tests 100% PASS)
 
 Toàn bộ logic nghiệp vụ, bảo mật luồng phát, chữ ký URL, cơ chế chống tấn công giả mạo (tampering), thuật toán giới hạn tần suất (rate limiting) và tích hợp cơ sở dữ liệu thực tế đều được bảo vệ nghiêm ngặt bởi bộ kiểm thử tự động toàn diện:
 
@@ -274,7 +274,7 @@ dotnet test WebXemPhim.slnx
 
 ### Kết quả chạy kiểm thử:
 ```text
-Passed!  - Failed: 0, Passed: 1343, Skipped: 0, Total: 1343, Duration: 3 m 36 s
+Passed!  - Failed: 0, Passed: 1351, Skipped: 0, Total: 1351, Duration: 3 m 36 s
 WebXemPhim.Tests.dll (.NETCoreApp,Version=v10.0)
 ```
 
