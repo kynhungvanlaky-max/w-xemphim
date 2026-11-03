@@ -179,6 +179,18 @@ if (clientNetworks is { Length: > 0 })
         }
     }
 }
+
+var behindProxy = app.Configuration.GetValue<bool>("Security:BehindReverseProxy")
+    || string.Equals(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"), "true", StringComparison.OrdinalIgnoreCase);
+
+if (behindProxy)
+{
+    // When running in container behind cloud reverse proxy (Render, Cloudflare, Fly.io, etc.),
+    // trust forwarded headers from the container edge proxy so HTTPS protocol is correctly recognized.
+    forwardedHeadersOptions.KnownIPNetworks.Clear();
+    forwardedHeadersOptions.KnownProxies.Clear();
+}
+
 app.UseForwardedHeaders(forwardedHeadersOptions);
 app.Use(async (context, next) =>
 {
@@ -217,6 +229,8 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy", service = "CinemaFlow.Client", timestamp = DateTimeOffset.UtcNow }));
+app.MapGet("/api/health", () => Results.Ok(new { status = "Healthy", service = "CinemaFlow.Client", timestamp = DateTimeOffset.UtcNow }));
 app.MapReverseProxy();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

@@ -56,6 +56,7 @@ if [ "$USE_LOCAL_PG" = "true" ]; then
     mkdir -p /var/run/postgresql /var/log/postgresql
     chown -R postgres:postgres /var/run/postgresql /var/log/postgresql /var/lib/postgresql
     chmod 0775 /var/run/postgresql
+    chmod 0700 /var/lib/postgresql/*/main 2>/dev/null || true
 
     # Configure trust authentication
     sed -i 's/peer/trust/g' /etc/postgresql/*/main/pg_hba.conf 2>/dev/null || true
@@ -115,7 +116,7 @@ echo "Server PID: $SERVER_PID"
 echo "Waiting for Server to be ready on 127.0.0.1:5085..."
 SERVER_HEALTHY=false
 for i in $(seq 1 45); do
-    if curl -s http://127.0.0.1:5085/api/health >/dev/null 2>&1; then
+    if curl -sf http://127.0.0.1:5085/api/health >/dev/null 2>&1 || curl -sf http://127.0.0.1:5085/health >/dev/null 2>&1; then
         echo "CinemaFlow Server is healthy on 127.0.0.1:5085!"
         SERVER_HEALTHY=true
         break
