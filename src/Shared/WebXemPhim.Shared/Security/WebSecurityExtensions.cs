@@ -203,7 +203,7 @@ public static class WebSecurityExtensions
     {
         if (!context.Request.IsHttps)
         {
-            var isHealthCheck = context.Request.Path.StartsWithSegments("/health");
+            var isHealthCheck = context.Request.Path.StartsWithSegments("/health") || context.Request.Path.StartsWithSegments("/api/health");
             var remoteIp = context.Connection.RemoteIpAddress;
             var isLoopback = remoteIp is not null && System.Net.IPAddress.IsLoopback(remoteIp);
             var isPrivate = remoteIp is not null && IsPrivateIpAddress(remoteIp);

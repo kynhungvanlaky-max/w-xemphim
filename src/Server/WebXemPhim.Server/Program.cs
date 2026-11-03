@@ -307,6 +307,7 @@ app.UseAuthorization();
 app.UseRateLimiter();
 
 app.MapHealthChecks("/health");
+app.MapHealthChecks("/api/health");
 app.MapControllers();
 app.MapHub<CinemaHub>("/hubs/cinema");
 
