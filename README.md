@@ -61,7 +61,7 @@ Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao c�
   - Cố định ở đáy màn hình di động (màn hình <= 768px), thiết kế chuẩn công thái học vùng ngón tay cái (**Thumb-Friendly Zone**).
   - 5 phân vùng truy cập 1-chạm: **Trang chủ**, **Khám phá**, **Thể loại**, **Tủ phim** (có huy hiệu số lượng), **Tài khoản** (kèm avatar ký tự đầu và biểu tượng vương miện VIP).
   - Tự động ẩn hoàn toàn khi người dùng vào trang xem phim (`/watch`) để tối đa hóa không gian phát video.
-  - Tích hợp chuẩn đệm an toàn `env(safe-area-inset-bottom)` cho iPhone tai thỏ và các máy Android viền cong.
+  - Tích hợp chuẩn đệm an toàn `env(safe-area-inset-bottom)` cho thiết bị di động tai thỏ và màn hình viền cong.
 - **Lưới số tập phim phản hồi nhanh (Quick Episode Grid)**:
   - Hỗ trợ chuyển đổi linh hoạt giữa dạng danh sách chi tiết (List view) và dạng ô số gọn gàng (Grid view 44px x 44px), giúp duyệt phim bộ 24+ tập nhanh chóng mà không phải cuộn trang dài.
 - **Chuẩn cảm ứng tối thiểu (Tap Targets >= 44px)**:
