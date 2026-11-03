@@ -40,15 +40,15 @@ services:
       - key: CloudStorage__Provider
         value: "CloudflareR2"
       - key: CloudStorage__AccountId
-        sync: false
+        value: "***REMOVED***"
       - key: CloudStorage__AccessKeyId
-        sync: false
+        value: "***REMOVED***"
       - key: CloudStorage__SecretAccessKey
-        sync: false
+        value: "***REMOVED***"
       - key: CloudStorage__BucketName
-        sync: false
-      - key: CloudStorage__PublicBaseUrl
-        sync: false
+        value: "webxemphim-movies"
+      - key: CloudStorage__ServiceUrl
+        value: "https://***REMOVED***.r2.cloudflarestorage.com"
 
   # --------------------------------------------------------
   # Web Service 2: CinemaFlow Blazor Web Client
