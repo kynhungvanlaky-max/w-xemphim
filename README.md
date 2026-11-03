@@ -50,6 +50,8 @@ Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao c�
 - **Tủ phim & Thành viên VIP**:
   - Quản lý danh sách phim theo dõi (Watchlist) với cập nhật huy hiệu số lượng thời gian thực.
   - Gói đăng ký hội viên VIP (Silver, Gold, Platinum, Diamond) mở khóa các tác phẩm điện ảnh 4K độc quyền.
+- **Nút đăng nhập nhanh 1-chạm (1-Click Tactile Demo Buttons)**:
+  - Trang đăng nhập (`/login`) tích hợp sẵn bộ 3 nút xúc giác đăng nhập nhanh cho các vai trò **Admin**, **VIP**, **Thành viên**. Tự động điền thông tin và xác thực tức thì chỉ với một cú nhấp chuột, giúp việc trải nghiệm thử nghiệm trở nên liền mạch.
 - **Hệ thống tương phản kép (Dual-Theme Contrast)**:
   - **Dark Mode**: Gam màu Obsidian `#07080a` / `#12141a` huyền bí, viền mờ `rgba(255,255,255,0.08)`.
   - **Light Mode**: Nền trắng sáng dập nổi `#cbd5e1`, văn bản tương phản cao `#0f172a`, công tắc xúc giác (Tactile switches) rực rỡ, không gây mỏi mắt.
@@ -242,7 +244,7 @@ WebXemPhim.Tests.dll (.NETCoreApp,Version=v10.0)
 
 ## 🔑 Danh Sách Tài Khoản Thử Nghiệm (Seed Accounts)
 
-Cơ sở dữ liệu mẫu được nạp sẵn các tài khoản thử nghiệm với đầy đủ các quyền hạn:
+Cơ sở dữ liệu mẫu được nạp sẵn các tài khoản thử nghiệm với đầy đủ các quyền hạn *(Gợi ý: Tại trang đăng nhập `/login`, bạn có thể nhấp trực tiếp vào các nút bấm xúc giác **Admin**, **VIP Demo**, hoặc **Thành viên** để hệ thống tự động điền và đăng nhập ngay mà không cần nhập tay)*:
 
 | Vai trò / Phân quyền | Email đăng nhập | Tên đăng nhập phụ | Mật khẩu | Quyền lợi & Mô tả |
 | :--- | :--- | :--- | :--- | :--- |
