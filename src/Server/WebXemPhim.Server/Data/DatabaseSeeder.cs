@@ -1496,9 +1496,9 @@ public static class DatabaseSeeder
         // và các luồng HLS CDN phim thật trực tuyến Full HD / 4K.
         var localSources = new[]
         {
-            "local://tears_of_steel_720p.mp4",
-            "local://sintel_full.mp4",
-            "local://big_buck_bunny_720p.mp4"
+            "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4",
+            "https://vjs.zencdn.net/v/oceans.mp4",
+            "https://media.w3.org/2010/05/sintel/trailer.mp4"
         };
 
         var onlineSources = new[]
@@ -1987,6 +1987,7 @@ public static class DatabaseSeeder
         }
 
         await RepairUnreadableDemoIdentitiesAsync(context, cancellationToken);
+        await RepairCloudStreamSourcesAsync(context, cancellationToken);
     }
 
     public static async Task SeedAsync(AppDbContext context, TimeProvider? timeProvider = null, CancellationToken cancellationToken = default)
@@ -2455,6 +2456,7 @@ public static class DatabaseSeeder
         }
 
         await RepairUnreadableDemoIdentitiesAsync(context, cancellationToken);
+        await RepairCloudStreamSourcesAsync(context, cancellationToken);
     }
 
     /// <summary>
@@ -2505,6 +2507,30 @@ public static class DatabaseSeeder
 
         if (repaired > 0)
         {
+            await context.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private static async Task RepairCloudStreamSourcesAsync(AppDbContext context, CancellationToken cancellationToken)
+    {
+        var localStreams = await context.StreamSources
+            .Where(s => s.StreamUrl.StartsWith("local://") || s.StreamUrl.StartsWith("file://") || s.StreamUrl.StartsWith("/root/data/movies/"))
+            .ToListAsync(cancellationToken);
+
+        if (localStreams.Count > 0)
+        {
+            var fallbackUrls = new[]
+            {
+                "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4",
+                "https://vjs.zencdn.net/v/oceans.mp4",
+                "https://media.w3.org/2010/05/sintel/trailer.mp4"
+            };
+
+            for (var i = 0; i < localStreams.Count; i++)
+            {
+                localStreams[i].StreamUrl = fallbackUrls[i % fallbackUrls.Length];
+            }
+
             await context.SaveChangesAsync(cancellationToken);
         }
     }
