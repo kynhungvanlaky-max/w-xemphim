@@ -9,6 +9,7 @@ using WebXemPhim.Server.Data;
 using WebXemPhim.Server.Hubs;
 using WebXemPhim.Server.Security;
 using WebXemPhim.Server.Services;
+using WebXemPhim.Server.Services.CloudStorage;
 using WebXemPhim.Shared.Security;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -112,6 +113,8 @@ builder.Services.AddSingleton<PublicUrlResolver>();
 builder.Services.AddSingleton<EpisodeThumbnailStorage>();
 builder.Services.AddSingleton<IPaymentWebhookVerifier, PaymentWebhookVerifier>();
 builder.Services.AddSingleton<IFieldEncryptor, FieldEncryptor>();
+builder.Services.Configure<CloudStorageOptions>(builder.Configuration.GetSection(CloudStorageOptions.SectionName));
+builder.Services.AddSingleton<ICloudStorageService, CloudflareR2StorageService>();
 builder.Services.AddScoped<IStreamSessionService, StreamSessionService>();
 builder.Services.AddHostedService<StreamSessionCleanupWorker>();
 builder.Services.AddAuthentication("Bearer")

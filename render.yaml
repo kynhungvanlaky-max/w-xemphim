@@ -36,6 +36,19 @@ services:
         value: "https://w-phim-api.onrender.com"
       - key: AllowedHosts
         value: "*"
+      # Cloudflare R2 / S3 Cloud Storage (Gốc lưu phim riêng tốc độ cao 0đ băng thông)
+      - key: CloudStorage__Provider
+        value: "CloudflareR2"
+      - key: CloudStorage__AccountId
+        sync: false
+      - key: CloudStorage__AccessKeyId
+        sync: false
+      - key: CloudStorage__SecretAccessKey
+        sync: false
+      - key: CloudStorage__BucketName
+        sync: false
+      - key: CloudStorage__PublicBaseUrl
+        sync: false
 
   # --------------------------------------------------------
   # Web Service 2: CinemaFlow Blazor Web Client
