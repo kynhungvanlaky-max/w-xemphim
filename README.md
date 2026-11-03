@@ -10,7 +10,7 @@
 
 **CinemaFlow (WebXemPhim)** là nền tảng streaming phim trực tuyến thế hệ mới, được kiến trúc hóa theo mô hình phân tách độc lập giữa **Server (ASP.NET Core Web API)** và **Client (Blazor Web App)** hoàn toàn bằng ngôn ngữ C# (.NET 10). 
 
-Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao cấp (**Cinema-grade Obsidian Palette**), tích hợp công nghệ phân phối luồng phát video bảo mật đa lớp (**Signed URLs, Concurrency Eviction, Anti-Hotlinking**), giao diện tối ưu hóa cảm ứng di động (**Mobile-First Bottom Dock**) và hỗ trợ triển khai linh hoạt từ máy chủ Cloud (VPS Docker) đến thiết bị di động cá nhân (biến điện thoại Android thành server phát Internet toàn cầu).
+Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao cấp (**Cinema-grade Obsidian Palette**), tích hợp công nghệ phân phối luồng phát video bảo mật đa lớp (**Signed URLs, Concurrency Eviction, Anti-Hotlinking**), giao diện tối ưu hóa cảm ứng di động (**Mobile-First Bottom Dock**) và hỗ trợ triển khai linh hoạt, an toàn trên máy chủ Cloud (VPS Linux Docker Compose, Caddy Reverse Proxy & Cloudflare Tunnel).
 
 ---
 
@@ -23,11 +23,10 @@ Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao c�
 2. [🏗️ Kiến Trúc Hệ Thống (Architecture)](#️-kiến-trúc-hệ-thống-architecture)
 3. [💻 Yêu Cầu Môi Trường (Prerequisites)](#-yêu-cầu-môi-trường-prerequisites)
 4. [🚀 Hướng Dẫn Cài Đặt & Chạy Cục Bộ (Local Development)](#-hướng-dẫn-cài-đặt--chạy-cục-bộ-local-development)
-5. [📱 Triển Khai Máy Chủ Trên Điện Thoại Android (Phone Host)](#-triển-khai-máy-chủ-trên-điện-thoại-android-phone-host)
-6. [🐳 Triển Khai Docker VPS & CI/CD (Production Deployment)](#-triển-khai-docker-vps--cicd-production-deployment)
-7. [🧪 Kiểm Thử Tự Động (1,351 Tests 100% PASS)](#-kiểm-thử-tự-động-1351-tests-100-pass)
-8. [🔑 Danh Sách Tài Khoản Thử Nghiệm (Seed Accounts)](#-danh-sách-tài-khoản-thử-nghiệm-seed-accounts)
-9. [📐 Quy Chuẩn Lập Trình & Thiết Kế (Standards & Discipline)](#-quy-chuẩn-lập-trình--thiết-kế-standards--discipline)
+5. [🐳 Triển Khai Docker VPS & CI/CD (Production Deployment)](#-triển-khai-docker-vps--cicd-production-deployment)
+6. [🧪 Kiểm Thử Tự Động (1,351 Tests 100% PASS)](#-kiểm-thử-tự-động-1351-tests-100-pass)
+7. [🔑 Danh Sách Tài Khoản Thử Nghiệm (Seed Accounts)](#-danh-sách-tài-khoản-thử-nghiệm-seed-accounts)
+8. [📐 Quy Chuẩn Lập Trình & Thiết Kế (Standards & Discipline)](#-quy-chuẩn-lập-trình--thiết-kế-standards--discipline)
 
 ---
 
@@ -130,7 +129,7 @@ WebXemPhim Solution
 │   └── mysql/                     # Scripts khởi tạo MariaDB/MySQL cho thiết bị nhúng
 ├── deploy/                        # Caddyfile, Dockerfile.server, Dockerfile.client, compose specs
 ├── docs/                          # Tài liệu kiến trúc, bảo mật stream, deployment, audit di động
-├── scripts/                       # Shell scripts chạy daemon, setup Android Termux, Quick Tunnel
+├── scripts/                       # Scripts hỗ trợ khởi chạy, seed dữ liệu và thiết lập tunnel phát triển
 ├── tests/
 │   └── WebXemPhim.Tests/          # 1,351 Unit & Integration Testcases (Testcontainers PostgreSQL)
 └── WebXemPhim.slnx                # Solution định dạng mới của .NET 10
@@ -192,52 +191,6 @@ dotnet run --project src/Client/WebXemPhim.Client/WebXemPhim.Client.csproj --lau
 - **Mở trình duyệt xem phim**: `http://localhost:5229`
 
 *(Gợi ý: Trên Windows, bạn có thể nhấp đúp vào `run-app.bat` để tự động bật cả Server và Client, và dùng `stop-app.bat` để tắt hệ thống).*
-
----
-
-## 📱 Triển Khai Máy Chủ Trên Điện Thoại Android (Phone Host)
-
-CinemaFlow sở hữu kiến trúc cực kỳ tối ưu, cho phép **biến trực tiếp một chiếc điện thoại Android phổ thông (như Samsung Galaxy A05, Xiaomi, Pixel...) thành máy chủ phát phim trực tuyến toàn cầu ra Internet** mà không cần mở port modem hay mua IP tĩnh.
-
-```mermaid
-flowchart LR
-    A["Khách Internet (4G/Wi-Fi Toàn cầu)"] -->|HTTPS Traffic| B["Cloudflare Quick Tunnel (*.trycloudflare.com)"]
-    B -->|Local Proxy| C["Caddy Web Server (:8080)"]
-    C -->|Reverse Proxy /api, /hubs| D["WebXemPhim.Server (:5085)"]
-    C -->|Reverse Proxy Blazor| E["WebXemPhim.Client (:5229)"]
-    D -->|Internal TCP| F["MariaDB Database (:3306)"]
-    D -->|Local Stream Read| G["Bộ nhớ thẻ nhớ /sdcard (MP4/HLS)"]
-```
-
-### Cách bước thiết lập máy chủ trên Android:
-1. **Cài đặt Termux** từ F-Droid hoặc GitHub.
-2. Mở Termux và cài đặt môi trường Ubuntu qua `proot-distro`:
-   ```bash
-   pkg update -y && pkg install -y proot-distro git curl wget
-   proot-distro install ubuntu
-   ```
-3. Kết nối máy tính với điện thoại qua cáp USB và mở chế độ USB Debugging (ADB).
-4. Đẩy tệp tự động hóa và các bản build ARM64 lên điện thoại:
-   ```powershell
-   dotnet publish src/Server/WebXemPhim.Server/WebXemPhim.Server.csproj -c Release -r linux-arm64 --no-self-contained -o ./publish-arm64/server
-   dotnet publish src/Client/WebXemPhim.Client/WebXemPhim.Client.csproj -c Release -r linux-arm64 --no-self-contained -o ./publish-arm64/client
-   
-   adb push scripts/phone_daemon.sh /sdcard/phone_daemon.sh
-   adb push publish-arm64/server/WebXemPhim.Server.dll /sdcard/WebXemPhim.Server.dll
-   adb push publish-arm64/client/WebXemPhim.Client.dll /sdcard/WebXemPhim.Client.dll
-   adb push publish-arm64/client/wwwroot /sdcard/client_wwwroot
-   ```
-5. Trong Termux trên điện thoại, chạy lệnh kích hoạt dịch vụ:
-   ```bash
-   bash /sdcard/phone_daemon.sh
-   ```
-6. Hệ thống sẽ:
-   - Tự động bật MariaDB nội bộ và cấp khóa bảo vệ DataProtection.
-   - Bật Server Web API (port 5085) và Client Blazor (port 5229).
-   - Bật Caddy Reverse Proxy (port 8080).
-   - Tự động cấp đường hầm **Cloudflare Quick Tunnel** bảo mật HTTPS toàn cầu dạng:
-     👉 `https://xxxx-xxxx-xxxx.trycloudflare.com`
-   - Bạn có thể gửi đường link này cho bạn bè ở bất kỳ đâu trên thế giới để cùng truy cập và xem phim mượt mà.
 
 ---
 

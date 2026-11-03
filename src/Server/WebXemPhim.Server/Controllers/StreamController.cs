@@ -1385,8 +1385,7 @@ public class StreamController(
         {
             fileName = Path.GetFileName(streamUrl[7..]);
         }
-        else if (streamUrl.StartsWith("/root/data/movies/", StringComparison.OrdinalIgnoreCase) ||
-                 streamUrl.StartsWith("/sdcard/movies/", StringComparison.OrdinalIgnoreCase))
+        else if (streamUrl.StartsWith("/root/data/movies/", StringComparison.OrdinalIgnoreCase))
         {
             fileName = Path.GetFileName(streamUrl);
         }
@@ -1404,7 +1403,6 @@ public class StreamController(
         string[] searchDirs = [
             configuredDir ?? string.Empty,
             "/root/data/movies",
-            "/sdcard/movies",
             Path.Combine(AppContext.BaseDirectory, "movies"),
             Path.Combine(Directory.GetCurrentDirectory(), "movies")
         ];
