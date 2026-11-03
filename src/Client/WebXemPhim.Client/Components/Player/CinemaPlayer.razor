@@ -410,7 +410,10 @@
     {
         if (string.IsNullOrWhiteSpace(url)) return false;
         var clean = url.Split('?')[0].Split('#')[0];
-        return clean.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase) || clean.Contains(".m3u8", StringComparison.OrdinalIgnoreCase);
+        return clean.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase)
+            || url.Contains(".m3u8", StringComparison.OrdinalIgnoreCase)
+            || url.Contains("hls=1", StringComparison.OrdinalIgnoreCase)
+            || url.Contains("/hls/", StringComparison.OrdinalIgnoreCase);
     }
 
     private string DisplayQualityLabel

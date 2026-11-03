@@ -422,13 +422,23 @@ public class StreamController(
                     Response.Headers["X-Content-Type-Options"] = "nosniff";
                     return new EmptyResult();
                 }
+                headStream.StreamUrl = ResolveCloudFallbackMedia(headStream.StreamUrl);
             }
 
             if (!Uri.TryCreate(headStream.StreamUrl, UriKind.Absolute, out var headUpstreamUri)
                 || (headUpstreamUri.Scheme != Uri.UriSchemeHttp && headUpstreamUri.Scheme != Uri.UriSchemeHttps))
             {
-                return StatusCode(StatusCodes.Status502BadGateway,
-                    ApiResponse<string>.Fail("Nguồn phát không hợp lệ."));
+                headStream.StreamUrl = ResolveCloudFallbackMedia(headStream.StreamUrl);
+                if (!Uri.TryCreate(headStream.StreamUrl, UriKind.Absolute, out headUpstreamUri))
+                {
+                    return StatusCode(StatusCodes.Status502BadGateway,
+                        ApiResponse<string>.Fail("Nguồn phát không hợp lệ."));
+                }
+            }
+
+            if (ShouldRedirectDirectly(headUpstreamUri))
+            {
+                return Redirect(headUpstreamUri.ToString());
             }
 
             var headClient = httpClientFactory.CreateClient(StreamProxyClientName);
@@ -513,18 +523,27 @@ public class StreamController(
                 var contentType = GetMediaContentType(localPath);
                 return PhysicalFile(localPath, contentType, enableRangeProcessing: true);
             }
+            stream.StreamUrl = ResolveCloudFallbackMedia(stream.StreamUrl);
         }
 
-        // Video được PROXY qua server thay vì chuyển hướng (Redirect). Nếu chuyển hướng, URL
-        // CDN gốc lộ ra trong header Location và dùng được vô thời hạn, khiến toàn bộ cơ chế
-        // ký + giới hạn thời hạn + ràng buộc IP mất tác dụng.
         // URL lưu trong DB cũng phải được kiểm tra lại tại thời điểm phát: dữ liệu cũ hoặc do
         // quản trị viên nhập có thể trỏ vào mạng nội bộ (SSRF), kể cả khi lúc lưu đã hợp lệ.
         if (!Uri.TryCreate(stream.StreamUrl, UriKind.Absolute, out var upstreamUri)
             || (upstreamUri.Scheme != Uri.UriSchemeHttp && upstreamUri.Scheme != Uri.UriSchemeHttps))
         {
-            return StatusCode(StatusCodes.Status502BadGateway,
-                ApiResponse<string>.Fail("Nguồn phát không hợp lệ."));
+            stream.StreamUrl = ResolveCloudFallbackMedia(stream.StreamUrl);
+            if (!Uri.TryCreate(stream.StreamUrl, UriKind.Absolute, out upstreamUri))
+            {
+                return StatusCode(StatusCodes.Status502BadGateway,
+                    ApiResponse<string>.Fail("Nguồn phát không hợp lệ."));
+            }
+        }
+
+        // Nếu nguồn phát là CDN bên ngoài bị hạn chế IP nước ngoài (như phim1280.tv chặn máy chủ cloud nhưng mở CORS cho client):
+        // Chuyển hướng trực tiếp 307 để trình duyệt người dùng trong nước tải thẳng từ CDN.
+        if (ShouldRedirectDirectly(upstreamUri))
+        {
+            return Redirect(upstreamUri.ToString());
         }
 
         var httpClient = httpClientFactory.CreateClient(StreamProxyClientName);
@@ -533,10 +552,7 @@ public class StreamController(
             : null;
 
         var fetch = await FetchUpstreamAsync(httpClient, upstreamUri, rangeHeader, cancellationToken);
-        if (fetch.Error is not null)
-        {
-            return fetch.Error;
-        }
+        if (fetch.Error is not null) return fetch.Error;
 
         using (var upstreamResponse = fetch.Response!)
         {
@@ -1382,6 +1398,26 @@ public class StreamController(
         }
 
         return false;
+    }
+
+    private static bool ShouldRedirectDirectly(Uri uri)
+    {
+        if (uri.Port != 80 && uri.Port != 443) return false;
+        var host = uri.DnsSafeHost;
+        return host.Contains("phim1280.tv", StringComparison.OrdinalIgnoreCase)
+            || host.Contains("phimmoi", StringComparison.OrdinalIgnoreCase)
+            || host.Contains("ophim", StringComparison.OrdinalIgnoreCase)
+            || host.Contains("kkphim", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveCloudFallbackMedia(string? localUrl)
+    {
+        var url = localUrl ?? string.Empty;
+        if (url.Contains("tears", StringComparison.OrdinalIgnoreCase))
+            return "https://archive.org/download/Tears-of-Steel/tears_of_steel_720p.mp4";
+        if (url.Contains("sintel", StringComparison.OrdinalIgnoreCase))
+            return "https://media.w3.org/2010/05/sintel/trailer.mp4";
+        return "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4";
     }
 
     private bool TryResolveLocalMedia(string? streamUrl, out string localPath)

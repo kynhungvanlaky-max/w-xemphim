@@ -3,7 +3,7 @@
     function isHlsStream(url) {
         if (!url || typeof url !== 'string') return false;
         const clean = url.split('?')[0].split('#')[0].toLowerCase();
-        return clean.endsWith('.m3u8') || url.includes('.m3u8');
+        return clean.endsWith('.m3u8') || url.includes('.m3u8') || url.includes('hls=1') || url.includes('/hls/');
     }
 
     window.CinemaPlayer = {
