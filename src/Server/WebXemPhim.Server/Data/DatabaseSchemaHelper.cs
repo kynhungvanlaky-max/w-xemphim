@@ -364,10 +364,17 @@ END $$;", cancellationToken);
 RETURNS text LANGUAGE plpgsql STABLE PARALLEL SAFE AS $$
 DECLARE
   v_text text;
+  v_unaccent_schema text;
 BEGIN
   v_text := coalesce(p_text, '');
-  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'unaccent') THEN
-    v_text := public.unaccent(v_text);
+  SELECT n.nspname INTO v_unaccent_schema
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE p.proname = 'unaccent'
+     AND p.pronargs = 1
+   LIMIT 1;
+  IF v_unaccent_schema IS NOT NULL THEN
+    EXECUTE format('SELECT %I.unaccent($1)', v_unaccent_schema) INTO v_text USING v_text;
   END IF;
   RETURN lower(regexp_replace(
            replace(replace(v_text, U&'\0110', 'D'), U&'\0111', 'd'),

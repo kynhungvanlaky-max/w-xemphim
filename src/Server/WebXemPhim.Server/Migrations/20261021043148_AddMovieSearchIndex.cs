@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -31,12 +31,18 @@ CREATE OR REPLACE FUNCTION webxemphim_normalize(p_text text)
 RETURNS text LANGUAGE plpgsql STABLE PARALLEL SAFE AS $$
 DECLARE
   v_text text;
+  v_unaccent_schema text;
 BEGIN
   v_text := coalesce(p_text, '');
-  -- The unaccent extension is optional: when it is missing the function still folds the
-  -- Vietnamese 'Đ' letter and lowercases the text.
-  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'unaccent') THEN
-    v_text := public.unaccent(v_text);
+  -- The unaccent extension is optional: dynamically resolve its schema if installed.
+  SELECT n.nspname INTO v_unaccent_schema
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE p.proname = 'unaccent'
+     AND p.pronargs = 1
+   LIMIT 1;
+  IF v_unaccent_schema IS NOT NULL THEN
+    EXECUTE format('SELECT %I.unaccent($1)', v_unaccent_schema) INTO v_text USING v_text;
   END IF;
   RETURN lower(regexp_replace(
            replace(replace(v_text, U&'\0110', 'D'), U&'\0111', 'd'),
