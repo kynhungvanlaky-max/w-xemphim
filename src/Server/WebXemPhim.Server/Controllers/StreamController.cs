@@ -12,6 +12,7 @@ using Microsoft.Extensions.Configuration;
 using WebXemPhim.Server.Data;
 using WebXemPhim.Server.Security;
 using WebXemPhim.Server.Services;
+using WebXemPhim.Server.Services.CloudStorage;
 using WebXemPhim.Shared.Enums;
 using WebXemPhim.Shared.Models;
 using WebXemPhim.Shared.Requests;
@@ -31,7 +32,8 @@ public class StreamController(
     IMemoryCache? cache = null,
     IStreamSegmentTokenProtector? segmentTokens = null,
     StreamOriginCircuitBreaker? circuitBreaker = null,
-    IConfiguration? configuration = null) : ControllerBase
+    IConfiguration? configuration = null,
+    ICloudStorageService? cloudStorage = null) : ControllerBase
 {
     /// <summary>Tên của HttpClient dùng để proxy video từ máy chủ nguồn.</summary>
     private const string StreamProxyClientName = "StreamProxy";
@@ -158,7 +160,8 @@ public class StreamController(
             clientIp,
             sessionId: sessionId,
             scope: PlaybackScope,
-            isHls: HlsManifestRewriter.LooksLikeHlsUrl(stream.StreamUrl));
+            isHls: HlsManifestRewriter.LooksLikeHlsUrl(stream.StreamUrl) ||
+                   (cloudStorage?.IsCloudStorageUrl(stream.StreamUrl) == true && stream.StreamUrl.Contains(".m3u8", StringComparison.OrdinalIgnoreCase)));
 
         return Ok(ApiResponse<SignedStreamDto>.Ok(signed));
     }
@@ -226,7 +229,8 @@ public class StreamController(
             clientIp,
             sessionId: sessionId,
             scope: PlaybackScope,
-            isHls: HlsManifestRewriter.LooksLikeHlsUrl(stream.StreamUrl));
+            isHls: HlsManifestRewriter.LooksLikeHlsUrl(stream.StreamUrl) ||
+                   (cloudStorage?.IsCloudStorageUrl(stream.StreamUrl) == true && stream.StreamUrl.Contains(".m3u8", StringComparison.OrdinalIgnoreCase)));
 
         return Ok(ApiResponse<SignedStreamDto>.Ok(signed));
     }
@@ -406,6 +410,16 @@ public class StreamController(
                 }
             }
 
+            // Ưu tiên: Phát từ Cloud Storage riêng (Cloudflare R2 / S3)
+            if (cloudStorage?.IsCloudStorageUrl(headStream.StreamUrl) == true)
+            {
+                var headR2Url = await cloudStorage.ResolvePlaybackUrlAsync(headStream.StreamUrl, cancellationToken: cancellationToken);
+                if (!string.IsNullOrWhiteSpace(headR2Url))
+                {
+                    return Redirect(headR2Url);
+                }
+            }
+
             if (TryResolveLocalMedia(headStream.StreamUrl, out var headLocalPath))
             {
                 var fileInfo = new FileInfo(headLocalPath);
@@ -514,6 +528,23 @@ public class StreamController(
             // Cookie là HttpOnly nên JavaScript không đọc được; URL cũ vẫn dùng được
             // sau khi exp nhờ cookie còn sống, miễn lease chưa bị thu hồi.
             SetPlaybackCookie(episodeId, sid, clientIp);
+        }
+
+        // Ưu tiên: Phát từ Cloud Storage riêng (Cloudflare R2 / S3)
+        if (cloudStorage?.IsCloudStorageUrl(stream.StreamUrl) == true)
+        {
+            var r2Url = await cloudStorage.ResolvePlaybackUrlAsync(stream.StreamUrl, cancellationToken: cancellationToken);
+            if (!string.IsNullOrWhiteSpace(r2Url))
+            {
+                if (HlsManifestRewriter.LooksLikeHlsUrl(r2Url))
+                {
+                    stream.StreamUrl = r2Url;
+                }
+                else
+                {
+                    return Redirect(r2Url);
+                }
+            }
         }
 
         if (TryResolveLocalMedia(stream.StreamUrl, out var localPath))

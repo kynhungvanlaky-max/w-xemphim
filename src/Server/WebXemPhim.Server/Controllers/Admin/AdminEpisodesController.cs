@@ -702,7 +702,9 @@ public sealed class AdminEpisodesController(
         string? streamUrl,
         CancellationToken cancellationToken = default)
     {
-        if (streamUrl?.StartsWith("local://", StringComparison.OrdinalIgnoreCase) == true)
+        if (streamUrl?.StartsWith("local://", StringComparison.OrdinalIgnoreCase) == true ||
+            streamUrl?.StartsWith("r2://", StringComparison.OrdinalIgnoreCase) == true ||
+            streamUrl?.StartsWith("s3://", StringComparison.OrdinalIgnoreCase) == true)
         {
             return (true, null);
         }
