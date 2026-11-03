@@ -92,6 +92,16 @@ public static class WebSecurityExtensions
         if (client)
         {
             var apiBaseUrl = config["ApiBaseUrl"];
+            if (!string.IsNullOrWhiteSpace(apiBaseUrl) &&
+                !apiBaseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !apiBaseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                apiBaseUrl = apiBaseUrl.Contains(".onrender.com", StringComparison.OrdinalIgnoreCase)
+                    ? $"https://{apiBaseUrl}"
+                    : $"http://{apiBaseUrl}";
+                config["ApiBaseUrl"] = apiBaseUrl;
+            }
+
             if (!Uri.TryCreate(apiBaseUrl, UriKind.Absolute, out var api))
                 throw new InvalidOperationException("Production ApiBaseUrl must use HTTPS.");
 

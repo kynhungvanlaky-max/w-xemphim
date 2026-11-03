@@ -78,6 +78,14 @@ builder.Services.Configure<GzipCompressionProviderOptions>(options =>
 
 // Configure HttpClient for Server REST API
 var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5085";
+if (!apiBaseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+    !apiBaseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+{
+    apiBaseUrl = apiBaseUrl.Contains(".onrender.com", StringComparison.OrdinalIgnoreCase)
+        ? $"https://{apiBaseUrl}"
+        : $"http://{apiBaseUrl}";
+    builder.Configuration["ApiBaseUrl"] = apiBaseUrl;
+}
 builder.Services.AddHttpClient<IMovieApiClient, MovieApiClient>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
