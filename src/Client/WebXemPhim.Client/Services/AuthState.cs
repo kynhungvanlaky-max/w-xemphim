@@ -36,7 +36,12 @@ public sealed class AuthState(IAccountApiClient apiClient, IAuthSessionStore? se
     public async Task<ApiResponse<AuthDto>?> VerifyMfaLoginAsync(VerifyMfaLoginRequest request) =>
         await ApplySessionAsync(await apiClient.VerifyMfaLoginAsync(request));
 
-    public Task InitializeAsync() => initialization ??= RestoreAsync();
+    public Task InitializeAsync(bool force = false)
+    {
+        if (force || (!IsAuthenticated && !HasSession))
+            initialization = null;
+        return initialization ??= RestoreAsync();
+    }
 
     private async Task RestoreAsync()
     {

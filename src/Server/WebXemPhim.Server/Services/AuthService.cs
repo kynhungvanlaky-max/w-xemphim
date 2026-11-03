@@ -479,11 +479,11 @@ public sealed class AuthService(
         return new UserDto
         {
             Id = user.Id,
-            FullName = user.FullName,
-            Email = user.Email,
+            FullName = !string.IsNullOrWhiteSpace(user.FullName) ? user.FullName : (!string.IsNullOrWhiteSpace(user.NormalizedEmail) ? user.NormalizedEmail : "Người dùng"),
+            Email = !string.IsNullOrWhiteSpace(user.Email) ? user.Email : user.NormalizedEmail,
             Membership = membership,
             VipExpiresAt = user.VipExpiresAtUtc,
-            Initials = GetInitials(user.FullName),
+            Initials = GetInitials(!string.IsNullOrWhiteSpace(user.FullName) ? user.FullName : user.NormalizedEmail),
             IsAdmin = await context.UserSecurity.AsNoTracking().AnyAsync(item => item.UserId == user.Id && item.IsAdmin),
             MfaEnabled = await context.MfaCredentials.AsNoTracking().AnyAsync(item => item.UserId == user.Id && item.Enabled)
         };
@@ -494,7 +494,7 @@ public sealed class AuthService(
     {
         var trimmed = email.Trim().ToLowerInvariant();
         if (trimmed == "admin") return "admin@cinemaflow.vn";
-        if (trimmed == "demo") return "demo@cinemaflow.vn";
+        if (trimmed == "demo" || trimmed == "demo@cinemaflow.vn" || trimmed == "vip") return "vip@cinemaflow.vn";
         return trimmed;
     }
     private static string GetInitials(string fullName)
