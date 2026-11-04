@@ -45,6 +45,7 @@ public sealed class WatchApiClient(
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
         }
+        AttachClientIp(request);
         using var response = await client.SendAsync(request);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         response.EnsureSuccessStatusCode();

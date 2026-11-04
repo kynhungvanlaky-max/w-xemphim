@@ -41,6 +41,8 @@ services:
         value: "172.16.0.0/12"
       - key: Security__KnownProxyNetworks__2
         value: "192.168.0.0/16"
+      - key: Security__KnownProxyNetworks__3
+        value: "127.0.0.0/8"
       - key: Security__AllowedOrigins__0
         value: "https://w-phim-client.onrender.com"
       - key: Security__PublicApiBaseUrl
@@ -87,6 +89,8 @@ services:
         value: "172.16.0.0/12"
       - key: Security__KnownProxyNetworks__2
         value: "192.168.0.0/16"
+      - key: Security__KnownProxyNetworks__3
+        value: "127.0.0.0/8"
       - key: Security__AllowedOrigins__0
         value: "https://w-phim-client.onrender.com"
       - key: Security__PublicApiBaseUrl

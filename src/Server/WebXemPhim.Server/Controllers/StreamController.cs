@@ -98,7 +98,7 @@ public class StreamController(
             return Unauthorized(ApiResponse<SignedStreamDto>.Fail("Không thể xác thực danh tính người dùng."));
         }
 
-        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+        var clientIp = ApiRateLimits.GetClientIpAddress(HttpContext);
         var baseUrl = publicUrlResolver.Resolve(Request);
 
         // Nếu client đã có lease (do CinemaHub cấp), xác minh lease thuộc đúng người dùng
@@ -220,7 +220,7 @@ public class StreamController(
                 ApiResponse<SignedStreamDto>.Fail("Phiên phát không khớp với tập phim được yêu cầu."));
         }
 
-        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+        var clientIp = ApiRateLimits.GetClientIpAddress(HttpContext);
         var baseUrl = publicUrlResolver.Resolve(Request);
         var signed = urlSigner.Sign(
             baseUrl,
@@ -287,7 +287,7 @@ public class StreamController(
         [FromQuery] string? kid,
         CancellationToken cancellationToken)
     {
-        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+        var clientIp = ApiRateLimits.GetClientIpAddress(HttpContext);
         var validation = urlSigner.Validate(
             episodeId,
             pos,
@@ -316,29 +316,94 @@ public class StreamController(
             validation = StreamValidationResult.Success();
         }
         else if (!validation.IsValid
-            && validation.Status == StreamValidationStatus.IpMismatch
-            && !string.IsNullOrWhiteSpace(sid)
-            && string.Equals(scope, PlaybackScope, StringComparison.Ordinal))
+            && validation.Status == StreamValidationStatus.IpMismatch)
         {
-            var lease = await streamSessionService.GetActiveLeaseAsync(sid, cancellationToken);
-            if (lease != null && lease.EpisodeId == episodeId)
+            if (!string.IsNullOrWhiteSpace(sid) && string.Equals(scope, PlaybackScope, StringComparison.Ordinal))
             {
-                // Kiểm tra xem chữ ký có hợp lệ với:
-                // 1. IP đã lưu trong phiên lease (được gán lúc client tạo lease)
-                // 2. Hoặc Loopback 127.0.0.1 / ::1
-                var leaseIp = lease.IpAddress ?? string.Empty;
-                var leaseIpValid = !string.IsNullOrWhiteSpace(leaseIp) && urlSigner.Validate(
+                var lease = await streamSessionService.GetActiveLeaseAsync(sid, cancellationToken);
+                if (lease != null && lease.EpisodeId == episodeId)
+                {
+                    // Kiểm tra xem chữ ký có hợp lệ với:
+                    // 1. IP đã lưu trong phiên lease (được gán lúc client tạo lease)
+                    // 2. IP thực tế của client (clientIp)
+                    // 3. Hoặc Loopback 127.0.0.1 / ::1 / WildcardIp
+                    var leaseIp = lease.IpAddress ?? string.Empty;
+                    var leaseIpValid = !string.IsNullOrWhiteSpace(leaseIp) && urlSigner.Validate(
+                        episodeId,
+                        pos,
+                        exp,
+                        ip ?? string.Empty,
+                        sig ?? string.Empty,
+                        leaseIp,
+                        sessionId: sid,
+                        scope: scope,
+                        keyId: kid).IsValid;
+
+                    var clientIpValid = leaseIpValid || urlSigner.Validate(
+                        episodeId,
+                        pos,
+                        exp,
+                        ip ?? string.Empty,
+                        sig ?? string.Empty,
+                        clientIp,
+                        sessionId: sid,
+                        scope: scope,
+                        keyId: kid).IsValid;
+
+                    var loopbackV4Valid = clientIpValid || urlSigner.Validate(
+                        episodeId,
+                        pos,
+                        exp,
+                        ip ?? string.Empty,
+                        sig ?? string.Empty,
+                        "127.0.0.1",
+                        sessionId: sid,
+                        scope: scope,
+                        keyId: kid).IsValid;
+
+                    var loopbackV6Valid = loopbackV4Valid || urlSigner.Validate(
+                        episodeId,
+                        pos,
+                        exp,
+                        ip ?? string.Empty,
+                        sig ?? string.Empty,
+                        "::1",
+                        sessionId: sid,
+                        scope: scope,
+                        keyId: kid).IsValid;
+
+                    var wildcardValid = loopbackV6Valid || urlSigner.Validate(
+                        episodeId,
+                        pos,
+                        exp,
+                        ip ?? string.Empty,
+                        sig ?? string.Empty,
+                        StreamUrlSigner.WildcardIp,
+                        sessionId: sid,
+                        scope: scope,
+                        keyId: kid).IsValid;
+
+                    if (leaseIpValid || clientIpValid || loopbackV4Valid || loopbackV6Valid || wildcardValid)
+                    {
+                        validation = StreamValidationResult.Success();
+                    }
+                }
+            }
+            else if (string.IsNullOrWhiteSpace(sid))
+            {
+                // Nguồn catalog công khai không có sid: kiểm tra nếu URL hợp lệ với WildcardIp hoặc loopback
+                var wildcardValid = urlSigner.Validate(
                     episodeId,
                     pos,
                     exp,
                     ip ?? string.Empty,
                     sig ?? string.Empty,
-                    leaseIp,
+                    StreamUrlSigner.WildcardIp,
                     sessionId: sid,
                     scope: scope,
                     keyId: kid).IsValid;
 
-                var loopbackV4Valid = leaseIpValid || urlSigner.Validate(
+                var loopbackValid = wildcardValid || urlSigner.Validate(
                     episodeId,
                     pos,
                     exp,
@@ -349,18 +414,7 @@ public class StreamController(
                     scope: scope,
                     keyId: kid).IsValid;
 
-                var loopbackV6Valid = loopbackV4Valid || urlSigner.Validate(
-                    episodeId,
-                    pos,
-                    exp,
-                    ip ?? string.Empty,
-                    sig ?? string.Empty,
-                    "::1",
-                    sessionId: sid,
-                    scope: scope,
-                    keyId: kid).IsValid;
-
-                if (leaseIpValid || loopbackV4Valid || loopbackV6Valid)
+                if (wildcardValid || loopbackValid)
                 {
                     validation = StreamValidationResult.Success();
                 }
@@ -709,7 +763,7 @@ public class StreamController(
             ?? (original is null ? Request.Path.Value ?? string.Empty : string.Empty);
         var originalQuery = originalUri?.Query ?? Request.QueryString.Value ?? string.Empty;
         var query = QueryHelpers.ParseQuery(originalQuery);
-        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+        var clientIp = ApiRateLimits.GetClientIpAddress(HttpContext);
 
         if (originalPath.StartsWith("/api/stream/segment/", StringComparison.OrdinalIgnoreCase)
             || originalPath.StartsWith("/api/stream/manifest/", StringComparison.OrdinalIgnoreCase))
@@ -775,7 +829,7 @@ public class StreamController(
         string? sidQuery,
         CancellationToken cancellationToken)
     {
-        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+        var clientIp = ApiRateLimits.GetClientIpAddress(HttpContext);
         var read = _segmentTokens.Read(token, kind);
         var error = await ValidateHlsTokenAsync(read, sidQuery, clientIp, cancellationToken);
         if (error is not null) return error;

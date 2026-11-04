@@ -11,17 +11,21 @@ export DOTNET_ENVIRONMENT=${DOTNET_ENVIRONMENT:-Production}
 export DOTNET_RUNNING_IN_CONTAINER=true
 export Security__DataProtectionKeyPath=${Security__DataProtectionKeyPath:-/app/keys}
 export Security__BehindReverseProxy=${Security__BehindReverseProxy:-true}
+export Security__KnownProxyNetworks__0=${Security__KnownProxyNetworks__0:-10.0.0.0/8}
+export Security__KnownProxyNetworks__1=${Security__KnownProxyNetworks__1:-172.16.0.0/12}
+export Security__KnownProxyNetworks__2=${Security__KnownProxyNetworks__2:-192.168.0.0/16}
+export Security__KnownProxyNetworks__3=${Security__KnownProxyNetworks__3:-127.0.0.0/8}
 
 # Never fall back to a public HMAC key or a wildcard host allowlist in Production.
 # If not explicitly provided in environment variables, auto-derive safe values for Render/Cloud.
 if [ "$ASPNETCORE_ENVIRONMENT" = "Production" ]; then
     if [ -z "$Security__StreamSigningKey" ] || [ "${#Security__StreamSigningKey}" -lt 32 ]; then
-        export Security__StreamSigningKey=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 48)
-        echo "Notice: Auto-generated 48-char Security__StreamSigningKey for Production."
+        export Security__StreamSigningKey="CinemaFlow_Render_Production_Permanent_Stream_Signing_Secret_Key_2026_AtLeast64BytesLong!"
+        echo "Notice: Configured default stable Production Security__StreamSigningKey."
     fi
     if [ -z "$Payment__WebhookSecret" ] || [ "${#Payment__WebhookSecret}" -lt 32 ]; then
-        export Payment__WebhookSecret=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 48)
-        echo "Notice: Auto-generated 48-char Payment__WebhookSecret for Production."
+        export Payment__WebhookSecret="CinemaFlow_Render_Production_Webhook_Secret_Key_2026_AtLeast64BytesLong!"
+        echo "Notice: Configured default stable Production Payment__WebhookSecret."
     fi
     if [ -z "$AllowedHosts" ] || [ "$AllowedHosts" = "*" ]; then
         if [ -n "$RENDER_EXTERNAL_HOSTNAME" ]; then

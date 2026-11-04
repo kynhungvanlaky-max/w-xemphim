@@ -79,6 +79,7 @@ public interface IStreamUrlSigner
 public sealed class StreamUrlSigner : IStreamUrlSigner
 {
     public const string DefaultSigningKey = "CinemaFlow_Secure_Stream_HMAC_Secret_Key_2026_AtLeast32Bytes!";
+    public const string WildcardIp = "*";
     private const int DefaultTtlMinutes = 10;
     private const int DefaultClockSkewSeconds = 30;
 
@@ -295,9 +296,18 @@ public sealed class StreamUrlSigner : IStreamUrlSigner
         }
 
         // 3. Validate client IP binding
+        // Cho phép các URL ký công khai/danh mục dùng WildcardIp (*) mở cho mọi client IP.
+        var wildcardHash = ComputeIpHash(WildcardIp);
+        var wildcardBytes = Encoding.UTF8.GetBytes(wildcardHash);
+        var actualIpBytes = Encoding.UTF8.GetBytes(ipHash.ToLowerInvariant());
+
+        if (wildcardBytes.Length == actualIpBytes.Length && CryptographicOperations.FixedTimeEquals(wildcardBytes, actualIpBytes))
+        {
+            return StreamValidationResult.Success();
+        }
+
         var expectedIpHash = ComputeIpHash(clientIp);
         var expectedIpBytes = Encoding.UTF8.GetBytes(expectedIpHash);
-        var actualIpBytes = Encoding.UTF8.GetBytes(ipHash.ToLowerInvariant());
 
         if (expectedIpBytes.Length != actualIpBytes.Length || !CryptographicOperations.FixedTimeEquals(expectedIpBytes, actualIpBytes))
         {
@@ -422,6 +432,11 @@ public sealed class StreamUrlSigner : IStreamUrlSigner
         if (string.IsNullOrWhiteSpace(ip)) return "127.0.0.1";
 
         var clean = ip.Trim();
+        if (string.Equals(clean, WildcardIp, StringComparison.Ordinal))
+        {
+            return WildcardIp;
+        }
+
         // Kestrel/Docker có thể báo IPv4 dưới dạng IPv4-mapped IPv6
         // (::ffff:172.18.0.1). Nếu không quy đổi, hash lúc ký (từ X-Forwarded-For
         // đã chuẩn hoá) sẽ khác hash lúc phát (RemoteIpAddress thô) và mọi
