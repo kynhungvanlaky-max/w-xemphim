@@ -5,6 +5,7 @@ using WebXemPhim.Server.Security;
 using WebXemPhim.Server.Services;
 using WebXemPhim.Shared.Enums;
 using WebXemPhim.Shared.Models;
+using WebXemPhim.Shared.Security;
 
 namespace WebXemPhim.Server.Data;
 
@@ -1487,6 +1488,257 @@ public static class DatabaseSeeder
                 "/images/movies/movie-40-backdrop.webp",
                 "/images/movies/movie-40-backdrop.webp",
                 "/images/movies/movie-40-backdrop.webp")
+        },
+
+        // ==========================================
+        // 41. HƯỚNG DẪN CÀI GIAO DIỆN SẠCH TIVI ANDROID (185 MB)
+        // ==========================================
+        new()
+        {
+            Id = 41,
+            Title = "Hướng Dẫn Cài Giao Diện Sạch Tivi Android",
+            OriginalTitle = "Clean UI & Debloat Android TV - No Laptop AI",
+            Slug = "huong-dan-cai-giao-dien-sach-tivi-android",
+            Overview = "Video hướng dẫn thực tế cài giao diện sạch (Clean UI), xoá ứng dụng rác cho Android TV cực dễ dàng mà không cần dùng đến laptop hay AI. Tối ưu bộ nhớ, loại bỏ quảng cáo và giúp tivi hoạt động mượt mà.",
+            PosterUrl = "/images/movies/movie-1-poster.webp",
+            BackdropUrl = "/images/movies/movie-1-backdrop.webp",
+            TrailerUrl = "https://www.youtube.com/watch?v=Way9Dexny3w",
+            Rating = 9.8,
+            VoteCount = 128500,
+            ReleaseYear = 2026,
+            DurationMinutes = 25,
+            AgeRating = "All",
+            Quality = "1080p FHD",
+            Type = MovieType.Movie,
+            Genres = ["Công Nghệ", "Khoa Học Viễn Tưởng"],
+            Country = "Việt Nam",
+            ViewCount = 2500000,
+            IsTrending = true,
+            IsFeatured = true,
+            Director = "Kỳ Như",
+            Cast = ["Công Nghệ TV", "Hướng Dẫn Android", "Setup Clean UI"],
+            TotalEpisodes = 1,
+            CurrentEpisode = 1,
+            Episodes =
+            [
+                new()
+                {
+                    Id = 4101,
+                    MovieId = 41,
+                    EpisodeNumber = 1,
+                    Title = "Bản Hướng Dẫn Chi Tiết (185 MB)",
+                    DurationMinutes = 25,
+                    ThumbnailUrl = "/images/movies/movie-1-backdrop.webp",
+                    Overview = "Hướng dẫn từng bước cài đặt Clean UI và xoá app rác Android TV.",
+                    Streams =
+                    [
+                        new() { ServerName = "VIP 1 (R2 Tivi Android - 185MB)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/Hu%CC%9Bo%CC%81ng%20Da%CC%82%CC%83n%20Ca%CC%80i%20Giao%20Die%CC%A3%CC%82n%20Sa%CC%A3ch%2C%20Xoa%CC%81%20App%20Ra%CC%81c%20Cho%20Tivi%20Android%20Cu%CC%9B%CC%A3c%20De%CC%82%CC%83%20-%20Kho%CC%82ng%20Ca%CC%82%CC%80n%20Laptop%2C%20AI%21.mp4", Position = 1 },
+                        new() { ServerName = "Hydra CDN (R2 Tivi Android)", ServerType = StreamServerType.HydraCdn, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/Hu%CC%9Bo%CC%81ng%20Da%CC%82%CC%83n%20Ca%CC%80i%20Giao%20Die%CC%A3%CC%82n%20Sa%CC%A3ch%2C%20Xoa%CC%81%20App%20Ra%CC%81c%20Cho%20Tivi%20Android%20Cu%CC%9B%CC%A3c%20De%CC%82%CC%83%20-%20Kho%CC%82ng%20Ca%CC%82%CC%80n%20Laptop%2C%20AI%21.mp4", Position = 8 },
+                        new() { ServerName = "Direct Backup (R2 Tivi Android)", ServerType = StreamServerType.BackupStream, Quality = "720p HD", StreamUrl = "r2://webxemphim-movies/Hu%CC%9Bo%CC%81ng%20Da%CC%82%CC%83n%20Ca%CC%80i%20Giao%20Die%CC%A3%CC%82n%20Sa%CC%A3ch%2C%20Xoa%CC%81%20App%20Ra%CC%81c%20Cho%20Tivi%20Android%20Cu%CC%9B%CC%A3c%20De%CC%82%CC%83%20-%20Kho%CC%82ng%20Ca%CC%82%CC%80n%20Laptop%2C%20AI%21.mp4", Position = 11 }
+                    ]
+                }
+            ]
+        },
+
+        // ==========================================
+        // 42. XU HƯỚNG VIỆC LÀM HÀ NAM 2026 (12.6 MB)
+        // ==========================================
+        new()
+        {
+            Id = 42,
+            Title = "Xu Hướng Việc Làm Hà Nam 2026",
+            OriginalTitle = "Trending TikTok Jobs Ha Nam 2026",
+            Slug = "xu-huong-viec-lam-ha-nam-2026",
+            Overview = "Tổng hợp clip xu hướng TikTok nổi bật năm 2026 về tìm kiếm việc làm, giới thiệu việc làm và các cơ hội nghề nghiệp tại Hà Nam.",
+            PosterUrl = "/images/movies/movie-2-poster.webp",
+            BackdropUrl = "/images/movies/movie-2-backdrop.webp",
+            TrailerUrl = "https://www.youtube.com/watch?v=Way9Dexny3w",
+            Rating = 9.5,
+            VoteCount = 89000,
+            ReleaseYear = 2026,
+            DurationMinutes = 15,
+            AgeRating = "All",
+            Quality = "1080p FHD",
+            Type = MovieType.Movie,
+            Genres = ["Hành Động", "Phiêu Lưu"],
+            Country = "Việt Nam",
+            ViewCount = 1800000,
+            IsTrending = true,
+            IsFeatured = true,
+            Director = "TikTok Creator",
+            Cast = ["TikTok Trend", "Hà Nam 2026", "Việc Làm"],
+            TotalEpisodes = 1,
+            CurrentEpisode = 1,
+            Episodes =
+            [
+                new()
+                {
+                    Id = 4201,
+                    MovieId = 42,
+                    EpisodeNumber = 1,
+                    Title = "Video Xu Hướng TikTok (12.6 MB)",
+                    DurationMinutes = 15,
+                    ThumbnailUrl = "/images/movies/movie-2-backdrop.webp",
+                    Overview = "Video clip ngắn xu hướng tuyển dụng việc làm Hà Nam 2026.",
+                    Streams =
+                    [
+                        new() { ServerName = "VIP 1 (R2 TikTok - 12.6MB)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/%23xuhuong%20%23xuhuongtiktok%20%23xuhuongtiktok2026%20%23vieclam%20%23vieclamhanam%20.mp4", Position = 1 },
+                        new() { ServerName = "Hydra CDN (R2 TikTok)", ServerType = StreamServerType.HydraCdn, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/%23xuhuong%20%23xuhuongtiktok%20%23xuhuongtiktok2026%20%23vieclam%20%23vieclamhanam%20.mp4", Position = 8 },
+                        new() { ServerName = "Direct Backup (R2 TikTok)", ServerType = StreamServerType.BackupStream, Quality = "720p HD", StreamUrl = "r2://webxemphim-movies/%23xuhuong%20%23xuhuongtiktok%20%23xuhuongtiktok2026%20%23vieclam%20%23vieclamhanam%20.mp4", Position = 11 }
+                    ]
+                }
+            ]
+        },
+
+        // ==========================================
+        // 43. TUYỂN TẬP VIDEO MP4 ĐẶC SẮC (3.9 MB)
+        // ==========================================
+        new()
+        {
+            Id = 43,
+            Title = "Tuyển Tập Video MP4 Đặc Sắc",
+            OriginalTitle = "Featured Video Short (Video.mp4)",
+            Slug = "tuyen-tap-video-mp4-dac-sac",
+            Overview = "Trích đoạn clip ngắn chất lượng cao từ kho lưu trữ đám mây cá nhân Cloudflare R2.",
+            PosterUrl = "/images/movies/movie-3-poster.webp",
+            BackdropUrl = "/images/movies/movie-3-backdrop.webp",
+            TrailerUrl = "https://www.youtube.com/watch?v=Way9Dexny3w",
+            Rating = 9.2,
+            VoteCount = 64000,
+            ReleaseYear = 2026,
+            DurationMinutes = 5,
+            AgeRating = "All",
+            Quality = "1080p FHD",
+            Type = MovieType.Movie,
+            Genres = ["Hành Động", "Kịch Tính"],
+            Country = "Việt Nam",
+            ViewCount = 1200000,
+            IsTrending = true,
+            IsFeatured = false,
+            Director = "CinemaFlow Studio",
+            Cast = ["Video R2", "Cloudflare Storage", "Short Feature"],
+            TotalEpisodes = 1,
+            CurrentEpisode = 1,
+            Episodes =
+            [
+                new()
+                {
+                    Id = 4301,
+                    MovieId = 43,
+                    EpisodeNumber = 1,
+                    Title = "Clip Ngắn Đặc Sắc (3.9 MB)",
+                    DurationMinutes = 5,
+                    ThumbnailUrl = "/images/movies/movie-3-backdrop.webp",
+                    Overview = "Clip video ngắn tuyển chọn chất lượng cao.",
+                    Streams =
+                    [
+                        new() { ServerName = "VIP 1 (R2 Video.mp4 - 3.9MB)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/Video.mp4", Position = 1 },
+                        new() { ServerName = "Hydra CDN (R2 Video.mp4)", ServerType = StreamServerType.HydraCdn, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/Video.mp4", Position = 8 },
+                        new() { ServerName = "Direct Backup (R2 Video.mp4)", ServerType = StreamServerType.BackupStream, Quality = "720p HD", StreamUrl = "r2://webxemphim-movies/Video.mp4", Position = 11 }
+                    ]
+                }
+            ]
+        },
+
+        // ==========================================
+        // 44. ĐIỆN ẢNH CHỌN LỌC (PLAY MP4 - 72.8 MB)
+        // ==========================================
+        new()
+        {
+            Id = 44,
+            Title = "Điện Ảnh Chọn Lọc (Play MP4)",
+            OriginalTitle = "Curated Cinema Feature (play.mp4)",
+            Slug = "dien-anh-chon-loc-play-mp4",
+            Overview = "Bản phim chiếu rạp chuẩn điện ảnh 72.8 MB được lưu trữ trực tiếp trên bucket cá nhân Cloudflare R2 tốc độ cao.",
+            PosterUrl = "/images/movies/movie-4-poster.webp",
+            BackdropUrl = "/images/movies/movie-4-backdrop.webp",
+            TrailerUrl = "https://www.youtube.com/watch?v=Way9Dexny3w",
+            Rating = 9.7,
+            VoteCount = 195000,
+            ReleaseYear = 2026,
+            DurationMinutes = 45,
+            AgeRating = "16+",
+            Quality = "4K Ultra HD",
+            Type = MovieType.Movie,
+            Genres = ["Hành Động", "Khoa Học Viễn Tưởng", "Kịch Tính"],
+            Country = "Âu Mỹ",
+            ViewCount = 3400000,
+            IsTrending = true,
+            IsFeatured = true,
+            Director = "CinemaFlow Master",
+            Cast = ["Cinema Master", "Play Feature", "Direct Stream"],
+            TotalEpisodes = 1,
+            CurrentEpisode = 1,
+            Episodes =
+            [
+                new()
+                {
+                    Id = 4401,
+                    MovieId = 44,
+                    EpisodeNumber = 1,
+                    Title = "Bản Chiếu Rạp (play.mp4)",
+                    DurationMinutes = 45,
+                    ThumbnailUrl = "/images/movies/movie-4-backdrop.webp",
+                    Overview = "Bản phim chuẩn điện ảnh lưu trữ trên Cloudflare R2.",
+                    Streams =
+                    [
+                        new() { ServerName = "VIP 1 (R2 play.mp4 - 72.8MB)", ServerType = StreamServerType.VipFastServer, Quality = "4K Ultra HD", StreamUrl = "r2://webxemphim-movies/play.mp4", Position = 1 },
+                        new() { ServerName = "VIP 1 (R2 play.mp4 - 72.8MB)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/play.mp4", Position = 2 },
+                        new() { ServerName = "Hydra CDN (R2 play.mp4)", ServerType = StreamServerType.HydraCdn, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/play.mp4", Position = 8 },
+                        new() { ServerName = "Direct Backup (R2 play.mp4)", ServerType = StreamServerType.BackupStream, Quality = "720p HD", StreamUrl = "r2://webxemphim-movies/play.mp4", Position = 11 }
+                    ]
+                }
+            ]
+        },
+
+        // ==========================================
+        // 45. MEYO - HALF ASLEEP (4.2 MB)
+        // ==========================================
+        new()
+        {
+            Id = 45,
+            Title = "Meyo - Half Asleep (Lyrics Official)",
+            OriginalTitle = "Meyo - Half Asleep (Lyrics)",
+            Slug = "meyo-half-asleep-lyrics",
+            Overview = "Tác phẩm âm nhạc Meyo - Half Asleep với giai điệu sâu lắng và lời bài hát đầy cảm xúc.",
+            PosterUrl = "/images/movies/movie-5-poster.webp",
+            BackdropUrl = "/images/movies/movie-5-backdrop.webp",
+            TrailerUrl = "https://www.youtube.com/watch?v=Way9Dexny3w",
+            Rating = 9.4,
+            VoteCount = 48000,
+            ReleaseYear = 2026,
+            DurationMinutes = 4,
+            AgeRating = "All",
+            Quality = "Lossless Audio",
+            Type = MovieType.Movie,
+            Genres = ["Âm Nhạc"],
+            Country = "Quốc Tế",
+            ViewCount = 890000,
+            IsTrending = false,
+            IsFeatured = false,
+            Director = "Meyo",
+            Cast = ["Meyo", "Vocal Artist", "Music Producer"],
+            TotalEpisodes = 1,
+            CurrentEpisode = 1,
+            Episodes =
+            [
+                new()
+                {
+                    Id = 4501,
+                    MovieId = 45,
+                    EpisodeNumber = 1,
+                    Title = "Bản Thu Gốc Meyo (4.2 MB)",
+                    DurationMinutes = 4,
+                    ThumbnailUrl = "/images/movies/movie-5-backdrop.webp",
+                    Overview = "Bản thu âm thanh chất lượng cao kèm lời bài hát.",
+                    Streams =
+                    [
+                        new() { ServerName = "VIP 1 (R2 Meyo MP3 - 4.2MB)", ServerType = StreamServerType.VipFastServer, Quality = "Lossless Audio", StreamUrl = "r2://webxemphim-movies/Meyo%20-%20Half%20Asleep%20%28Lyrics%29.mp3", Position = 1 },
+                        new() { ServerName = "Hydra CDN (R2 Meyo MP3)", ServerType = StreamServerType.HydraCdn, Quality = "Lossless Audio", StreamUrl = "r2://webxemphim-movies/Meyo%20-%20Half%20Asleep%20%28Lyrics%29.mp3", Position = 8 },
+                        new() { ServerName = "Direct Backup (R2 Meyo MP3)", ServerType = StreamServerType.BackupStream, Quality = "320kbps Audio", StreamUrl = "r2://webxemphim-movies/Meyo%20-%20Half%20Asleep%20%28Lyrics%29.mp3", Position = 11 }
+                    ]
+                }
+            ]
         }
     ];
 
@@ -1555,7 +1807,9 @@ public static class DatabaseSeeder
         new() { Id = 12, Name = "Lãng Mạn", Slug = "lang-man" },
         new() { Id = 13, Name = "Gia Đình", Slug = "gia-dinh" },
         new() { Id = 14, Name = "Hoạt Hình", Slug = "hoat-hinh" },
-        new() { Id = 15, Name = "Chiến Tranh", Slug = "chien-tranh" }
+        new() { Id = 15, Name = "Chiến Tranh", Slug = "chien-tranh" },
+        new() { Id = 16, Name = "Công Nghệ", Slug = "cong-nghe" },
+        new() { Id = 17, Name = "Âm Nhạc", Slug = "am-nhac" }
     ];
 
     static DatabaseSeeder()
@@ -1859,7 +2113,13 @@ public static class DatabaseSeeder
         return movies.Count;
     }
 
-    public static async Task SeedEssentialAsync(AppDbContext context, TimeProvider? timeProvider = null, CancellationToken cancellationToken = default)
+    public static async Task SeedEssentialAsync(
+        AppDbContext context,
+        TimeProvider? timeProvider = null,
+        CancellationToken cancellationToken = default,
+        string? bootstrapAdminEmail = null,
+        string? bootstrapAdminPassword = null,
+        bool seedDefaultCoupons = false)
     {
         var provider = timeProvider ?? TimeProvider.System;
         var now = provider.GetUtcNow().UtcDateTime;
@@ -1915,8 +2175,10 @@ public static class DatabaseSeeder
             await context.SaveChangesAsync(cancellationToken);
         }
 
-        // 3. Seed default coupons
-        if (!await context.Coupons.AnyAsync(cancellationToken))
+        // 3. Seed default coupons only when explicitly requested. Coupons are business
+        // promotions, not infrastructure: a production deployment must never silently create
+        // publicly known discount codes.
+        if (seedDefaultCoupons && !await context.Coupons.AnyAsync(cancellationToken))
         {
             var validUntil = now.AddYears(5);
             context.Coupons.AddRange(
@@ -1940,27 +2202,37 @@ public static class DatabaseSeeder
             await context.SaveChangesAsync(cancellationToken);
         }
 
-        // 4. Seed initial Admin account if Users table is empty
+        // 4. Seed the first administrator only when explicit bootstrap credentials are supplied.
+        // Never create a well-known admin/password pair in a production database.
         if (!await context.Users.AnyAsync(cancellationToken))
         {
-            var (saltAdmin, hashAdmin) = HashPassword("Password123!");
-            var adminUser = new UserEntity
+            var bootstrapEmail = bootstrapAdminEmail?.Trim().ToLowerInvariant();
+            if (!string.IsNullOrWhiteSpace(bootstrapEmail) && !string.IsNullOrWhiteSpace(bootstrapAdminPassword))
             {
-                Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
-                FullName = "Quản Trị Viên",
-                Email = "admin@cinemaflow.vn",
-                NormalizedEmail = "admin@cinemaflow.vn",
-                EmailLookupHash = FieldEncryptor.Current.ComputeLookupHash("admin@cinemaflow.vn"),
-                PasswordSalt = saltAdmin,
-                PasswordHash = hashAdmin,
-                Membership = MembershipTier.Vip,
-                VipExpiresAtUtc = now.AddYears(1),
-                CreatedAtUtc = now
-            };
+                if (bootstrapAdminPassword.Length < 12 || PasswordPolicyValidator.IsCommonOrWeak(bootstrapAdminPassword))
+                {
+                    throw new InvalidOperationException("Database:BootstrapAdminPassword must be at least 12 characters long and must not be a common or default password.");
+                }
 
-            context.Users.Add(adminUser);
-            context.UserSecurity.Add(new UserSecurityEntity { UserId = adminUser.Id, IsAdmin = true });
-            await context.SaveChangesAsync(cancellationToken);
+                var (saltAdmin, hashAdmin) = HashPassword(bootstrapAdminPassword);
+                var adminUser = new UserEntity
+                {
+                    Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                    FullName = "Quản Trị Viên",
+                    Email = bootstrapEmail,
+                    NormalizedEmail = bootstrapEmail,
+                    EmailLookupHash = FieldEncryptor.Current.ComputeLookupHash(bootstrapEmail),
+                    PasswordSalt = saltAdmin,
+                    PasswordHash = hashAdmin,
+                    Membership = MembershipTier.Vip,
+                    VipExpiresAtUtc = now.AddYears(1),
+                    CreatedAtUtc = now
+                };
+
+                context.Users.Add(adminUser);
+                context.UserSecurity.Add(new UserSecurityEntity { UserId = adminUser.Id, IsAdmin = true });
+                await context.SaveChangesAsync(cancellationToken);
+            }
         }
 
         await RepairUnreadableDemoIdentitiesAsync(context, cancellationToken);

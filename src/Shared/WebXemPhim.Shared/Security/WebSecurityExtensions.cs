@@ -64,8 +64,10 @@ public static class WebSecurityExtensions
             || string.Equals(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"), "true", StringComparison.OrdinalIgnoreCase);
 
         var hosts = config["AllowedHosts"]?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (hosts is null || hosts.Length == 0 || (!behindProxy && hosts.Any(host => host.Contains('*'))))
-            throw new InvalidOperationException("Production requires an explicit AllowedHosts allowlist.");
+        // Wildcards are never acceptable in Production, even when a reverse proxy is in front:
+        // Host header filtering is a security boundary and must use explicit public host names.
+        if (hosts is null || hosts.Length == 0 || hosts.Any(host => host.Contains('*')))
+            throw new InvalidOperationException("Production requires an explicit AllowedHosts allowlist without wildcards.");
         var keyPath = config["Security:DataProtectionKeyPath"];
         if (string.IsNullOrWhiteSpace(keyPath) || !Path.IsPathFullyQualified(keyPath))
             throw new InvalidOperationException("Production requires an absolute Security:DataProtectionKeyPath outside the web root.");
@@ -73,8 +75,10 @@ public static class WebSecurityExtensions
         var fullKeyPath = Path.GetFullPath(keyPath);
         if (fullKeyPath.Equals(webRoot, StringComparison.OrdinalIgnoreCase) || fullKeyPath.StartsWith(webRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Data Protection keys must not be stored in the web root.");
-        if (config.GetValue<bool>("Database:SeedDemoData") || config.GetValue<bool>("Security:AllowDemoPayments"))
-            throw new InvalidOperationException("Demo data and simulated payments are forbidden in Production.");
+        if (config.GetValue<bool>("Database:SeedDemoData") ||
+            config.GetValue<bool>("Database:SeedDemoCoupons") ||
+            config.GetValue<bool>("Security:AllowDemoPayments"))
+            throw new InvalidOperationException("Demo data, demo coupons and simulated payments are forbidden in Production.");
         foreach (var origin in config.GetSection("Security:AllowedOrigins").Get<string[]>() ?? [])
         {
             if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri) || origin != uri.GetLeftPart(UriPartial.Authority))
@@ -138,7 +142,7 @@ public static class WebSecurityExtensions
             {
                 throw new InvalidOperationException("Production requires an explicit Security:StreamSigningKey configuration.");
             }
-            if (string.Equals(streamKey, defaultStreamKey, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(streamKey, defaultStreamKey, StringComparison.OrdinalIgnoreCase) || IsKnownPlaceholderSecret(streamKey))
             {
                 throw new InvalidOperationException("Production Security:StreamSigningKey cannot be the default placeholder key.");
             }
@@ -158,7 +162,7 @@ public static class WebSecurityExtensions
             {
                 throw new InvalidOperationException("Production requires an explicit Payment:WebhookSecret configuration.");
             }
-            if (string.Equals(webhookSecret, defaultWebhookSecret, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(webhookSecret, defaultWebhookSecret, StringComparison.OrdinalIgnoreCase) || IsKnownPlaceholderSecret(webhookSecret))
             {
                 throw new InvalidOperationException("Production Payment:WebhookSecret cannot be the default placeholder key.");
             }
@@ -174,7 +178,7 @@ public static class WebSecurityExtensions
             var payOsSecret = rawPayOsSecret?.Trim();
             if (!string.IsNullOrWhiteSpace(payOsSecret))
             {
-                if (string.Equals(payOsSecret, defaultPayOsSecret, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(payOsSecret, defaultPayOsSecret, StringComparison.OrdinalIgnoreCase) || IsKnownPlaceholderSecret(payOsSecret))
                 {
                     throw new InvalidOperationException("Production PayOS webhook secret cannot be the default placeholder key.");
                 }
@@ -191,7 +195,7 @@ public static class WebSecurityExtensions
             var vnPaySecret = rawVnPaySecret?.Trim();
             if (!string.IsNullOrWhiteSpace(vnPaySecret))
             {
-                if (string.Equals(vnPaySecret, defaultVnPaySecret, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(vnPaySecret, defaultVnPaySecret, StringComparison.OrdinalIgnoreCase) || IsKnownPlaceholderSecret(vnPaySecret))
                 {
                     throw new InvalidOperationException("Production VNPay hash secret cannot be the default placeholder key.");
                 }
@@ -200,8 +204,36 @@ public static class WebSecurityExtensions
                     throw new InvalidOperationException("Production VNPay hash secret must be at least 32 characters long.");
                 }
             }
+
+            // A bootstrap administrator is optional, but when one is configured the password
+            // must not be a well-known demo/default value. The seeder refuses weak values too.
+            var bootstrapEmail = config["Database:BootstrapAdminEmail"]?.Trim();
+            var bootstrapPassword = config["Database:BootstrapAdminPassword"];
+            var hasBootstrapEmail = !string.IsNullOrWhiteSpace(bootstrapEmail);
+            var hasBootstrapPassword = !string.IsNullOrWhiteSpace(bootstrapPassword);
+            if (hasBootstrapEmail != hasBootstrapPassword)
+            {
+                throw new InvalidOperationException("Database:BootstrapAdminEmail and Database:BootstrapAdminPassword must be configured together.");
+            }
+            if (hasBootstrapPassword)
+            {
+                if (bootstrapPassword!.Length < 12 || PasswordPolicyValidator.IsCommonOrWeak(bootstrapPassword))
+                {
+                    throw new InvalidOperationException("Database:BootstrapAdminPassword must be at least 12 characters long and must not be a common or default password.");
+                }
+            }
         }
     }
+
+    /// <summary>
+    /// Rejects values that ship in the repository as templates/fallbacks. Those values are
+    /// public, so accepting them in Production would let anyone forge stream URLs or webhooks.
+    /// </summary>
+    private static bool IsKnownPlaceholderSecret(string value) =>
+        value.StartsWith("CinemaFlow_", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("ReplaceWithStrong", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("ChangeThisToStrong", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase);
 
     public static void AddSiteDataProtection(this IServiceCollection services, IConfiguration config, string applicationName)
     {

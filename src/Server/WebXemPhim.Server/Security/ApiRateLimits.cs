@@ -69,18 +69,32 @@ public static class ApiRateLimits
         // to prevent rate-limit bypass and IP spoofing.
         if (remoteIp is not null && !IsTrustedProxy(remoteIp))
         {
-            return remoteIp.ToString();
+            return NormalizeIp(remoteIp);
         }
 
         if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var forwardedValues))
         {
-            var raw = forwardedValues.ToString();
-            if (!string.IsNullOrWhiteSpace(raw))
+            var entries = forwardedValues
+                .SelectMany(value => (value ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                .Select(ExtractValidIp)
+                .Where(ip => ip is not null)
+                .Select(ip => ip!)
+                .ToList();
+
+            // Walk from the right: the last entry appended by our own trusted proxy is the
+            // closest address we can trust. Anything to its left was supplied by the client
+            // and may be forged.
+            for (var index = entries.Count - 1; index >= 0; index--)
             {
-                var first = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                               .FirstOrDefault();
-                if (ExtractValidIp(first) is { } validIp)
-                    return validIp;
+                if (System.Net.IPAddress.TryParse(entries[index], out var candidate) && !IsTrustedProxy(candidate))
+                {
+                    return NormalizeIp(candidate);
+                }
+            }
+
+            if (entries.Count > 0)
+            {
+                return entries[0];
             }
         }
 
@@ -90,15 +104,21 @@ public static class ApiRateLimits
                 return validIp;
         }
 
-        return remoteIp?.ToString() ?? "unknown";
+        return remoteIp is null ? "unknown" : NormalizeIp(remoteIp);
+    }
+
+    private static string NormalizeIp(System.Net.IPAddress address)
+    {
+        if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();
+        return address.ToString();
     }
 
     private static string? ExtractValidIp(string? input)
     {
         if (string.IsNullOrWhiteSpace(input)) return null;
         var trimmed = input.Trim();
-        if (System.Net.IPAddress.TryParse(trimmed, out var ip)) return ip.ToString();
-        if (System.Net.IPEndPoint.TryParse(trimmed, out var endpoint)) return endpoint.Address.ToString();
+        if (System.Net.IPAddress.TryParse(trimmed, out var ip)) return NormalizeIp(ip);
+        if (System.Net.IPEndPoint.TryParse(trimmed, out var endpoint)) return NormalizeIp(endpoint.Address);
         return null;
     }
 

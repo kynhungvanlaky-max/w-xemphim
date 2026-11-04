@@ -20,5 +20,9 @@
 Dockerfile*
 docker-compose*.yml
 .env*
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/appsettings.*.local.json
+**/keys
 README.md
 DEPLOY*.md

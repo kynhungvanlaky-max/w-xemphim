@@ -10,13 +10,9 @@ namespace WebXemPhim.Client.Services;
 /// Blazor host. Without this header the API sees a single shared IP and every anonymous
 /// visitor competes for the same rate-limit bucket.
 ///
-/// Resolution rules (mirroring the API trust model):
-/// <list type="bullet">
-///   <item>When the request reaches the app through a trusted reverse proxy, the first
-///   <c>X-Forwarded-For</c> entry is the real client address and is used.</item>
-///   <item>Otherwise the direct peer address is the real client address and is used.</item>
-/// </list>
-/// The value is always recomputed server side, so a spoofed browser header can never be
+/// The address comes from <see cref="HttpContext.Connection"/> after the forwarded-headers
+/// middleware has resolved it. That middleware only trusts loopback and explicitly
+/// configured proxies, so a browser-supplied <c>X-Forwarded-For</c> header can never be
 /// forwarded as-is.
 /// </summary>
 public sealed class ForwardedClientIpHandler(
@@ -57,25 +53,7 @@ public sealed class ForwardedClientIpHandler(
             remoteIp = remoteIp.MapToIPv4();
         }
 
-        string? resolvedIp = null;
-        if (IsTrustedProxy(remoteIp) &&
-            context.Request.Headers.TryGetValue(ForwardedForHeader, out var forwarded) &&
-            forwarded.Count > 0)
-        {
-            var first = forwarded[0];
-            if (!string.IsNullOrWhiteSpace(first))
-            {
-                var candidate = first.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                    .FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(candidate) && IPAddress.TryParse(candidate, out var parsed))
-                {
-                    if (parsed.IsIPv4MappedToIPv6) parsed = parsed.MapToIPv4();
-                    resolvedIp = parsed.ToString();
-                }
-            }
-        }
-
-        resolvedIp ??= remoteIp.ToString();
+        var resolvedIp = remoteIp.ToString();
 
         if (circuitIpProvider is not null && !string.IsNullOrWhiteSpace(resolvedIp))
         {

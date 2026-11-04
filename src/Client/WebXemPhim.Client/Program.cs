@@ -191,34 +191,33 @@ if (clientNetworks is { Length: > 0 })
 var behindProxy = app.Configuration.GetValue<bool>("Security:BehindReverseProxy")
     || string.Equals(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"), "true", StringComparison.OrdinalIgnoreCase);
 
-if (behindProxy)
+// The client follows the same trust model as the API: only loopback and explicitly
+// configured proxies/networks may supply forwarding headers. Container mode alone is not
+// enough to trust an arbitrary peer.
+if (behindProxy && clientProxies is not { Length: > 0 } && clientNetworks is not { Length: > 0 })
 {
-    // When running in container behind cloud reverse proxy (Render, Cloudflare, Fly.io, etc.),
-    // trust forwarded headers from the container edge proxy so HTTPS protocol is correctly recognized.
-    forwardedHeadersOptions.KnownIPNetworks.Clear();
-    forwardedHeadersOptions.KnownProxies.Clear();
+    app.Logger.LogWarning(
+        "Security:BehindReverseProxy is enabled but no Security:KnownProxies/KnownProxyNetworks are configured. Forwarded headers will be ignored and the client IP will resolve to the proxy address.");
 }
 
 app.UseForwardedHeaders(forwardedHeadersOptions);
 app.Use(async (context, next) =>
 {
-    var remoteIp = context.Connection.RemoteIpAddress;
-    string? clientIp = null;
-    if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var fwd) && fwd.Count > 0)
+    // UseForwardedHeaders above has already replaced RemoteIpAddress with the real client
+    // address when (and only when) the direct peer is trusted. Never parse X-Forwarded-For
+    // here directly: the header may contain attacker-controlled entries.
+    var clientIp = context.Connection.RemoteIpAddress;
+    if (clientIp is not null && clientIp.IsIPv4MappedToIPv6)
     {
-        var first = fwd[0]?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
-        if (!string.IsNullOrWhiteSpace(first) && IPAddress.TryParse(first, out var parsed))
-        {
-            clientIp = parsed.ToString();
-        }
+        clientIp = clientIp.MapToIPv4();
     }
-    clientIp ??= remoteIp?.ToString();
-    if (!string.IsNullOrWhiteSpace(clientIp))
+
+    if (clientIp is not null)
     {
         var ipProvider = context.RequestServices.GetService<ICircuitClientIpProvider>();
         if (ipProvider != null)
         {
-            ipProvider.ClientIp = clientIp;
+            ipProvider.ClientIp = clientIp.ToString();
         }
     }
     await next(context);

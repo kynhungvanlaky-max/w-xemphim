@@ -264,27 +264,14 @@ var forwardedHeadersOptions = new ForwardedHeadersOptions
     ForwardLimit = null
 };
 
-var behindProxy = app.Configuration.GetValue<bool>("Security:BehindReverseProxy")
-    || string.Equals(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"), "true", StringComparison.OrdinalIgnoreCase);
-
-if (behindProxy)
-{
-    // Khi chạy trong container đằng sau reverse proxy (Render, Cloudflare, Fly.io, etc.),
-    // xóa ràng buộc KnownIPNetworks/KnownProxies mặc định để HTTP proxy biên chuyển tiếp đúng IP thật của client
-    // và nhận diện đúng HTTPS protocol.
-    forwardedHeadersOptions.KnownIPNetworks.Clear();
-    forwardedHeadersOptions.KnownProxies.Clear();
-}
-else
-{
-    // Không tin toàn bộ dải mạng riêng: bất kỳ máy nào trong cùng VPC/LAN/Docker network đều
-    // có thể gửi X-Forwarded-For giả để vượt rate limit hoặc làm sai lệch IP dùng để ký stream.
-    // Chỉ loopback và proxy được cấu hình tường minh mới được tin.
-    forwardedHeadersOptions.KnownIPNetworks.Clear();
-    forwardedHeadersOptions.KnownProxies.Clear();
-    forwardedHeadersOptions.KnownProxies.Add(System.Net.IPAddress.Loopback);
-    forwardedHeadersOptions.KnownProxies.Add(System.Net.IPAddress.IPv6Loopback);
-}
+// Never trust forwarding headers from arbitrary peers. The default ASP.NET Core trust list is
+// cleared and only loopback plus explicitly configured proxies/networks are trusted. In a
+// container deployment the edge proxy must be described with Security:KnownProxies or
+// Security:KnownProxyNetworks; otherwise the client IP safely falls back to the proxy address.
+forwardedHeadersOptions.KnownIPNetworks.Clear();
+forwardedHeadersOptions.KnownProxies.Clear();
+forwardedHeadersOptions.KnownProxies.Add(System.Net.IPAddress.Loopback);
+forwardedHeadersOptions.KnownProxies.Add(System.Net.IPAddress.IPv6Loopback);
 
 var configuredProxies = app.Configuration.GetSection("Security:KnownProxies").Get<string[]>();
 if (configuredProxies is { Length: > 0 })
@@ -369,11 +356,22 @@ else if (!app.Environment.IsEnvironment("Testing"))
         {
             await using var context = await factory.CreateDbContextAsync();
             var timeProvider = app.Services.GetRequiredService<TimeProvider>();
-            await DatabaseSeeder.SeedEssentialAsync(context, timeProvider);
+            await DatabaseSeeder.SeedEssentialAsync(
+                context,
+                timeProvider,
+                bootstrapAdminEmail: app.Configuration["Database:BootstrapAdminEmail"],
+                bootstrapAdminPassword: app.Configuration["Database:BootstrapAdminPassword"],
+                seedDefaultCoupons: app.Configuration.GetValue<bool>("Database:SeedDefaultCoupons"));
             if (context.Database.IsNpgsql())
             {
                 await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
                 await DatabaseSchemaHelper.SyncIdentitySequencesAsync(context);
+            }
+
+            if (!await context.Users.AnyAsync())
+            {
+                app.Logger.LogWarning(
+                    "No user accounts exist. Configure Database:BootstrapAdminEmail and Database:BootstrapAdminPassword once to create the first administrator, then remove them.");
             }
         }
     }
