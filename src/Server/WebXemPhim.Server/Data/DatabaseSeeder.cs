@@ -1842,18 +1842,44 @@ public static class DatabaseSeeder
     public static async Task SeedCatalogAsync(AppDbContext context, CancellationToken cancellationToken = default)
     {
         var genreEntities = await context.Genres.ToListAsync(cancellationToken);
-        var genresByName = genreEntities.ToDictionary(genre => genre.Name, StringComparer.OrdinalIgnoreCase);
+        var genresByName = new Dictionary<string, GenreEntity>(StringComparer.OrdinalIgnoreCase);
+        var genresBySlug = new Dictionary<string, GenreEntity>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var g in genreEntities)
+        {
+            if (!string.IsNullOrWhiteSpace(g.Name))
+                genresByName[g.Name] = g;
+            if (!string.IsNullOrWhiteSpace(g.Slug))
+                genresBySlug[g.Slug] = g;
+        }
+
         var usedGenreIds = genreEntities.Select(genre => genre.Id).ToHashSet();
         var nextGenreId = usedGenreIds.Count == 0 ? 1 : usedGenreIds.Max() + 1;
 
         foreach (var sourceGenre in CatalogGenres)
         {
-            if (genresByName.ContainsKey(sourceGenre.Name)) continue;
+            if (genresByName.TryGetValue(sourceGenre.Name, out var existingByName))
+            {
+                if (!string.IsNullOrWhiteSpace(existingByName.Slug))
+                    genresBySlug[existingByName.Slug] = existingByName;
+                continue;
+            }
+
+            if (genresBySlug.TryGetValue(sourceGenre.Slug, out var existingBySlug))
+            {
+                if (existingBySlug.Name != sourceGenre.Name && (existingBySlug.Name.Contains('?') || string.IsNullOrWhiteSpace(existingBySlug.Name)))
+                {
+                    existingBySlug.Name = sourceGenre.Name;
+                }
+                genresByName[sourceGenre.Name] = existingBySlug;
+                continue;
+            }
 
             var genreId = usedGenreIds.Add(sourceGenre.Id) ? sourceGenre.Id : nextGenreId++;
             var genre = new GenreEntity { Id = genreId, Name = sourceGenre.Name, Slug = sourceGenre.Slug };
             genreEntities.Add(genre);
-            genresByName.Add(genre.Name, genre);
+            genresByName[genre.Name] = genre;
+            genresBySlug[genre.Slug] = genre;
             context.Genres.Add(genre);
         }
 
@@ -1862,10 +1888,18 @@ public static class DatabaseSeeder
             if (genresByName.ContainsKey(genreName)) continue;
 
             while (!usedGenreIds.Add(nextGenreId)) nextGenreId++;
-            var genre = new GenreEntity { Id = nextGenreId, Name = genreName, Slug = $"genre-{nextGenreId}" };
+            var genreSlug = $"genre-{nextGenreId}";
+            while (genresBySlug.ContainsKey(genreSlug))
+            {
+                nextGenreId++;
+                genreSlug = $"genre-{nextGenreId}";
+            }
+
+            var genre = new GenreEntity { Id = nextGenreId, Name = genreName, Slug = genreSlug };
             nextGenreId++;
             genreEntities.Add(genre);
-            genresByName.Add(genreName, genre);
+            genresByName[genreName] = genre;
+            genresBySlug[genre.Slug] = genre;
             context.Genres.Add(genre);
         }
 
@@ -1901,7 +1935,7 @@ public static class DatabaseSeeder
                 Director = source.Director,
                 TotalEpisodes = source.TotalEpisodes,
                 CurrentEpisode = source.CurrentEpisode,
-                MovieGenres = source.Genres.Select(name => new MovieGenreEntity { Genre = genresByName[name] }).ToList(),
+                MovieGenres = source.Genres.Where(name => genresByName.ContainsKey(name)).Select(name => new MovieGenreEntity { Genre = genresByName[name] }).ToList(),
                 CastMembers = source.Cast.Select((name, index) => new CastMemberEntity { Position = index + 1, Name = name }).ToList(),
                 Episodes = source.Episodes.Select(episode => new EpisodeEntity
                 {
