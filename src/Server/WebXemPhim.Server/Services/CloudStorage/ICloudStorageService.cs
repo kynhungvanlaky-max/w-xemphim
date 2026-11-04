@@ -20,7 +20,7 @@ public interface ICloudStorageService
     /// <summary>
     /// Sinh URL phát video tối ưu (Pre-signed URL hoặc CDN URL) có thời hạn để trình duyệt người dùng phát trực tiếp từ Cloudflare R2.
     /// </summary>
-    Task<string?> ResolvePlaybackUrlAsync(string streamUrl, TimeSpan? expiry = null, CancellationToken cancellationToken = default);
+    Task<string?> ResolvePlaybackUrlAsync(string streamUrl, TimeSpan? expiry = null, string httpMethod = "GET", CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Mở luồng đọc trực tiếp từ S3/R2 hỗ trợ HTTP Range (dành cho chế độ Reverse Proxy nội bộ qua API Server).

@@ -191,5 +191,5 @@ public sealed class WatchPlaybackState
     }
 
     private static bool IsPlayable(string url) => Uri.TryCreate(url, UriKind.Absolute, out var uri)
-        && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
+        && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp || uri.Scheme.Equals("r2", StringComparison.OrdinalIgnoreCase) || uri.Scheme.Equals("s3", StringComparison.OrdinalIgnoreCase));
 }

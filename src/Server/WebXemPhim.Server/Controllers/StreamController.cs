@@ -413,7 +413,7 @@ public class StreamController(
             // Ưu tiên: Phát từ Cloud Storage riêng (Cloudflare R2 / S3)
             if (cloudStorage?.IsCloudStorageUrl(headStream.StreamUrl) == true)
             {
-                var headR2Url = await cloudStorage.ResolvePlaybackUrlAsync(headStream.StreamUrl, cancellationToken: cancellationToken);
+                var headR2Url = await cloudStorage.ResolvePlaybackUrlAsync(headStream.StreamUrl, httpMethod: "HEAD", cancellationToken: cancellationToken);
                 if (!string.IsNullOrWhiteSpace(headR2Url))
                 {
                     return Redirect(headR2Url);
