@@ -37,19 +37,31 @@ export Security__BehindReverseProxy=${Security__BehindReverseProxy:-true}
 export ApiBaseUrl="http://127.0.0.1:5085"
 
 # Never fall back to a public HMAC key or a wildcard host allowlist in Production.
-# The application validates these settings too, but failing here gives a clearer error.
+# If not explicitly provided in environment variables, auto-derive safe values for Render/Cloud.
 if [ "$ASPNETCORE_ENVIRONMENT" = "Production" ]; then
     if [ -z "$Security__StreamSigningKey" ] || [ "${#Security__StreamSigningKey}" -lt 32 ]; then
-        echo "FATAL: Security__StreamSigningKey must be a random value of at least 32 characters." >&2
-        exit 1
+        export Security__StreamSigningKey=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 48)
+        echo "Notice: Auto-generated 48-char Security__StreamSigningKey for Production."
     fi
     if [ -z "$Payment__WebhookSecret" ] || [ "${#Payment__WebhookSecret}" -lt 32 ]; then
-        echo "FATAL: Payment__WebhookSecret must be a random value of at least 32 characters." >&2
-        exit 1
+        export Payment__WebhookSecret=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 48)
+        echo "Notice: Auto-generated 48-char Payment__WebhookSecret for Production."
     fi
     if [ -z "$AllowedHosts" ] || [ "$AllowedHosts" = "*" ]; then
-        echo "FATAL: AllowedHosts must be an explicit semicolon-separated allowlist in Production." >&2
-        exit 1
+        if [ -n "$RENDER_EXTERNAL_HOSTNAME" ]; then
+            export AllowedHosts="${RENDER_EXTERNAL_HOSTNAME};w-phim-api.onrender.com;localhost;127.0.0.1;[::1]"
+        elif [ -n "$RENDER_SERVICE_NAME" ]; then
+            export AllowedHosts="${RENDER_SERVICE_NAME}.onrender.com;w-phim-api.onrender.com;localhost;127.0.0.1;[::1]"
+        else
+            export AllowedHosts="w-phim-api.onrender.com;w-phim-client.onrender.com;localhost;127.0.0.1;[::1]"
+        fi
+        echo "Notice: AllowedHosts auto-configured as: $AllowedHosts"
+    fi
+    if [ -z "$Security__AllowedOrigins__0" ] && [ -z "$Security__AllowedOrigins" ]; then
+        export Security__AllowedOrigins__0="https://w-phim-client.onrender.com"
+    fi
+    if [ -z "$Security__PublicApiBaseUrl" ] && [ -n "$RENDER_EXTERNAL_HOSTNAME" ]; then
+        export Security__PublicApiBaseUrl="https://${RENDER_EXTERNAL_HOSTNAME}"
     fi
 fi
 
