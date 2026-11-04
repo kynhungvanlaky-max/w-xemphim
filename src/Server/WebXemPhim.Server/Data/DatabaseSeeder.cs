@@ -1532,9 +1532,9 @@ public static class DatabaseSeeder
                     Overview = "Hướng dẫn từng bước cài đặt Clean UI và xoá app rác Android TV.",
                     Streams =
                     [
-                        new() { ServerName = "VIP 1 (R2 Tivi Android - 185MB)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/Hu%CC%9Bo%CC%81ng%20Da%CC%82%CC%83n%20Ca%CC%80i%20Giao%20Die%CC%A3%CC%82n%20Sa%CC%A3ch%2C%20Xoa%CC%81%20App%20Ra%CC%81c%20Cho%20Tivi%20Android%20Cu%CC%9B%CC%A3c%20De%CC%82%CC%83%20-%20Kho%CC%82ng%20Ca%CC%82%CC%80n%20Laptop%2C%20AI%21.mp4", Position = 1 },
-                        new() { ServerName = "Hydra CDN (R2 Tivi Android)", ServerType = StreamServerType.HydraCdn, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/Hu%CC%9Bo%CC%81ng%20Da%CC%82%CC%83n%20Ca%CC%80i%20Giao%20Die%CC%A3%CC%82n%20Sa%CC%A3ch%2C%20Xoa%CC%81%20App%20Ra%CC%81c%20Cho%20Tivi%20Android%20Cu%CC%9B%CC%A3c%20De%CC%82%CC%83%20-%20Kho%CC%82ng%20Ca%CC%82%CC%80n%20Laptop%2C%20AI%21.mp4", Position = 8 },
-                        new() { ServerName = "Direct Backup (R2 Tivi Android)", ServerType = StreamServerType.BackupStream, Quality = "720p HD", StreamUrl = "r2://webxemphim-movies/Hu%CC%9Bo%CC%81ng%20Da%CC%82%CC%83n%20Ca%CC%80i%20Giao%20Die%CC%A3%CC%82n%20Sa%CC%A3ch%2C%20Xoa%CC%81%20App%20Ra%CC%81c%20Cho%20Tivi%20Android%20Cu%CC%9B%CC%A3c%20De%CC%82%CC%83%20-%20Kho%CC%82ng%20Ca%CC%82%CC%80n%20Laptop%2C%20AI%21.mp4", Position = 11 }
+                        new() { ServerName = "VIP 1 (R2 Tivi Android - 185MB)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/Hướng Dẫn Cài Giao Diện Sạch, Xoá App Rác Cho Tivi Android Cực Dễ - Không Cần Laptop, AI!.mp4", Position = 1 },
+                        new() { ServerName = "Hydra CDN (R2 Tivi Android)", ServerType = StreamServerType.HydraCdn, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/Hướng Dẫn Cài Giao Diện Sạch, Xoá App Rác Cho Tivi Android Cực Dễ - Không Cần Laptop, AI!.mp4", Position = 8 },
+                        new() { ServerName = "Direct Backup (R2 Tivi Android)", ServerType = StreamServerType.BackupStream, Quality = "720p HD", StreamUrl = "r2://webxemphim-movies/Hướng Dẫn Cài Giao Diện Sạch, Xoá App Rác Cho Tivi Android Cực Dễ - Không Cần Laptop, AI!.mp4", Position = 11 }
                     ]
                 }
             ]
@@ -1582,9 +1582,9 @@ public static class DatabaseSeeder
                     Overview = "Video clip ngắn xu hướng tuyển dụng việc làm Hà Nam 2026.",
                     Streams =
                     [
-                        new() { ServerName = "VIP 1 (R2 TikTok - 12.6MB)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/%23xuhuong%20%23xuhuongtiktok%20%23xuhuongtiktok2026%20%23vieclam%20%23vieclamhanam%20.mp4", Position = 1 },
-                        new() { ServerName = "Hydra CDN (R2 TikTok)", ServerType = StreamServerType.HydraCdn, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/%23xuhuong%20%23xuhuongtiktok%20%23xuhuongtiktok2026%20%23vieclam%20%23vieclamhanam%20.mp4", Position = 8 },
-                        new() { ServerName = "Direct Backup (R2 TikTok)", ServerType = StreamServerType.BackupStream, Quality = "720p HD", StreamUrl = "r2://webxemphim-movies/%23xuhuong%20%23xuhuongtiktok%20%23xuhuongtiktok2026%20%23vieclam%20%23vieclamhanam%20.mp4", Position = 11 }
+                        new() { ServerName = "VIP 1 (R2 TikTok - 12.6MB)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/#xuhuong #xuhuongtiktok #xuhuongtiktok2026 #vieclam #vieclamhanam .mp4", Position = 1 },
+                        new() { ServerName = "Hydra CDN (R2 TikTok)", ServerType = StreamServerType.HydraCdn, Quality = "1080p FHD", StreamUrl = "r2://webxemphim-movies/#xuhuong #xuhuongtiktok #xuhuongtiktok2026 #vieclam #vieclamhanam .mp4", Position = 8 },
+                        new() { ServerName = "Direct Backup (R2 TikTok)", ServerType = StreamServerType.BackupStream, Quality = "720p HD", StreamUrl = "r2://webxemphim-movies/#xuhuong #xuhuongtiktok #xuhuongtiktok2026 #vieclam #vieclamhanam .mp4", Position = 11 }
                     ]
                 }
             ]
@@ -1733,9 +1733,9 @@ public static class DatabaseSeeder
                     Overview = "Bản thu âm thanh chất lượng cao kèm lời bài hát.",
                     Streams =
                     [
-                        new() { ServerName = "VIP 1 (R2 Meyo MP3 - 4.2MB)", ServerType = StreamServerType.VipFastServer, Quality = "Lossless Audio", StreamUrl = "r2://webxemphim-movies/Meyo%20-%20Half%20Asleep%20%28Lyrics%29.mp3", Position = 1 },
-                        new() { ServerName = "Hydra CDN (R2 Meyo MP3)", ServerType = StreamServerType.HydraCdn, Quality = "Lossless Audio", StreamUrl = "r2://webxemphim-movies/Meyo%20-%20Half%20Asleep%20%28Lyrics%29.mp3", Position = 8 },
-                        new() { ServerName = "Direct Backup (R2 Meyo MP3)", ServerType = StreamServerType.BackupStream, Quality = "320kbps Audio", StreamUrl = "r2://webxemphim-movies/Meyo%20-%20Half%20Asleep%20%28Lyrics%29.mp3", Position = 11 }
+                        new() { ServerName = "VIP 1 (R2 Meyo MP3 - 4.2MB)", ServerType = StreamServerType.VipFastServer, Quality = "Lossless Audio", StreamUrl = "r2://webxemphim-movies/Meyo - Half Asleep (Lyrics).mp3", Position = 1 },
+                        new() { ServerName = "Hydra CDN (R2 Meyo MP3)", ServerType = StreamServerType.HydraCdn, Quality = "Lossless Audio", StreamUrl = "r2://webxemphim-movies/Meyo - Half Asleep (Lyrics).mp3", Position = 8 },
+                        new() { ServerName = "Direct Backup (R2 Meyo MP3)", ServerType = StreamServerType.BackupStream, Quality = "320kbps Audio", StreamUrl = "r2://webxemphim-movies/Meyo - Half Asleep (Lyrics).mp3", Position = 11 }
                     ]
                 }
             ]

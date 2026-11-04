@@ -60,4 +60,15 @@ public class CloudflareR2StorageTests
         var url = await service.ResolvePlaybackUrlAsync("r2://webxemphim-movies/movies/dune2.mp4");
         Assert.Equal("https://media.webxemphim.vn/movies/dune2.mp4", url);
     }
+
+    [Fact]
+    public async Task DumpR2Keys()
+    {
+        var creds = new Amazon.Runtime.BasicAWSCredentials("d621a023beadf63dc8fc4a3520213505", "a612a60e87acfd25f636e41661ccaece36b870e66abec02141410139b868bfe8");
+        var config = new Amazon.S3.AmazonS3Config { ServiceURL = "https://f00775e796688efed225db00815f7b87.r2.cloudflarestorage.com", ForcePathStyle = true };
+        using var s3 = new Amazon.S3.AmazonS3Client(creds, config);
+        var res = await s3.ListObjectsV2Async(new Amazon.S3.Model.ListObjectsV2Request { BucketName = "webxemphim-movies" });
+        var lines = res.S3Objects.Select(o => o.Key).ToList();
+        await File.WriteAllLinesAsync("r2_exact_keys.txt", lines, System.Text.Encoding.UTF8);
+    }
 }

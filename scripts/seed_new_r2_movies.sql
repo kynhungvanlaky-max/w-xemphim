@@ -1,4 +1,4 @@
-SET search_path TO webxemphim, public;
+﻿SET search_path TO webxemphim, public;
 
 -- Thêm các thể loại nếu chưa có
 INSERT INTO genres ("Id", "Name", "Slug") VALUES
@@ -166,20 +166,20 @@ ON CONFLICT ("Id") DO UPDATE SET
 -- Thêm Stream Sources cho Episode 4101 (Hướng dẫn TV Android)
 DELETE FROM stream_sources WHERE "EpisodeId" = 4101;
 INSERT INTO stream_sources ("EpisodeId", "Position", "ServerName", "ServerType", "Quality", "StreamUrl") VALUES
-(4101, 1, 'VIP 1 (R2 Tivi Android - 185MB)', 1, '1080p FHD', 'r2://webxemphim-movies/Hu%CC%9Bo%CC%81ng%20Da%CC%82%CC%83n%20Ca%CC%80i%20Giao%20Die%CC%A3%CC%82n%20Sa%CC%A3ch%2C%20Xoa%CC%81%20App%20Ra%CC%81c%20Cho%20Tivi%20Android%20Cu%CC%9B%CC%A3c%20De%CC%82%CC%83%20-%20Kho%CC%82ng%20Ca%CC%82%CC%80n%20Laptop%2C%20AI%21.mp4'),
-(4101, 2, 'VIP 1 (R2 Tivi Android - 185MB)', 1, '720p HD', 'r2://webxemphim-movies/Hu%CC%9Bo%CC%81ng%20Da%CC%82%CC%83n%20Ca%CC%80i%20Giao%20Die%CC%A3%CC%82n%20Sa%CC%A3ch%2C%20Xoa%CC%81%20App%20Ra%CC%81c%20Cho%20Tivi%20Android%20Cu%CC%9B%CC%A3c%20De%CC%82%CC%83%20-%20Kho%CC%82ng%20Ca%CC%82%CC%80n%20Laptop%2C%20AI%21.mp4'),
+(4101, 1, 'VIP 1 (R2 Tivi Android - 185MB)', 1, '1080p FHD', 'r2://webxemphim-movies/Hướng Dẫn Cài Giao Diện Sạch, Xoá App Rác Cho Tivi Android Cực Dễ - Không Cần Laptop, AI!.mp4'),
+(4101, 2, 'VIP 1 (R2 Tivi Android - 185MB)', 1, '720p HD', 'r2://webxemphim-movies/Hướng Dẫn Cài Giao Diện Sạch, Xoá App Rác Cho Tivi Android Cực Dễ - Không Cần Laptop, AI!.mp4'),
 (4101, 5, 'VIP 2 (R2 Backup - Video.mp4)', 1, '1080p FHD', 'r2://webxemphim-movies/Video.mp4'),
-(4101, 8, 'Hydra CDN (R2 Tivi Android)', 2, '1080p FHD', 'r2://webxemphim-movies/Hu%CC%9Bo%CC%81ng%20Da%CC%82%CC%83n%20Ca%CC%80i%20Giao%20Die%CC%A3%CC%82n%20Sa%CC%A3ch%2C%20Xoa%CC%81%20App%20Ra%CC%81c%20Cho%20Tivi%20Android%20Cu%CC%9B%CC%A3c%20De%CC%82%CC%83%20-%20Kho%CC%82ng%20Ca%CC%82%CC%80n%20Laptop%2C%20AI%21.mp4'),
-(4101, 9, 'Hydra CDN (R2 Tivi Android)', 2, '720p HD', 'r2://webxemphim-movies/Hu%CC%9Bo%CC%81ng%20Da%CC%82%CC%83n%20Ca%CC%80i%20Giao%20Die%CC%A3%CC%82n%20Sa%CC%A3ch%2C%20Xoa%CC%81%20App%20Ra%CC%81c%20Cho%20Tivi%20Android%20Cu%CC%9B%CC%A3c%20De%CC%82%CC%83%20-%20Kho%CC%82ng%20Ca%CC%82%CC%80n%20Laptop%2C%20AI%21.mp4'),
-(4101, 11, 'Direct Backup (R2 Tivi Android)', 3, '720p HD', 'r2://webxemphim-movies/Hu%CC%9Bo%CC%81ng%20Da%CC%82%CC%83n%20Ca%CC%80i%20Giao%20Die%CC%A3%CC%82n%20Sa%CC%A3ch%2C%20Xoa%CC%81%20App%20Ra%CC%81c%20Cho%20Tivi%20Android%20Cu%CC%9B%CC%A3c%20De%CC%82%CC%83%20-%20Kho%CC%82ng%20Ca%CC%82%CC%80n%20Laptop%2C%20AI%21.mp4');
+(4101, 8, 'Hydra CDN (R2 Tivi Android)', 2, '1080p FHD', 'r2://webxemphim-movies/Hướng Dẫn Cài Giao Diện Sạch, Xoá App Rác Cho Tivi Android Cực Dễ - Không Cần Laptop, AI!.mp4'),
+(4101, 9, 'Hydra CDN (R2 Tivi Android)', 2, '720p HD', 'r2://webxemphim-movies/Hướng Dẫn Cài Giao Diện Sạch, Xoá App Rác Cho Tivi Android Cực Dễ - Không Cần Laptop, AI!.mp4'),
+(4101, 11, 'Direct Backup (R2 Tivi Android)', 3, '720p HD', 'r2://webxemphim-movies/Hướng Dẫn Cài Giao Diện Sạch, Xoá App Rác Cho Tivi Android Cực Dễ - Không Cần Laptop, AI!.mp4');
 
 -- Thêm Stream Sources cho Episode 4201 (Xu Hướng TikTok Hà Nam)
 DELETE FROM stream_sources WHERE "EpisodeId" = 4201;
 INSERT INTO stream_sources ("EpisodeId", "Position", "ServerName", "ServerType", "Quality", "StreamUrl") VALUES
-(4201, 1, 'VIP 1 (R2 TikTok - 12.6MB)', 1, '1080p FHD', 'r2://webxemphim-movies/%23xuhuong%20%23xuhuongtiktok%20%23xuhuongtiktok2026%20%23vieclam%20%23vieclamhanam%20.mp4'),
+(4201, 1, 'VIP 1 (R2 TikTok - 12.6MB)', 1, '1080p FHD', 'r2://webxemphim-movies/#xuhuong #xuhuongtiktok #xuhuongtiktok2026 #vieclam #vieclamhanam .mp4'),
 (4201, 5, 'VIP 2 (R2 Backup - Video.mp4)', 1, '1080p FHD', 'r2://webxemphim-movies/Video.mp4'),
-(4201, 8, 'Hydra CDN (R2 TikTok)', 2, '1080p FHD', 'r2://webxemphim-movies/%23xuhuong%20%23xuhuongtiktok%20%23xuhuongtiktok2026%20%23vieclam%20%23vieclamhanam%20.mp4'),
-(4201, 11, 'Direct Backup (R2 TikTok)', 3, '720p HD', 'r2://webxemphim-movies/%23xuhuong%20%23xuhuongtiktok%20%23xuhuongtiktok2026%20%23vieclam%20%23vieclamhanam%20.mp4');
+(4201, 8, 'Hydra CDN (R2 TikTok)', 2, '1080p FHD', 'r2://webxemphim-movies/#xuhuong #xuhuongtiktok #xuhuongtiktok2026 #vieclam #vieclamhanam .mp4'),
+(4201, 11, 'Direct Backup (R2 TikTok)', 3, '720p HD', 'r2://webxemphim-movies/#xuhuong #xuhuongtiktok #xuhuongtiktok2026 #vieclam #vieclamhanam .mp4');
 
 -- Thêm Stream Sources cho Episode 4301 (Video.mp4)
 DELETE FROM stream_sources WHERE "EpisodeId" = 4301;
@@ -202,6 +202,7 @@ INSERT INTO stream_sources ("EpisodeId", "Position", "ServerName", "ServerType",
 -- Thêm Stream Sources cho Episode 4501 (Meyo - Half Asleep)
 DELETE FROM stream_sources WHERE "EpisodeId" = 4501;
 INSERT INTO stream_sources ("EpisodeId", "Position", "ServerName", "ServerType", "Quality", "StreamUrl") VALUES
-(4501, 1, 'VIP 1 (R2 Meyo MP3 - 4.2MB)', 1, 'Lossless Audio', 'r2://webxemphim-movies/Meyo%20-%20Half%20Asleep%20%28Lyrics%29.mp3'),
-(4501, 8, 'Hydra CDN (R2 Meyo MP3)', 2, 'Lossless Audio', 'r2://webxemphim-movies/Meyo%20-%20Half%20Asleep%20%28Lyrics%29.mp3'),
-(4501, 11, 'Direct Backup (R2 Meyo MP3)', 3, '320kbps Audio', 'r2://webxemphim-movies/Meyo%20-%20Half%20Asleep%20%28Lyrics%29.mp3');
+(4501, 1, 'VIP 1 (R2 Meyo MP3 - 4.2MB)', 1, 'Lossless Audio', 'r2://webxemphim-movies/Meyo - Half Asleep (Lyrics).mp3'),
+(4501, 8, 'Hydra CDN (R2 Meyo MP3)', 2, 'Lossless Audio', 'r2://webxemphim-movies/Meyo - Half Asleep (Lyrics).mp3'),
+(4501, 11, 'Direct Backup (R2 Meyo MP3)', 3, '320kbps Audio', 'r2://webxemphim-movies/Meyo - Half Asleep (Lyrics).mp3');
+

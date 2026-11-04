@@ -149,11 +149,12 @@ public sealed class CloudflareR2StorageService : ICloudStorageService, IDisposab
 
         try
         {
-            return Uri.UnescapeDataString(key);
+            var unescaped = Uri.UnescapeDataString(key);
+            return unescaped.Normalize(System.Text.NormalizationForm.FormC);
         }
         catch
         {
-            return key;
+            return key.Normalize(System.Text.NormalizationForm.FormC);
         }
     }
 
