@@ -34,11 +34,12 @@ public class EpisodesController(
             .OrderBy(e => e.EpisodeNumber);
 
         // Không cho client tải toàn bộ danh sách tập bằng pageSize=0 hoặc một giá trị khổng lồ.
-        page = Math.Max(page, 1);
-        pageSize = Math.Clamp(pageSize <= 0 ? 50 : pageSize, 1, 100);
+        var pagination = Pagination.Normalize(page, pageSize, defaultPageSize: 50, maxPageSize: 100);
+        page = pagination.Page;
+        pageSize = pagination.PageSize;
 
         var pagedQuery = query
-            .Skip((page - 1) * pageSize)
+            .Skip(pagination.Skip)
             .Take(pageSize);
 
         var episodes = await pagedQuery

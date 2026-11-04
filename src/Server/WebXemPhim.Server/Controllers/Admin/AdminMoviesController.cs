@@ -131,11 +131,12 @@ public sealed class AdminMoviesController(
             _ => query.OrderByDescending(m => m.Id)
         };
 
-        if (pageSize <= 0) pageSize = 20;
-        if (pageSize > 1000) pageSize = 1000;
+        var pagination = Pagination.Normalize(page, pageSize);
+        page = pagination.Page;
+        pageSize = pagination.PageSize;
         var totalItems = await query.CountAsync();
         var movies = await query
-            .Skip((Math.Max(page, 1) - 1) * pageSize)
+            .Skip(pagination.Skip)
             .Take(pageSize)
             .ToListAsync();
 

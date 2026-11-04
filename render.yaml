@@ -20,35 +20,44 @@ services:
         value: Production
       - key: Database__Provider
         value: PostgreSql
+      # Render injects the connection string at deploy time. Never commit it here.
       - key: DATABASE_URL
-        value: postgresql://gamestore_user:***REMOVED***@dpg-dbji4967bikc73fhaao0-a.singapore-postgres.render.com/gamestore_3t6q
+        sync: false
       - key: Security__StreamSigningKey
         generateValue: true
       - key: Payment__WebhookSecret
         generateValue: true
       - key: Security__BehindReverseProxy
         value: "true"
+      - key: Security__KnownProxyNetworks__0
+        value: "10.0.0.0/8"
+      - key: Security__KnownProxyNetworks__1
+        value: "172.16.0.0/12"
+      - key: Security__KnownProxyNetworks__2
+        value: "192.168.0.0/16"
       - key: Security__AllowedOrigins__0
         value: "https://w-phim-client.onrender.com"
-      - key: Security__AllowedOrigins__1
-        value: "http://localhost:5229"
       - key: Security__PublicApiBaseUrl
         value: "https://w-phim-api.onrender.com"
       - key: AllowedHosts
-        value: "*"
+        value: "w-phim-api.onrender.com;localhost;127.0.0.1;[::1]"
+      # Optional one-time bootstrap administrator for a fresh database.
+      # Remove these variables after the first successful deployment.
+      - key: Database__BootstrapAdminEmail
+        sync: false
+      - key: Database__BootstrapAdminPassword
+        sync: false
       # Cloudflare R2 / S3 Cloud Storage (Gốc lưu phim riêng tốc độ cao 0đ băng thông)
       - key: CloudStorage__Provider
         value: "CloudflareR2"
       - key: CloudStorage__AccountId
-        value: "***REMOVED***"
+        sync: false
       - key: CloudStorage__AccessKeyId
-        value: "***REMOVED***"
+        sync: false
       - key: CloudStorage__SecretAccessKey
-        value: "***REMOVED***"
+        sync: false
       - key: CloudStorage__BucketName
         value: "webxemphim-movies"
-      - key: CloudStorage__ServiceUrl
-        value: "https://***REMOVED***.r2.cloudflarestorage.com"
 
   # --------------------------------------------------------
   # Web Service 2: CinemaFlow Blazor Web Client
@@ -66,14 +75,18 @@ services:
         value: Production
       - key: Security__BehindReverseProxy
         value: "true"
+      - key: Security__KnownProxyNetworks__0
+        value: "10.0.0.0/8"
+      - key: Security__KnownProxyNetworks__1
+        value: "172.16.0.0/12"
+      - key: Security__KnownProxyNetworks__2
+        value: "192.168.0.0/16"
       - key: Security__AllowedOrigins__0
         value: "https://w-phim-client.onrender.com"
-      - key: Security__AllowedOrigins__1
-        value: "http://localhost:5229"
       - key: Security__PublicApiBaseUrl
         value: "https://w-phim-api.onrender.com"
       - key: AllowedHosts
-        value: "*"
+        value: "w-phim-client.onrender.com;localhost;127.0.0.1;[::1]"
       - key: ApiBaseUrl
         fromService:
           type: web

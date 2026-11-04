@@ -601,9 +601,9 @@ public sealed class AuthService(
     {
         await using var context = await contextFactory.CreateDbContextAsync();
         var credential = await context.MfaCredentials.SingleOrDefaultAsync(item => item.UserId == userId && !item.Enabled);
-        if (credential is null || !VerifyMfaCode(credential, code, consumeRecoveryCode: false)) return null;
-        var codes = Enumerable.Range(0, 8).Select(_ => Convert.ToHexString(RandomNumberGenerator.GetBytes(6))).ToList();
-        credential.RecoveryCodeHashes = string.Join('|', codes.Select(CredentialSecurity.TokenHash));
+        if (credential is null || !VerifyMfaCode(credential, code, consumeRecoveryCode: false, trackTimeStep: true)) return null;
+        var codes = Enumerable.Range(0, 8).Select(_ => CredentialSecurity.CreateRecoveryCode()).ToList();
+        credential.RecoveryCodeHashes = string.Join('|', codes.Select(CredentialSecurity.HashRecoveryCode));
         credential.Enabled = true;
         credential.EnabledAtUtc = UtcNow;
         var currentTokenHash = CredentialSecurity.IsToken(currentAccessToken) ? CredentialSecurity.TokenHash(currentAccessToken) : string.Empty;
@@ -670,9 +670,8 @@ public sealed class AuthService(
         catch (FormatException) { return false; }
 
         var normalized = TotpSecurity.NormalizeCode(code);
-        var hash = CredentialSecurity.TokenHash(normalized);
         var hashes = credential.RecoveryCodeHashes.Split('|', StringSplitOptions.RemoveEmptyEntries).ToList();
-        var match = hashes.FirstOrDefault(item => CryptographicOperations.FixedTimeEquals(System.Text.Encoding.UTF8.GetBytes(item), System.Text.Encoding.UTF8.GetBytes(hash)));
+        var match = hashes.FirstOrDefault(item => CredentialSecurity.VerifyRecoveryCode(normalized, item));
         if (match is null) return false;
         if (consumeRecoveryCode) credential.RecoveryCodeHashes = string.Join('|', hashes.Where(item => item != match));
         return true;

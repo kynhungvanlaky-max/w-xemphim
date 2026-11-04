@@ -148,8 +148,9 @@ public sealed class AdminTelemetryController(
         [FromQuery] int pageSize = 50)
     {
         hours = Math.Clamp(hours, 1, MaxSummaryHours);
-        page = Math.Max(page, 1);
-        pageSize = Math.Clamp(pageSize, 1, 200);
+        var pagination = Pagination.Normalize(page, pageSize, defaultPageSize: 50, maxPageSize: 200);
+        page = pagination.Page;
+        pageSize = pagination.PageSize;
         var fromUtc = UtcNow.AddHours(-hours);
 
         await using var context = await ContextFactory.CreateDbContextAsync();
@@ -177,7 +178,7 @@ public sealed class AdminTelemetryController(
         var totalItems = await query.CountAsync();
         var entities = await query
             .OrderByDescending(item => item.CreatedAtUtc)
-            .Skip((page - 1) * pageSize)
+            .Skip(pagination.Skip)
             .Take(pageSize)
             .ToListAsync();
 

@@ -224,14 +224,15 @@ public sealed class AdminOverviewController(
             query = query.Where(a => a.EntityType.ToLower() == entityType.Trim().ToLower());
         }
 
-        var effectivePageSize = take > 0 ? take : pageSize;
-        if (effectivePageSize <= 0) effectivePageSize = 50;
-        if (effectivePageSize > 200) effectivePageSize = 200;
+        var requestedPageSize = take > 0 ? take : pageSize;
+        var pagination = Pagination.Normalize(page, requestedPageSize, defaultPageSize: 50, maxPageSize: 200);
+        page = pagination.Page;
+        var effectivePageSize = pagination.PageSize;
 
         var totalItems = await query.CountAsync();
         var logs = await query
             .OrderByDescending(a => a.TimestampUtc)
-            .Skip((Math.Max(page, 1) - 1) * effectivePageSize)
+            .Skip(pagination.Skip)
             .Take(effectivePageSize)
             .Select(a => new AuditLogDto
             {
@@ -250,7 +251,7 @@ public sealed class AdminOverviewController(
         {
             Items = logs,
             TotalItems = totalItems,
-            Page = Math.Max(page, 1),
+            Page = page,
             PageSize = effectivePageSize
         };
 

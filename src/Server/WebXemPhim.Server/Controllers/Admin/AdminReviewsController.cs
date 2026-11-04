@@ -73,11 +73,12 @@ public sealed class AdminReviewsController(
             _ => query.OrderByDescending(r => r.CreatedAtUtc)
         };
 
-        if (pageSize <= 0) pageSize = 20;
-        if (pageSize > 1000) pageSize = 1000;
+        var pagination = Pagination.Normalize(page, pageSize);
+        page = pagination.Page;
+        pageSize = pagination.PageSize;
         var totalItems = await query.CountAsync();
         var reviews = await query
-            .Skip((Math.Max(page, 1) - 1) * pageSize)
+            .Skip(pagination.Skip)
             .Take(pageSize)
             .Select(r => new AdminReviewDto
             {

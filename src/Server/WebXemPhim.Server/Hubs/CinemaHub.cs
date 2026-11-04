@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using WebXemPhim.Server.Services;
+using WebXemPhim.Server.Security;
 using WebXemPhim.Shared.Models;
 
 namespace WebXemPhim.Server.Hubs;
@@ -94,26 +95,10 @@ public class CinemaHub : Hub
             var httpContext = Context.GetHttpContext();
             if (httpContext != null)
             {
-                if (httpContext.Request.Headers.TryGetValue("X-Forwarded-For", out var forwardedFor) && forwardedFor.Count > 0)
-                {
-                    var firstIp = forwardedFor[0]?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
-                    if (!string.IsNullOrWhiteSpace(firstIp) && System.Net.IPAddress.TryParse(firstIp, out var parsedIp))
-                    {
-                        ipAddress = parsedIp.ToString();
-                    }
-                }
-                else if (httpContext.Request.Headers.TryGetValue("X-Client-IP", out var clientIpHeader) && clientIpHeader.Count > 0)
-                {
-                    var firstIp = clientIpHeader[0]?.Trim();
-                    if (!string.IsNullOrWhiteSpace(firstIp) && System.Net.IPAddress.TryParse(firstIp, out var parsedIp))
-                    {
-                        ipAddress = parsedIp.ToString();
-                    }
-                }
-                else if (httpContext.Connection?.RemoteIpAddress != null)
-                {
-                    ipAddress = httpContext.Connection.RemoteIpAddress.ToString();
-                }
+                // Use the address resolved by the forwarded-headers middleware (which only
+                // trusts configured proxies). Never read raw X-Forwarded-For/X-Client-IP
+                // headers here: a client can forge both.
+                ipAddress = ApiRateLimits.GetClientIpAddress(httpContext);
             }
         }
         catch

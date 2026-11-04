@@ -51,7 +51,7 @@ public class DatabaseRegistrationTests
     [Fact]
     public void NormalizePostgresConnectionString_WithShortRenderDpgHost_AppendsSingaporeDomain()
     {
-        var uri = "postgresql://gamestore_user:***REMOVED***@dpg-dbji4967bikc73fhaao0-a/gamestore_3t6q";
+        var uri = "postgresql://gamestore_user:demo_password@dpg-dbji4967bikc73fhaao0-a/gamestore_3t6q";
         var result = DatabaseRegistration.NormalizePostgresConnectionString(uri);
 
         Assert.Contains("Search Path=webxemphim,public", result);

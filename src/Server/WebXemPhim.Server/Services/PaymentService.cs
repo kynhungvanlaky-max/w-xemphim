@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -45,7 +47,7 @@ public sealed class PaymentService(
             await context.SaveChangesAsync();
         }
 
-        if (!await context.Coupons.AnyAsync())
+        if (!await context.Coupons.AnyAsync() && ShouldSeedDemoCoupons())
         {
             var validUntil = timeProvider.GetUtcNow().UtcDateTime.AddYears(5);
             context.Coupons.AddRange(
@@ -57,6 +59,17 @@ public sealed class PaymentService(
             await context.SaveChangesAsync();
         }
     }
+
+    /// <summary>
+    /// Demo coupons (including the 50% TESTVIP code) are development/testing fixtures.
+    /// They must never be created automatically in Production. An explicit opt-in is only
+    /// honoured outside Production and is rejected by startup validation there.
+    /// </summary>
+    private bool ShouldSeedDemoCoupons() =>
+        !environment.IsProduction()
+        && (environment.IsDevelopment()
+            || environment.IsEnvironment("Testing")
+            || configuration.GetValue<bool>("Database:SeedDemoCoupons"));
 
     private static VipPlanDto MapPlan(VipPlanEntity entity)
     {
