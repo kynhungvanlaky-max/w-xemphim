@@ -76,6 +76,7 @@ public sealed class CloudflareR2StorageService : ICloudStorageService, IDisposab
         if (string.IsNullOrWhiteSpace(streamUrl)) return string.Empty;
 
         var url = streamUrl.Trim();
+        string key;
         if (url.StartsWith("r2://", StringComparison.OrdinalIgnoreCase))
         {
             var path = url[5..].TrimStart('/');
@@ -83,43 +84,77 @@ public sealed class CloudflareR2StorageService : ICloudStorageService, IDisposab
             if (!string.IsNullOrWhiteSpace(_options.BucketName) &&
                 path.StartsWith(_options.BucketName + "/", StringComparison.OrdinalIgnoreCase))
             {
-                return path[(_options.BucketName.Length + 1)..];
+                key = path[(_options.BucketName.Length + 1)..];
             }
-            return path;
+            else
+            {
+                key = path;
+            }
         }
-
-        if (url.StartsWith("s3://", StringComparison.OrdinalIgnoreCase))
+        else if (url.StartsWith("s3://", StringComparison.OrdinalIgnoreCase))
         {
             var path = url[5..].TrimStart('/');
             if (!string.IsNullOrWhiteSpace(_options.BucketName) &&
                 path.StartsWith(_options.BucketName + "/", StringComparison.OrdinalIgnoreCase))
             {
-                return path[(_options.BucketName.Length + 1)..];
+                key = path[(_options.BucketName.Length + 1)..];
             }
-            return path;
+            else
+            {
+                key = path;
+            }
         }
-
-        if (!string.IsNullOrWhiteSpace(_options.PublicBaseUrl))
+        else if (!string.IsNullOrWhiteSpace(_options.PublicBaseUrl))
         {
             var publicPrefix = _options.PublicBaseUrl.TrimEnd('/') + "/";
             if (url.StartsWith(publicPrefix, StringComparison.OrdinalIgnoreCase))
             {
-                return url[publicPrefix.Length..].Split('?')[0];
+                key = url[publicPrefix.Length..].Split('?')[0];
+            }
+            else if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            {
+                var cleanPath = uri.AbsolutePath.TrimStart('/');
+                if (!string.IsNullOrWhiteSpace(_options.BucketName) &&
+                    cleanPath.StartsWith(_options.BucketName + "/", StringComparison.OrdinalIgnoreCase))
+                {
+                    key = cleanPath[(_options.BucketName.Length + 1)..];
+                }
+                else
+                {
+                    key = cleanPath;
+                }
+            }
+            else
+            {
+                key = url;
             }
         }
-
-        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        else if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
         {
             var cleanPath = uri.AbsolutePath.TrimStart('/');
             if (!string.IsNullOrWhiteSpace(_options.BucketName) &&
                 cleanPath.StartsWith(_options.BucketName + "/", StringComparison.OrdinalIgnoreCase))
             {
-                return cleanPath[(_options.BucketName.Length + 1)..];
+                key = cleanPath[(_options.BucketName.Length + 1)..];
             }
-            return cleanPath;
+            else
+            {
+                key = cleanPath;
+            }
+        }
+        else
+        {
+            key = url;
         }
 
-        return url;
+        try
+        {
+            return Uri.UnescapeDataString(key);
+        }
+        catch
+        {
+            return key;
+        }
     }
 
     public Task<string?> ResolvePlaybackUrlAsync(

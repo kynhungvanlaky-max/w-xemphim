@@ -42,6 +42,8 @@ public class CloudflareR2StorageTests
         Assert.Equal("movies/dune2.mp4", service.ExtractObjectKey("r2://movies/dune2.mp4"));
         Assert.Equal("movies/dune2.mp4", service.ExtractObjectKey("s3://webxemphim-movies/movies/dune2.mp4"));
         Assert.Equal("movies/dune2.mp4", service.ExtractObjectKey("https://media.webxemphim.vn/movies/dune2.mp4"));
+        Assert.Equal("#xuhuong.mp4", service.ExtractObjectKey("r2://webxemphim-movies/%23xuhuong.mp4"));
+        Assert.Equal("Meyo - Half Asleep (Lyrics).mp3", service.ExtractObjectKey("r2://webxemphim-movies/Meyo%20-%20Half%20Asleep%20%28Lyrics%29.mp3"));
     }
 
     [Fact]
