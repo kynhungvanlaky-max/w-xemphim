@@ -125,6 +125,7 @@ public sealed class CloudflareR2StorageService : ICloudStorageService, IDisposab
     public Task<string?> ResolvePlaybackUrlAsync(
         string streamUrl,
         TimeSpan? expiry = null,
+        string httpMethod = "GET",
         CancellationToken cancellationToken = default)
     {
         var objectKey = ExtractObjectKey(streamUrl);
@@ -144,12 +145,16 @@ public sealed class CloudflareR2StorageService : ICloudStorageService, IDisposab
         if (_s3Client is not null && !string.IsNullOrWhiteSpace(_options.BucketName) && _options.UsePresignedUrls)
         {
             var duration = expiry ?? TimeSpan.FromMinutes(_options.PresignedUrlExpirationMinutes);
+            var verb = string.Equals(httpMethod, "HEAD", StringComparison.OrdinalIgnoreCase)
+                ? HttpVerb.HEAD
+                : HttpVerb.GET;
+
             var request = new GetPreSignedUrlRequest
             {
                 BucketName = _options.BucketName,
                 Key = objectKey,
                 Expires = DateTime.UtcNow.Add(duration),
-                Verb = HttpVerb.GET
+                Verb = verb
             };
 
             var presignedUrl = _s3Client.GetPreSignedURL(request);

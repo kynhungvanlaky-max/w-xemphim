@@ -1,3 +1,4 @@
+@page "/watch"
 @page "/watch/{MovieId:int}"
 @using WebXemPhim.Client.Services
 @using WebXemPhim.Shared.Models
@@ -330,7 +331,10 @@
     private static readonly string[] WatchStyles = RouteStylesheetCatalog.Watch;
 
     [Parameter] public int MovieId { get; set; }
+    [SupplyParameterFromQuery(Name = "movieId")] public int? MovieIdQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "id")] public int? IdQuery { get; set; }
     [SupplyParameterFromQuery(Name = "ep")] public int? EpQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "episodeId")] public int? EpisodeIdQuery { get; set; }
     private readonly WatchPlaybackState playback = new();
     private MovieDetailDto? movie;
     private List<MovieDto> similarMovies = [];
@@ -385,8 +389,20 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (loadedMovieId != MovieId || movie is null) await LoadMovie();
-        else { playback.Select(EpQuery); reportOpen = false; status = null; }
+        var effectiveMovieId = MovieId > 0 ? MovieId : (MovieIdQuery ?? IdQuery ?? 0);
+        if (effectiveMovieId <= 0) return;
+        var targetEp = EpQuery ?? EpisodeIdQuery;
+        if (loadedMovieId != effectiveMovieId || movie is null)
+        {
+            MovieId = effectiveMovieId;
+            await LoadMovie();
+        }
+        else
+        {
+            playback.Select(targetEp);
+            reportOpen = false;
+            status = null;
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -450,7 +466,7 @@
                 // Increment view count reliably when movie playback begins
                 _ = Api.IncrementViewCountAsync(id);
 
-                int? targetEpisode = EpQuery;
+                int? targetEpisode = EpQuery ?? EpisodeIdQuery;
                 if (Auth.IsAuthenticated)
                 {
                     try

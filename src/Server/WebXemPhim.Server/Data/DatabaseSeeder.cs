@@ -1492,54 +1492,31 @@ public static class DatabaseSeeder
 
     public static List<StreamSourceDto> GenerateMultiServerStreams(int seed = 1)
     {
-        // Danh sách phim cục bộ (0ms latency)
-        // và các luồng HLS CDN phim thật trực tuyến Full HD / 4K.
-        var localSources = new[]
-        {
-            "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4",
-            "https://vjs.zencdn.net/v/oceans.mp4",
-            "https://media.w3.org/2010/05/sintel/trailer.mp4"
-        };
-
-        var onlineSources = new[]
-        {
-            "https://s3.phim1280.tv/20240407/nwypt43V/index.m3u8", // Dune: Part Two Full FHD Vietsub
-            "https://s2.phim1280.tv/20230920/MjQp8ZWM/index.m3u8", // Oppenheimer Full Vietsub
-            "https://s1.phim1280.tv/20231021/aV8FmFTN/index.m3u8", // The Dark Knight Full Vietsub
-            "https://s4.phim1280.tv/20250302/eUGu2byt/index.m3u8", // Interstellar Full Vietsub
-            "https://s5.phim1280.tv/20250511/jOXh1s8R/index.m3u8", // Top Gun: Maverick Full Vietsub
-            "https://archive.org/download/Tears-of-Steel/tears_of_steel_720p.mp4",
-            "https://archive.org/download/BigBuckBunny_124/Content/big_buck_bunny_720p_surround.mp4",
-            "https://archive.org/download/Sintel/sintel-2048-stereo.mp4"
-        };
-
-        var u0 = localSources[Math.Abs(seed) % localSources.Length];
-        var u1 = onlineSources[Math.Abs(seed) % onlineSources.Length];
-        var u2 = onlineSources[Math.Abs(seed + 1) % onlineSources.Length];
-        var u3 = onlineSources[Math.Abs(seed + 2) % onlineSources.Length];
-        var u4 = localSources[Math.Abs(seed + 1) % localSources.Length];
+        // Các nguồn lưu trữ phim từ Cloudflare R2 bucket của người dùng
+        const string r2Play = "r2://webxemphim-movies/play.mp4";
+        const string r2Video = "r2://webxemphim-movies/Video.mp4";
 
         return
         [
-            // Server 1: VIP 1 (Hà Nội - Siêu Tốc) - 4 qualities
-            new() { ServerName = "VIP 1 (Hà Nội - Siêu Tốc)", ServerType = StreamServerType.VipFastServer, Quality = "4K Ultra HD", StreamUrl = u0, Position = 1 },
-            new() { ServerName = "VIP 1 (Hà Nội - Siêu Tốc)", ServerType = StreamServerType.VipFastServer, Quality = "1080p 60fps", StreamUrl = u1, Position = 2 },
-            new() { ServerName = "VIP 1 (Hà Nội - Siêu Tốc)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = u2, Position = 3 },
-            new() { ServerName = "VIP 1 (Hà Nội - Siêu Tốc)", ServerType = StreamServerType.VipFastServer, Quality = "720p HD", StreamUrl = u3, Position = 4 },
+            // Server 1: VIP 1 (R2 play.mp4 - Siêu Tốc) - 4 qualities
+            new() { ServerName = "VIP 1 (Cloudflare R2 - play.mp4)", ServerType = StreamServerType.VipFastServer, Quality = "4K Ultra HD", StreamUrl = r2Play, Position = 1 },
+            new() { ServerName = "VIP 1 (Cloudflare R2 - play.mp4)", ServerType = StreamServerType.VipFastServer, Quality = "1080p 60fps", StreamUrl = r2Play, Position = 2 },
+            new() { ServerName = "VIP 1 (Cloudflare R2 - play.mp4)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = r2Play, Position = 3 },
+            new() { ServerName = "VIP 1 (Cloudflare R2 - play.mp4)", ServerType = StreamServerType.VipFastServer, Quality = "720p HD", StreamUrl = r2Play, Position = 4 },
 
-            // Server 2: VIP 2 (Sài Gòn - Ổn Định) - 3 qualities
-            new() { ServerName = "VIP 2 (Sài Gòn - Ổn Định)", ServerType = StreamServerType.VipFastServer, Quality = "4K HDR", StreamUrl = u1, Position = 5 },
-            new() { ServerName = "VIP 2 (Sài Gòn - Ổn Định)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = u2, Position = 6 },
-            new() { ServerName = "VIP 2 (Sài Gòn - Ổn Định)", ServerType = StreamServerType.VipFastServer, Quality = "720p HD", StreamUrl = u3, Position = 7 },
+            // Server 2: VIP 2 (R2 Video.mp4 - Ổn Định) - 3 qualities
+            new() { ServerName = "VIP 2 (Cloudflare R2 - Video.mp4)", ServerType = StreamServerType.VipFastServer, Quality = "4K HDR", StreamUrl = r2Video, Position = 5 },
+            new() { ServerName = "VIP 2 (Cloudflare R2 - Video.mp4)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = r2Video, Position = 6 },
+            new() { ServerName = "VIP 2 (Cloudflare R2 - Video.mp4)", ServerType = StreamServerType.VipFastServer, Quality = "720p HD", StreamUrl = r2Video, Position = 7 },
 
-            // Server 3: Hydra CDN (Quốc Tế) - 3 qualities (no 4K!)
-            new() { ServerName = "Hydra CDN (Quốc Tế)", ServerType = StreamServerType.HydraCdn, Quality = "1080p FHD", StreamUrl = u2, Position = 8 },
-            new() { ServerName = "Hydra CDN (Quốc Tế)", ServerType = StreamServerType.HydraCdn, Quality = "720p HD", StreamUrl = u3, Position = 9 },
-            new() { ServerName = "Hydra CDN (Quốc Tế)", ServerType = StreamServerType.HydraCdn, Quality = "480p SD", StreamUrl = u4, Position = 10 },
+            // Server 3: Hydra CDN (R2 play.mp4) - 3 qualities (Miễn phí)
+            new() { ServerName = "Hydra CDN (R2 play.mp4)", ServerType = StreamServerType.HydraCdn, Quality = "1080p FHD", StreamUrl = r2Play, Position = 8 },
+            new() { ServerName = "Hydra CDN (R2 play.mp4)", ServerType = StreamServerType.HydraCdn, Quality = "720p HD", StreamUrl = r2Play, Position = 9 },
+            new() { ServerName = "Hydra CDN (R2 play.mp4)", ServerType = StreamServerType.HydraCdn, Quality = "480p SD", StreamUrl = r2Play, Position = 10 },
 
-            // Server 4: Direct Backup (Dự Phòng) - 2 qualities (only 720p & 480p)
-            new() { ServerName = "Direct Backup (Dự Phòng)", ServerType = StreamServerType.BackupStream, Quality = "720p HD", StreamUrl = u3, Position = 11 },
-            new() { ServerName = "Direct Backup (Dự Phòng)", ServerType = StreamServerType.BackupStream, Quality = "480p SD", StreamUrl = u4, Position = 12 }
+            // Server 4: Direct Backup (R2 Video.mp4) - 2 qualities (Miễn phí)
+            new() { ServerName = "Direct Backup (R2 Video.mp4)", ServerType = StreamServerType.BackupStream, Quality = "720p HD", StreamUrl = r2Video, Position = 11 },
+            new() { ServerName = "Direct Backup (R2 Video.mp4)", ServerType = StreamServerType.BackupStream, Quality = "480p SD", StreamUrl = r2Video, Position = 12 }
         ];
     }
 
@@ -1724,7 +1701,7 @@ public static class DatabaseSeeder
         }
 
         var demoStreamsToUpdate = await context.StreamSources
-            .Where(s => s.StreamUrl.Contains("cdn.plyr.io") || s.StreamUrl.Contains("w3schools.com") || s.StreamUrl.Contains("vjs.zencdn.net") || s.StreamUrl.Contains("w3.org"))
+            .Where(s => s.StreamUrl.Contains("cdn.plyr.io") || s.StreamUrl.Contains("w3schools.com") || s.StreamUrl.Contains("vjs.zencdn.net") || s.StreamUrl.Contains("w3.org") || s.StreamUrl.Contains("archive.org"))
             .ToListAsync(cancellationToken);
 
         if (demoStreamsToUpdate.Count > 0)
@@ -2521,9 +2498,8 @@ public static class DatabaseSeeder
         {
             var fallbackUrls = new[]
             {
-                "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4",
-                "https://vjs.zencdn.net/v/oceans.mp4",
-                "https://media.w3.org/2010/05/sintel/trailer.mp4"
+                "r2://webxemphim-movies/play.mp4",
+                "r2://webxemphim-movies/Video.mp4"
             };
 
             for (var i = 0; i < localStreams.Count; i++)
