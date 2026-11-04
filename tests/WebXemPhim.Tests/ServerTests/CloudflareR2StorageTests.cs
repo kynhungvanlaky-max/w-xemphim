@@ -61,7 +61,7 @@ public class CloudflareR2StorageTests
         Assert.Equal("https://media.webxemphim.vn/movies/dune2.mp4", url);
     }
 
-    [Fact]
+    [Fact(Skip = "Ad-hoc manual inspection requiring active Cloudflare R2 credentials.")]
     public async Task DumpR2Keys()
     {
         var creds = new Amazon.Runtime.BasicAWSCredentials("d621a023beadf63dc8fc4a3520213505", "a612a60e87acfd25f636e41661ccaece36b870e66abec02141410139b868bfe8");

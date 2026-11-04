@@ -11,6 +11,18 @@ using WebXemPhim.Shared.Security;
 using Yarp.ReverseProxy.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Auto-derive AllowedHosts for production environments (Render, Cloud containers)
+// if not provided or if wildcard was injected by default container runners
+var rawClientHosts = builder.Configuration["AllowedHosts"];
+if (string.IsNullOrWhiteSpace(rawClientHosts) || rawClientHosts.Trim() == "*")
+{
+    var renderHost = Environment.GetEnvironmentVariable("RENDER_EXTERNAL_HOSTNAME");
+    builder.Configuration["AllowedHosts"] = !string.IsNullOrWhiteSpace(renderHost)
+        ? $"{renderHost};w-phim-client.onrender.com;localhost;127.0.0.1;[::1]"
+        : "w-phim-client.onrender.com;localhost;127.0.0.1;[::1]";
+}
+
 WebSecurityExtensions.ApplyDevelopmentDefaults(builder.Configuration, builder.Environment, client: true);
 WebSecurityExtensions.ValidateProduction(builder.Configuration, builder.Environment, client: true);
 builder.WebHost.ConfigureKestrel(options => { options.AddServerHeader = false; options.Limits.MaxRequestBodySize = 64 * 1024; });

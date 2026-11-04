@@ -13,6 +13,18 @@ using WebXemPhim.Server.Services.CloudStorage;
 using WebXemPhim.Shared.Security;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Auto-derive AllowedHosts for production environments (Render, Cloud containers)
+// if not provided or if wildcard was injected by default container runners
+var rawServerHosts = builder.Configuration["AllowedHosts"];
+if (string.IsNullOrWhiteSpace(rawServerHosts) || rawServerHosts.Trim() == "*")
+{
+    var renderHost = Environment.GetEnvironmentVariable("RENDER_EXTERNAL_HOSTNAME");
+    builder.Configuration["AllowedHosts"] = !string.IsNullOrWhiteSpace(renderHost)
+        ? $"{renderHost};w-phim-api.onrender.com;localhost;127.0.0.1;[::1]"
+        : "w-phim-api.onrender.com;localhost;127.0.0.1;[::1]";
+}
+
 WebSecurityExtensions.ApplyDevelopmentDefaults(builder.Configuration, builder.Environment, client: false);
 WebSecurityExtensions.ValidateProduction(builder.Configuration, builder.Environment, client: false);
 // Giới hạn mặc định 64 KB cho mọi API. Riêng endpoint tải ảnh nền tập dùng giới hạn
