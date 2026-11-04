@@ -25,18 +25,27 @@ services:
       - Security__AllowedOrigins__3=http://client:8080
       - Security__AllowedOrigins__4=http://webxemphim-client:8080
       - Security__DataProtectionKeyPath=/app/keys
-      - Security__StreamSigningKey=${STREAM_SIGNING_KEY:-CinemaFlow_Secure_Stream_HMAC_Secret_Key_2026_AtLeast32Bytes!}
+      # Required: there is deliberately no public fallback key in this file.
+      - Security__StreamSigningKey=${STREAM_SIGNING_KEY:?STREAM_SIGNING_KEY_REQUIRED}
       - Security__StreamTtlMinutes=${STREAM_TTL_MINUTES:-10}
       # The signed playback URL is opened by the BROWSER, so it has to point at a public host.
       # Without it the API hands out the internal container host (server:8080) and the player
       # fails to load the video.
       - Security__PublicApiBaseUrl=${PUBLIC_API_BASE_URL:-http://localhost:${SERVER_PORT:-5085}}
-      - Payment__WebhookSecret=${PAYMENT_WEBHOOK_SECRET:-CinemaFlow_Secure_Payment_Webhook_HMAC_SHA512_Secret_Key_2026_AtLeast32Bytes!}
+      - Payment__WebhookSecret=${PAYMENT_WEBHOOK_SECRET:?PAYMENT_WEBHOOK_SECRET_REQUIRED}
       - Security__KnownProxyNetworks__0=172.16.0.0/12
       - Security__KnownProxyNetworks__1=10.0.0.0/8
       - Security__KnownProxyNetworks__2=192.168.0.0/16
       - Security__KnownProxyNetworks__3=127.0.0.1/8
-      - AllowedHosts=*
+      - AllowedHosts=${ALLOWED_HOSTS:-localhost;127.0.0.1;[::1];server;client;webxemphim-server;webxemphim-client}
+      # Optional Cloudflare R2 / S3 configuration (local fallback is used when empty).
+      - CloudStorage__Provider=${CLOUD_STORAGE_PROVIDER:-CloudflareR2}
+      - CloudStorage__AccountId=${CLOUD_STORAGE_ACCOUNT_ID:-}
+      - CloudStorage__AccessKeyId=${CLOUD_STORAGE_ACCESS_KEY_ID:-}
+      - CloudStorage__SecretAccessKey=${CLOUD_STORAGE_SECRET_ACCESS_KEY:-}
+      - CloudStorage__BucketName=${CLOUD_STORAGE_BUCKET_NAME:-webxemphim-movies}
+      - CloudStorage__ServiceUrl=${CLOUD_STORAGE_SERVICE_URL:-}
+      - CloudStorage__PublicBaseUrl=${CLOUD_STORAGE_PUBLIC_BASE_URL:-}
     volumes:
       - server_data:/app/data
       - server_keys:/app/keys
@@ -67,7 +76,7 @@ services:
       - Security__KnownProxyNetworks__1=10.0.0.0/8
       - Security__KnownProxyNetworks__2=192.168.0.0/16
       - Security__KnownProxyNetworks__3=127.0.0.1/8
-      - AllowedHosts=*
+      - AllowedHosts=${ALLOWED_HOSTS:-localhost;127.0.0.1;[::1];server;client;webxemphim-server;webxemphim-client}
     volumes:
       - client_keys:/app/keys
     depends_on:

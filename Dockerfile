@@ -70,7 +70,6 @@ ENV ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_RUNNING_IN_CONTAINER=true \
     Security__DataProtectionKeyPath=/app/keys \
     Security__BehindReverseProxy=true \
-    AllowedHosts=* \
     PORT=10000
 
 EXPOSE 10000 8080

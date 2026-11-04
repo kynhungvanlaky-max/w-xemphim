@@ -315,6 +315,9 @@ public sealed class AdminEpisodesController(
 
     [HttpPost("episodes/{episodeId:int}/thumbnail")]
     [Consumes("multipart/form-data")]
+    // Kestrel cho phép tối đa 6 MB toàn cục; riêng endpoint này chỉ cần 5 MB ảnh + 1 MB
+    // multipart overhead. Giới hạn tại action ngăn request lớn hơn bị đọc vào bộ nhớ.
+    [RequestSizeLimit(EpisodeThumbnailStorage.MaxFileSizeBytes + 1024 * 1024)]
     public async Task<ActionResult<ApiResponse<EpisodeDto>>> UploadEpisodeThumbnail(int episodeId, IFormFile? file)
     {
         if (file is null || file.Length == 0)

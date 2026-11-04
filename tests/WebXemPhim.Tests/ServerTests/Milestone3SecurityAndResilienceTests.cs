@@ -22,6 +22,7 @@ public sealed class Milestone3SecurityAndResilienceTests
             .Options;
         var factory = new TestDbContextFactory(options);
         var envMock = new Mock<IHostEnvironment>();
+        envMock.SetupGet(e => e.EnvironmentName).Returns("Testing");
         var configMock = new Mock<IConfiguration>();
         var service = new PaymentService(factory, TimeProvider.System, envMock.Object, configMock.Object);
         return (service, factory, options);
@@ -112,10 +113,12 @@ public sealed class Milestone3SecurityAndResilienceTests
     }
 
     [Theory]
-    [InlineData("203.0.113.195, 70.41.3.18, 150.172.238.178", "203.0.113.195")]
+    // The rightmost untrusted entry is the closest peer our trusted edge proxy actually saw.
+    // Entries further left may have been supplied by the client and must not be trusted.
+    [InlineData("203.0.113.195, 70.41.3.18, 150.172.238.178", "150.172.238.178")]
     [InlineData("198.51.100.42", "198.51.100.42")]
     [InlineData("2001:db8:85a3::8a2e:370:7334", "2001:db8:85a3::8a2e:370:7334")]
-    public void ApiRateLimits_GetClientIpAddress_ExtractsValidXForwardedForIp(string xffHeader, string expectedIp)
+    public void ApiRateLimits_GetClientIpAddress_ExtractsClosestUntrustedXForwardedForIp(string xffHeader, string expectedIp)
     {
         var httpContext = new DefaultHttpContext();
         httpContext.Request.Headers["X-Forwarded-For"] = xffHeader;

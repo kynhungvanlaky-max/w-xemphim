@@ -251,12 +251,14 @@ public sealed class ChallengerM3EmpiricalTests(TestApiFactory factory) : IClassF
     // =========================================================================
 
     [Theory]
-    [InlineData("203.0.113.195, 70.41.3.18, 150.172.238.178", "203.0.113.195")]
-    [InlineData("   198.51.100.42   ,   10.0.0.1   ", "198.51.100.42")]
-    [InlineData("192.0.2.1:8080, 10.0.0.1:443", "192.0.2.1")]
-    [InlineData("[2001:db8::1]:8443, 10.0.0.1", "2001:db8::1")]
-    [InlineData("2001:db8:85a3::8a2e:370:7334, 192.0.2.1", "2001:db8:85a3::8a2e:370:7334")]
-    public void Empirical_ApiRateLimits_XForwardedFor_MultipleIps_ExtractsClientIp(string header, string expectedIp)
+    // Only the rightmost untrusted hop is reliable. Anything to its left can be forged by
+    // the client before the request reaches our trusted edge proxy.
+    [InlineData("203.0.113.195, 70.41.3.18, 150.172.238.178", "150.172.238.178")]
+    [InlineData("   198.51.100.42   ,   10.0.0.1   ", "10.0.0.1")]
+    [InlineData("192.0.2.1:8080, 10.0.0.1:443", "10.0.0.1")]
+    [InlineData("[2001:db8::1]:8443, 10.0.0.1", "10.0.0.1")]
+    [InlineData("2001:db8:85a3::8a2e:370:7334, 192.0.2.1", "192.0.2.1")]
+    public void Empirical_ApiRateLimits_XForwardedFor_MultipleIps_ExtractsClosestUntrustedIp(string header, string expectedIp)
     {
         var context = new DefaultHttpContext();
         context.Request.Headers["X-Forwarded-For"] = header;
@@ -266,13 +268,13 @@ public sealed class ChallengerM3EmpiricalTests(TestApiFactory factory) : IClassF
     }
 
     [Fact]
-    public void Empirical_ApiRateLimits_XForwardedFor_MultipleHeaderValues_ExtractsFirstIp()
+    public void Empirical_ApiRateLimits_XForwardedFor_MultipleHeaderValues_ExtractsClosestUntrustedIp()
     {
         var context = new DefaultHttpContext();
         context.Request.Headers["X-Forwarded-For"] = new StringValues(["203.0.113.10", "70.41.3.20"]);
 
         var extracted = ApiRateLimits.GetClientIpAddress(context);
-        Assert.Equal("203.0.113.10", extracted);
+        Assert.Equal("70.41.3.20", extracted);
     }
 
     [Theory]
@@ -284,7 +286,6 @@ public sealed class ChallengerM3EmpiricalTests(TestApiFactory factory) : IClassF
     [InlineData("::::")]
     [InlineData("attacker.domain.com")]
     [InlineData("; DROP TABLE users;")]
-    [InlineData("invalid_ip, 198.51.100.1")]
     public void Empirical_ApiRateLimits_XForwardedFor_InvalidIpStrings_NeverCrashesAndFallsBack(string invalidHeader)
     {
         var context = new DefaultHttpContext();
@@ -294,6 +295,17 @@ public sealed class ChallengerM3EmpiricalTests(TestApiFactory factory) : IClassF
         // Must never throw and must fall back safely to RemoteIpAddress
         var extracted = ApiRateLimits.GetClientIpAddress(context);
         Assert.Equal("127.0.0.1", extracted);
+    }
+
+    [Fact]
+    public void Empirical_ApiRateLimits_XForwardedFor_MixedInvalidAndValidEntries_UsesValidEntry()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Headers["X-Forwarded-For"] = "invalid_ip, 198.51.100.1";
+        context.Connection.RemoteIpAddress = IPAddress.Parse("127.0.0.1");
+
+        var extracted = ApiRateLimits.GetClientIpAddress(context);
+        Assert.Equal("198.51.100.1", extracted);
     }
 
     [Theory]

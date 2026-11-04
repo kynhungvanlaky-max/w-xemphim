@@ -11,7 +11,7 @@ services:
       - "443:443"
       - "443:443/udp"
     environment:
-      - DOMAIN=${DOMAIN:-localhost}
+      - DOMAIN=${DOMAIN:?DOMAIN_REQUIRED}
       - ACME_EMAIL=${ACME_EMAIL:-admin@cinemaflow.vn}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -38,23 +38,34 @@ services:
       - ASPNETCORE_URLS=http://+:8080
       - DOTNET_RUNNING_IN_CONTAINER=true
       - Database__Provider=PostgreSql
-      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=${POSTGRES_DB:-webxemphim};Username=${POSTGRES_USER:-webxemphim};Password=${POSTGRES_PASSWORD:-webxemphim_secure_2026!}
+      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=${POSTGRES_DB:-webxemphim};Username=${POSTGRES_USER:-webxemphim};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_REQUIRED}
       - Database__SeedDemoData=false
+      # Optional one-time administrator bootstrap. Remove both variables after first deploy.
+      - Database__BootstrapAdminEmail=${BOOTSTRAP_ADMIN_EMAIL:-}
+      - Database__BootstrapAdminPassword=${BOOTSTRAP_ADMIN_PASSWORD:-}
       - Security__DataProtectionKeyPath=/app/keys
-      - Security__StreamSigningKey=${STREAM_SIGNING_KEY:-CinemaFlow_Production_Stream_Signing_HMAC_Secret_2026_AtLeast32Bytes!}
+      # Required: there is deliberately no public fallback key in this file.
+      - Security__StreamSigningKey=${STREAM_SIGNING_KEY:?STREAM_SIGNING_KEY_REQUIRED}
       - Security__StreamTtlMinutes=${STREAM_TTL_MINUTES:-10}
-      - Security__PublicApiBaseUrl=${PUBLIC_API_BASE_URL:-https://${DOMAIN:-localhost}}
-      - Payment__WebhookSecret=${PAYMENT_WEBHOOK_SECRET:-CinemaFlow_Production_Payment_Webhook_HMAC_SHA512_Secret_2026_AtLeast32Bytes!}
-      - Security__AllowedOrigins__0=https://${DOMAIN:-localhost}
-      - Security__AllowedOrigins__1=https://${DOMAIN:-localhost}:443
-      - Security__AllowedOrigins__2=http://localhost
-      - Security__AllowedOrigins__3=http://127.0.0.1
+      - Security__PublicApiBaseUrl=${PUBLIC_API_BASE_URL:?PUBLIC_API_BASE_URL_REQUIRED}
+      - Payment__WebhookSecret=${PAYMENT_WEBHOOK_SECRET:?PAYMENT_WEBHOOK_SECRET_REQUIRED}
+      - Payment__Gateways__PayOS__WebhookSecret=${PAYOS_WEBHOOK_SECRET:-}
+      - Payment__Gateways__VNPay__HashSecret=${VNPAY_HASH_SECRET:-}
+      - Security__AllowedOrigins__0=https://${DOMAIN:?DOMAIN_REQUIRED}
       - Security__BehindReverseProxy=true
       - Security__KnownProxyNetworks__0=172.16.0.0/12
       - Security__KnownProxyNetworks__1=10.0.0.0/8
       - Security__KnownProxyNetworks__2=192.168.0.0/16
       - Security__KnownProxyNetworks__3=127.0.0.1/8
-      - AllowedHosts=*
+      - AllowedHosts=${ALLOWED_HOSTS:?ALLOWED_HOSTS_REQUIRED}
+      # Optional Cloudflare R2 / S3 configuration (local fallback is used when empty).
+      - CloudStorage__Provider=${CLOUD_STORAGE_PROVIDER:-CloudflareR2}
+      - CloudStorage__AccountId=${CLOUD_STORAGE_ACCOUNT_ID:-}
+      - CloudStorage__AccessKeyId=${CLOUD_STORAGE_ACCESS_KEY_ID:-}
+      - CloudStorage__SecretAccessKey=${CLOUD_STORAGE_SECRET_ACCESS_KEY:-}
+      - CloudStorage__BucketName=${CLOUD_STORAGE_BUCKET_NAME:-webxemphim-movies}
+      - CloudStorage__ServiceUrl=${CLOUD_STORAGE_SERVICE_URL:-}
+      - CloudStorage__PublicBaseUrl=${CLOUD_STORAGE_PUBLIC_BASE_URL:-}
     volumes:
       - server_data:/app/data
       - server_keys:/app/keys
@@ -85,7 +96,7 @@ services:
       - Security__KnownProxyNetworks__1=10.0.0.0/8
       - Security__KnownProxyNetworks__2=192.168.0.0/16
       - Security__KnownProxyNetworks__3=127.0.0.1/8
-      - AllowedHosts=*
+      - AllowedHosts=${ALLOWED_HOSTS:?ALLOWED_HOSTS_REQUIRED}
     volumes:
       - client_keys:/app/keys
     depends_on:
@@ -102,7 +113,7 @@ services:
     restart: always
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-webxemphim}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-webxemphim_secure_2026!}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_REQUIRED}
       - POSTGRES_DB=${POSTGRES_DB:-webxemphim}
     volumes:
       - postgres_data:/var/lib/postgresql/data

@@ -54,6 +54,24 @@ public static class PasswordPolicyValidator
     ];
 
     /// <summary>
+    /// Passwords that are published as demo credentials in this repository. They must never be
+    /// accepted for a production bootstrap administrator, even though ordinary registration
+    /// tests and local demo accounts may still use them.
+    /// </summary>
+    private static readonly HashSet<string> KnownDemoPasswords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "password123!",
+        "cinema123"
+    };
+
+    /// <summary>
+    /// Returns true when the value is one of the well-known demo account passwords shipped
+    /// with the project documentation or seed data.
+    /// </summary>
+    public static bool IsKnownDemoPassword(string? password) =>
+        !string.IsNullOrWhiteSpace(password) && KnownDemoPasswords.Contains(password.Trim());
+
+    /// <summary>
     /// Returns true if the password is known to be common, trivial, or easily guessable.
     /// </summary>
     public static bool IsCommonOrWeak(string? password)

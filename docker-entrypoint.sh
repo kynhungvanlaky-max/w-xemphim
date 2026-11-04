@@ -33,16 +33,24 @@ export ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Production}
 export DOTNET_ENVIRONMENT=${DOTNET_ENVIRONMENT:-Production}
 export DOTNET_RUNNING_IN_CONTAINER=true
 export Security__DataProtectionKeyPath=${Security__DataProtectionKeyPath:-/app/keys}
-export Security__BehindReverseProxy=true
-export AllowedHosts="*"
+export Security__BehindReverseProxy=${Security__BehindReverseProxy:-true}
 export ApiBaseUrl="http://127.0.0.1:5085"
 
-# Fallback default HMAC signing keys if not passed by environment
-if [ -z "$Security__StreamSigningKey" ] || [ "${#Security__StreamSigningKey}" -lt 32 ]; then
-    export Security__StreamSigningKey="CinemaFlow_Production_Stream_Signing_HMAC_Secret_2026_Key!"
-fi
-if [ -z "$Payment__WebhookSecret" ] || [ "${#Payment__WebhookSecret}" -lt 32 ]; then
-    export Payment__WebhookSecret="CinemaFlow_Production_Payment_Webhook_HMAC_SHA512_Secret_2026_Key!"
+# Never fall back to a public HMAC key or a wildcard host allowlist in Production.
+# The application validates these settings too, but failing here gives a clearer error.
+if [ "$ASPNETCORE_ENVIRONMENT" = "Production" ]; then
+    if [ -z "$Security__StreamSigningKey" ] || [ "${#Security__StreamSigningKey}" -lt 32 ]; then
+        echo "FATAL: Security__StreamSigningKey must be a random value of at least 32 characters." >&2
+        exit 1
+    fi
+    if [ -z "$Payment__WebhookSecret" ] || [ "${#Payment__WebhookSecret}" -lt 32 ]; then
+        echo "FATAL: Payment__WebhookSecret must be a random value of at least 32 characters." >&2
+        exit 1
+    fi
+    if [ -z "$AllowedHosts" ] || [ "$AllowedHosts" = "*" ]; then
+        echo "FATAL: AllowedHosts must be an explicit semicolon-separated allowlist in Production." >&2
+        exit 1
+    fi
 fi
 
 # Determine if we should use local in-container PostgreSQL or external database

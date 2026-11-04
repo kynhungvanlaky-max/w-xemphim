@@ -101,7 +101,7 @@ public sealed class ApiIntegrationTests : IClassFixture<TestApiFactory>, IDispos
 
         Assert.Equal(5, second.Data!.Items.Count);
         Assert.Equal(2, second.Data.Page);
-        Assert.Equal(8, second.Data.TotalPages);
+        Assert.Equal(9, second.Data.TotalPages);
         Assert.True(second.Data.HasNextPage);
         Assert.True(second.Data.HasPreviousPage);
         Assert.Empty(first.Data!.Items.Select(movie => movie.Id)

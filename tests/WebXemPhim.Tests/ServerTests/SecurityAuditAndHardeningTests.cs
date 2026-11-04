@@ -267,7 +267,7 @@ public sealed class SecurityAuditAndHardeningTests : IClassFixture<PostgresTestD
     }
 
     [Fact]
-    public void ApiRateLimits_GetClientIpAddress_WhenRemoteIpIsLoopback_UsesForwardedForIp()
+    public void ApiRateLimits_GetClientIpAddress_WhenRemoteIpIsLoopback_UsesClosestUntrustedForwardedForIp()
     {
         var httpContext = new DefaultHttpContext();
         httpContext.Connection.RemoteIpAddress = IPAddress.Parse("127.0.0.1");
@@ -275,8 +275,8 @@ public sealed class SecurityAuditAndHardeningTests : IClassFixture<PostgresTestD
 
         var clientIp = ApiRateLimits.GetClientIpAddress(httpContext);
 
-        // Legitimate reverse proxy on localhost extracts real client IP
-        Assert.Equal("203.0.113.1", clientIp);
+        // The closest untrusted hop is used; the leftmost value is attacker-controlled.
+        Assert.Equal("10.0.0.1", clientIp);
     }
 
     [Fact]

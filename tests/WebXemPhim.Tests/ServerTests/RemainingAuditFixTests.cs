@@ -318,14 +318,17 @@ public sealed class RemainingAuditFixTests : IClassFixture<PostgresTestDatabaseF
     }
 
     [Fact]
-    public async Task ForwardedClientIpHandler_UsesForwardedHeaderForTrustedProxy()
+    public async Task ForwardedClientIpHandler_UsesResolvedRemoteIpInsteadOfSpoofedHeader()
     {
         var accessor = new HttpContextAccessor
         {
             HttpContext = new DefaultHttpContext()
         };
-        accessor.HttpContext.Connection.RemoteIpAddress = IPAddress.Loopback;
-        accessor.HttpContext.Request.Headers["X-Forwarded-For"] = "198.51.100.1, 10.0.0.5";
+        // UseForwardedHeaders has already resolved the real client address into
+        // Connection.RemoteIpAddress. The handler must use that value and never re-parse
+        // the raw (attacker-controllable) header.
+        accessor.HttpContext.Connection.RemoteIpAddress = IPAddress.Parse("198.51.100.1");
+        accessor.HttpContext.Request.Headers["X-Forwarded-For"] = "203.0.113.99, 10.0.0.5";
 
         var captured = new List<string?>();
         var handler = new ForwardedClientIpHandler(accessor)
