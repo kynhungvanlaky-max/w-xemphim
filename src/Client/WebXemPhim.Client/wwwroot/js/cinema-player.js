@@ -555,11 +555,101 @@
             updateVolumeUI();
             updateTime();
             window.CinemaPlayer.setupWatermark(containerEl);
+
+            // =========================================================================
+            // Smart Hardware & Buffer Guard (Tự động downscale bảo vệ cấu hình máy)
+            // =========================================================================
+            let abrGuardTimer = null;
+            let lastDroppedFrames = 0;
+            let lastTotalFrames = 0;
+            let autoQualityEnabled = true;
+            let lastAutoDownscaleTime = 0;
+
+            function runHardwareAndBufferGuard() {
+                if (disposed || videoEl.paused || videoEl.ended || !autoQualityEnabled || isBuffering) return;
+                const now = Date.now();
+                if (now - lastAutoDownscaleTime < 6000) return;
+
+                // 1. Kiểm tra giật lag do phần cứng yếu (GPU/CPU dropped frames)
+                if (typeof videoEl.getVideoPlaybackQuality === 'function') {
+                    const q = videoEl.getVideoPlaybackQuality();
+                    const deltaDropped = q.droppedVideoFrames - lastDroppedFrames;
+                    const deltaTotal = q.totalVideoFrames - lastTotalFrames;
+                    lastDroppedFrames = q.droppedVideoFrames;
+                    lastTotalFrames = q.totalVideoFrames;
+
+                    if (deltaTotal >= 24) {
+                        const dropRatio = deltaDropped / deltaTotal;
+                        // Rớt > 5% khung hình trong 3s -> phần cứng quá tải, tự hạ chất lượng
+                        if (dropRatio > 0.05) {
+                            lastAutoDownscaleTime = now;
+                            triggerAutoDownscale('hardware', 'Phần cứng giật khung hình (' + Math.round(dropRatio * 100) + '%), tự động hạ độ phân giải để giải phóng CPU.');
+                            return;
+                        }
+                    }
+                }
+
+                // 2. Kiểm tra cạn Buffer mạng (Buffer-Based Algorithm - BBA)
+                if (videoEl.buffered && videoEl.buffered.length > 0) {
+                    const cur = videoEl.currentTime;
+                    let forwardBuffer = 0;
+                    for (let i = 0; i < videoEl.buffered.length; i++) {
+                        if (videoEl.buffered.start(i) <= cur && cur <= videoEl.buffered.end(i)) {
+                            forwardBuffer = videoEl.buffered.end(i) - cur;
+                            break;
+                        }
+                    }
+
+                    if (forwardBuffer > 0 && forwardBuffer < 3.5) {
+                        lastAutoDownscaleTime = now;
+                        triggerAutoDownscale('buffer', 'Bộ đệm mạng thấp (' + forwardBuffer.toFixed(1) + 's), tự động hạ độ phân giải để chống đứng hình.');
+                        return;
+                    }
+                }
+            }
+
+            function triggerAutoDownscale(reason, msg) {
+                if (containerEl._cinemaHls) {
+                    const hls = containerEl._cinemaHls;
+                    const curLvl = hls.currentLevel >= 0 ? hls.currentLevel : (hls.levels ? hls.levels.length - 1 : 0);
+                    if (curLvl > 0) {
+                        const targetLvl = curLvl - 1;
+                        hls.nextLevel = targetLvl;
+                        hls.currentLevel = targetLvl;
+                        const lvlName = hls.levels && hls.levels[targetLvl] ? (hls.levels[targetLvl].height ? (hls.levels[targetLvl].height + 'p') : ('Level ' + targetLvl)) : 'SD';
+                        if (dotNetHelper) {
+                            try {
+                                dotNetHelper.invokeMethodAsync('OnPlayerNotice', '⚡ Tự hạ chất lượng (' + lvlName + ') để chống giật lag máy');
+                                dotNetHelper.invokeMethodAsync('OnHlsLevelSwitched', targetLvl);
+                            } catch (_) {}
+                        }
+                        return;
+                    }
+                }
+
+                if (dotNetHelper) {
+                    try {
+                        dotNetHelper.invokeMethodAsync('OnAutoDownscaleRequested', reason);
+                    } catch (_) {}
+                }
+            }
+
+            abrGuardTimer = setInterval(runHardwareAndBufferGuard, 3000);
+            containerEl._cinemaAbrGuard = { timer: abrGuardTimer };
+
             containerEl._cinemaDispose = () => {
                 disposed = true;
                 clearTimeout(hideTimeout);
                 clearTimeout(bufferDebounce);
                 clearTimeout(pulseTimer);
+                if (abrGuardTimer) {
+                    try { clearInterval(abrGuardTimer); } catch (_) {}
+                    abrGuardTimer = null;
+                }
+                if (containerEl._cinemaAbrGuard) {
+                    try { clearInterval(containerEl._cinemaAbrGuard.timer); } catch (_) {}
+                    containerEl._cinemaAbrGuard = null;
+                }
                 if (cancelScrub) cancelScrub();
                 if (containerEl._cinemaWatermark) {
                     try { clearInterval(containerEl._cinemaWatermark.interval); } catch (_) {}
@@ -580,6 +670,10 @@
             if (containerEl && containerEl._cinemaDispose) {
                 containerEl._cinemaDispose();
                 delete containerEl._cinemaDispose;
+            }
+            if (containerEl && containerEl._cinemaAbrGuard) {
+                try { clearInterval(containerEl._cinemaAbrGuard.timer); } catch (_) {}
+                delete containerEl._cinemaAbrGuard;
             }
             if (containerEl && containerEl._cinemaHls) {
                 try { containerEl._cinemaHls.destroy(); } catch (_) {}
@@ -681,6 +775,12 @@
             firstFrameReported = false;
             rebufferCount = 0;
 
+            // Ghi nhận vị trí phát: Ưu tiên resumeSeconds, nếu không có thì lấy currentTime hiện tại
+            const currentPos = (typeof resumeSeconds === 'number' && resumeSeconds > 0)
+                ? resumeSeconds
+                : (videoEl && Number.isFinite(videoEl.currentTime) && videoEl.currentTime > 0 ? videoEl.currentTime : 0);
+            const shouldPlay = (typeof autoPlay === 'boolean') ? autoPlay : (videoEl && !videoEl.paused && !videoEl.ended);
+
             if (isHlsStream(streamUrl)) {
                 if (window.Hls && window.Hls.isSupported()) {
                     const hls = new window.Hls({
@@ -728,11 +828,11 @@
                             } catch (_) {}
                         }
 
-                        if (resumeSeconds > 0) {
-                            videoEl.currentTime = resumeSeconds;
+                        if (currentPos > 0) {
+                            videoEl.currentTime = currentPos;
                         }
 
-                        if (autoPlay) {
+                        if (shouldPlay) {
                             videoEl.play().catch(() => {});
                         }
                     });
@@ -815,10 +915,10 @@
                     videoEl.src = streamUrl;
                     const onLoaded = function () {
                         videoEl.removeEventListener('loadedmetadata', onLoaded);
-                        if (resumeSeconds > 0) {
-                            videoEl.currentTime = resumeSeconds;
+                        if (currentPos > 0) {
+                            videoEl.currentTime = currentPos;
                         }
-                        if (autoPlay) {
+                        if (shouldPlay) {
                             videoEl.play().catch(() => {});
                         }
                     };
@@ -829,32 +929,57 @@
                     videoEl.load();
                 }
             } else {
-                // Nếu thẻ video đang mang đúng URL này thì không gán lại — tránh tải lại
-                // tài nguyên lần thứ hai (Razor đã render src, JS lại set src).
+                let restored = false;
+                const onRestore = function () {
+                    if (restored) return;
+                    restored = true;
+                    videoEl.removeEventListener('loadedmetadata', onRestore);
+                    videoEl.removeEventListener('canplay', onRestore);
+                    if (currentPos > 0 && Number.isFinite(videoEl.duration)) {
+                        try {
+                            videoEl.currentTime = Math.min(currentPos, Math.max(0, videoEl.duration - 0.5));
+                        } catch (_) {}
+                    }
+                    if (shouldPlay) {
+                        videoEl.play().catch(() => {});
+                    }
+                };
+
+                videoEl.addEventListener('loadedmetadata', onRestore, { once: true });
+                videoEl.addEventListener('canplay', onRestore, { once: true });
+
                 if (videoEl.getAttribute('src') !== streamUrl) {
                     videoEl.src = streamUrl;
                 }
-                if (resumeSeconds > 0) {
-                    const onLoaded = function () {
-                        videoEl.removeEventListener('loadedmetadata', onLoaded);
-                        videoEl.currentTime = resumeSeconds;
-                        if (autoPlay) {
-                            videoEl.play().catch(() => {});
-                        }
-                    };
-                    videoEl.addEventListener('loadedmetadata', onLoaded);
-                } else if (autoPlay) {
-                    videoEl.play().catch(() => {});
+
+                if (videoEl.readyState >= 1) {
+                    onRestore();
+                } else {
+                    videoEl.load();
                 }
-                videoEl.load();
             }
         },
         setQualityLevel: function (containerEl, levelIndex) {
             if (containerEl && containerEl._cinemaHls) {
-                containerEl._cinemaHls.currentLevel = levelIndex;
+                const hls = containerEl._cinemaHls;
+                if (levelIndex === -1) {
+                    hls.currentLevel = -1;
+                    hls.loadLevel = -1;
+                } else {
+                    hls.nextLevel = levelIndex;
+                    hls.currentLevel = levelIndex;
+                }
                 return true;
             }
             return false;
+        },
+        switchSource: function (containerEl, videoEl, streamUrl, autoPlay, resumeSeconds) {
+            if (!containerEl || !videoEl || !streamUrl) return;
+            const currentPos = (typeof resumeSeconds === 'number' && resumeSeconds > 0)
+                ? resumeSeconds
+                : (videoEl && Number.isFinite(videoEl.currentTime) && videoEl.currentTime > 0 ? videoEl.currentTime : 0);
+            const shouldPlay = (typeof autoPlay === 'boolean') ? autoPlay : (videoEl && !videoEl.paused && !videoEl.ended);
+            window.CinemaPlayer.loadSource(containerEl, videoEl, streamUrl, shouldPlay, currentPos);
         },
         // Gọi một Range request rất nhỏ bằng fetch để trình duyệt nhận/gia hạn
         // cookie phiên phát (HttpOnly). Không đổi src của <video>, nên không giật hình.

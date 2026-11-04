@@ -197,6 +197,50 @@ public sealed class ChallengerM4AbrPlayerAdversarialTests
         // 4. Quality level switching interop
         Assert.Contains("setQualityLevel", js);
         Assert.Contains("currentLevel", js);
+        Assert.Contains("switchSource", js);
+
+        // 5. Hardware and buffer auto-downscale guard
+        Assert.Contains("getVideoPlaybackQuality", js);
+        Assert.Contains("triggerAutoDownscale", js);
+        Assert.Contains("runHardwareAndBufferGuard", js);
+    }
+
+    [Fact]
+    public async Task CinemaPlayer_AutoDownscale_StepsDownQualityAndDispatchesCallback()
+    {
+        var player = CreatePlayerWithSuppressedRender();
+        player.AvailableQualities = new List<string> { "4K Ultra HD", "1080p FHD", "720p HD", "480p SD" };
+        player.QualityLabel = "1080p FHD";
+
+        string? requestedQuality = null;
+        player.OnQualityChanged = new EventCallback<string>(null, new Action<string>(q => requestedQuality = q));
+
+        // Trigger auto downscale due to hardware overload
+        await player.OnAutoDownscaleRequested("hardware");
+
+        Assert.Equal("720p HD", requestedQuality);
+
+        var noticeField = typeof(CinemaPlayer).GetField("playerNotice", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(noticeField);
+        var notice = noticeField.GetValue(player) as string;
+        Assert.NotNull(notice);
+        Assert.Contains("giảm tải phần cứng", notice);
+    }
+
+    [Fact]
+    public async Task CinemaPlayer_AutoDownscale_AtLowestQuality_DoesNotDownscaleFurther()
+    {
+        var player = CreatePlayerWithSuppressedRender();
+        player.AvailableQualities = new List<string> { "1080p FHD", "720p HD", "480p SD" };
+        player.QualityLabel = "480p SD";
+
+        string? requestedQuality = null;
+        player.OnQualityChanged = new EventCallback<string>(null, new Action<string>(q => requestedQuality = q));
+
+        await player.OnAutoDownscaleRequested("buffer");
+
+        // Already at lowest quality -> must not request anything
+        Assert.Null(requestedQuality);
     }
 
     [Fact]

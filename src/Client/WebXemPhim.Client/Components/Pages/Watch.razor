@@ -376,7 +376,7 @@
     /// <summary>Khoảng nghỉ tối thiểu giữa hai lần tự chuyển nguồn.</summary>
     private static readonly TimeSpan FailoverCooldown = TimeSpan.FromSeconds(10);
     private string ReturnUrl => $"/watch/{MovieId}" + (playback.Current is null ? "" : $"?ep={playback.Current.EpisodeNumber}");
-    private string PlayerKey => $"{playback.Current?.Id}:{playback.Source?.StreamUrl}";
+    private string PlayerKey => $"ep-{playback.Current?.Id}";
     private string PlayerPoster => !string.IsNullOrWhiteSpace(playback.Current?.ThumbnailUrl) ? playback.Current.ThumbnailUrl
         : !string.IsNullOrWhiteSpace(movie?.BackdropUrl) ? movie.BackdropUrl : movie?.PosterUrl ?? "";
 

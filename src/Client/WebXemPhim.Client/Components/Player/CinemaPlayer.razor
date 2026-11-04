@@ -194,9 +194,21 @@
                                     }
                                     else if (AvailableQualities != null && AvailableQualities.Count > 0)
                                     {
+                                        var isAutoSelected = isAutoQuality;
+                                        <button type="button" 
+                                                class="cp-qd-option @(isAutoSelected ? "selected" : "")"
+                                                role="menuitem"
+                                                @onclick="ChooseAutoQuality">
+                                            <span class="cp-qd-badge res-auto">AUTO</span>
+                                            <span class="cp-qd-name">Tự động (Thích ứng phần cứng & mạng)</span>
+                                            @if (isAutoSelected)
+                                            {
+                                                <CinemaIcon Name="CinemaIconName.Check" Size="13" Class="cp-qd-check" />
+                                            }
+                                        </button>
                                         @foreach (var q in AvailableQualities)
                                         {
-                                            var isSelected = string.Equals(q, QualityLabel, StringComparison.OrdinalIgnoreCase);
+                                            var isSelected = !isAutoQuality && string.Equals(q, QualityLabel, StringComparison.OrdinalIgnoreCase);
                                             var badge = GetShortBadge(q);
                                             <button type="button" 
                                                     class="cp-qd-option @(isSelected ? "selected" : "")"
@@ -478,12 +490,53 @@
         }
     }
 
+    private bool isAutoQuality = true;
+
+    private async Task ChooseAutoQuality()
+    {
+        isAutoQuality = true;
+        await CloseQualityMenuAsync(returnFocus: true);
+        OnPlayerNotice("⚡ Đã bật tự động thích ứng cấu hình máy & tốc độ mạng.");
+    }
+
     private async Task ChooseQuality(string q)
     {
+        isAutoQuality = false;
         await CloseQualityMenuAsync(returnFocus: true);
         if (!string.Equals(q, QualityLabel, StringComparison.OrdinalIgnoreCase))
         {
             await OnQualityChanged.InvokeAsync(q);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnAutoDownscaleRequested(string reason)
+    {
+        if (AvailableQualities == null || AvailableQualities.Count <= 1 || !isAutoQuality) return;
+
+        var currentIndex = -1;
+        for (var i = 0; i < AvailableQualities.Count; i++)
+        {
+            if (string.Equals(AvailableQualities[i], QualityLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                currentIndex = i;
+                break;
+            }
+        }
+        if (currentIndex < 0) currentIndex = 0;
+
+        if (currentIndex < AvailableQualities.Count - 1)
+        {
+            var nextLowerQuality = AvailableQualities[currentIndex + 1];
+            var reasonNotice = reason == "hardware"
+                ? $"⚡ Tự hạ chất lượng ({nextLowerQuality}) để giảm tải phần cứng cho máy."
+                : $"📶 Tự hạ chất lượng ({nextLowerQuality}) do mạng yếu để tránh đứng hình.";
+
+            OnPlayerNotice(reasonNotice);
+            if (OnQualityChanged.HasDelegate)
+            {
+                await OnQualityChanged.InvokeAsync(nextLowerQuality);
+            }
         }
     }
 
@@ -524,7 +577,7 @@
         if (isJsInitialized && !string.IsNullOrEmpty(ActiveStreamUrl) && !string.Equals(ActiveStreamUrl, previousStreamUrl, StringComparison.Ordinal))
         {
             previousStreamUrl = ActiveStreamUrl;
-            _ = JS.InvokeVoidAsync("CinemaPlayer.loadSource", containerRef, videoRef, ActiveStreamUrl, AutoPlay, ResumeSeconds);
+            _ = JS.InvokeVoidAsync("CinemaPlayer.switchSource", containerRef, videoRef, ActiveStreamUrl, AutoPlay, ResumeSeconds);
         }
     }
 
