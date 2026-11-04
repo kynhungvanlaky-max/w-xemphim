@@ -54,7 +54,7 @@ public class DatabaseRegistrationTests
         var uri = "postgresql://gamestore_user:demo_password@dpg-dbji4967bikc73fhaao0-a/gamestore_3t6q";
         var result = DatabaseRegistration.NormalizePostgresConnectionString(uri);
 
-        Assert.Contains("Search Path=webxemphim,public", result);
+        Assert.Contains("Search Path=public,webxemphim", result);
         Assert.Contains("Host=dpg-dbji4967bikc73fhaao0-a.singapore-postgres.render.com", result);
         Assert.Contains("Database=gamestore_3t6q", result);
     }
@@ -69,7 +69,19 @@ public class DatabaseRegistrationTests
         Assert.Contains("Username=postgres.qczivykdsiuhbmxcvbyl", result);
         Assert.Contains("Password=Hoangky123@", result);
         Assert.Contains("SSL Mode=Require", result);
-        Assert.Contains("Search Path=webxemphim,public", result);
+        Assert.Contains("Search Path=public,webxemphim", result);
+    }
+
+    [Fact]
+    public void NormalizePostgresConnectionString_WithSupabaseKeyValue_RoutesToPoolerAndRequiresSsl()
+    {
+        var standard = "Host=db.qczivykdsiuhbmxcvbyl.supabase.co;Port=5432;Database=postgres;Username=postgres;Password=Hoangky123@;";
+        var result = DatabaseRegistration.NormalizePostgresConnectionString(standard);
+
+        Assert.Contains("Host=aws-0-ap-south-1.pooler.supabase.com", result);
+        Assert.Contains("Username=postgres.qczivykdsiuhbmxcvbyl", result);
+        Assert.Contains("SSL Mode=Require", result);
+        Assert.Contains("Search Path=public,webxemphim", result);
     }
 
     [Theory]

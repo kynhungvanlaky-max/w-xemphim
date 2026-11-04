@@ -20,8 +20,14 @@ services:
         value: Production
       - key: Database__Provider
         value: PostgreSql
-      # Render injects the connection string at deploy time. Never commit it here.
+      # Supabase PostgreSQL Database URL (Pooler aws-0-ap-south-1.pooler.supabase.com:5432)
       - key: DATABASE_URL
+        sync: false
+      - key: Supabase__Url
+        sync: false
+      - key: Supabase__PublishableKey
+        sync: false
+      - key: Supabase__SecretKey
         sync: false
       - key: Security__StreamSigningKey
         generateValue: true

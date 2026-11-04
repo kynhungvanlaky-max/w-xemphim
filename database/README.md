@@ -1,22 +1,37 @@
 # Database
 
-Ứng dụng dùng **PostgreSQL** làm database runtime. Toàn bộ model và service chỉ phụ thuộc
-`AppDbContext`; cấu hình provider được gom tại `DatabaseRegistration.cs` để việc đổi
-sang MySQL sau này không làm thay đổi controller hoặc business service.
+Ứng dụng dùng **Supabase PostgreSQL** làm database runtime chính thức (hỗ trợ toàn diện Schema `public`, Supabase Studio & REST API, và IPv4 Connection Pooler `aws-0-ap-south-1.pooler.supabase.com`). Toàn bộ model và service chỉ phụ thuộc
+`AppDbContext`; cấu hình provider được gom tại `DatabaseRegistration.cs`.
 
-> Lịch sử: trước đây ứng dụng dùng SQLite, sau đó có nhánh MySQL. Kế hoạch chuyển đổi
-> chi tiết nằm trong [docs/postgresql-migration-plan.md](../docs/postgresql-migration-plan.md).
+> Lịch sử: trước đây ứng dụng dùng SQLite, sau đó chuyển sang PostgreSQL local và nay hợp nhất về Supabase Cloud.
 
-## Khởi tạo PostgreSQL
+## Kết nối Supabase PostgreSQL
 
-### Cách 1 — Docker Compose (khuyến nghị)
+### Cấu hình chính thức (Connection String)
 
-```bash
-docker compose up -d postgres
+```json
+"ConnectionStrings": {
+  "Default": "postgresql://postgres.qczivykdsiuhbmxcvbyl:Hoangky123%40@aws-0-ap-south-1.pooler.supabase.com:5432/postgres"
+},
+"Supabase": {
+  "Url": "https://qczivykdsiuhbmxcvbyl.supabase.co",
+  "PublishableKey": "sb_publishable_hyt65wxuj4HI8bCL87Wguw_Ao1qXWlC",
+  "SecretKey": "",
+  "JwksUrl": "https://qczivykdsiuhbmxcvbyl.supabase.co/auth/v1/.well-known/jwks.json"
+}
 ```
 
-Service `postgres` (image `postgres:17-alpine`) được dựng kèm, có healthcheck và volume
-`postgres_data`. Server trong compose tự trỏ về `Host=postgres`.
+- **Tự động định tuyến Pooler (IPv4)**: `DatabaseRegistration` tự động chuyển đổi URL trực tiếp (`db.xxx.supabase.co`) sang connection pooler IPv4 (`aws-0-ap-south-1.pooler.supabase.com:5432`) kèm tiền tố `postgres.<project_ref>` và bắt buộc `SSL Mode=Require`.
+- **Schema `public`**: Toàn bộ 28 bảng và dữ liệu được đặt tại schema `public`, hiển thị trực quan 100% trên Supabase Table Editor.
+
+## Khởi tạo và Đồng bộ Dữ liệu
+
+### Cách 1 — Kết nối trực tiếp Supabase (Mặc định)
+
+Chỉ cần chạy Server, hệ thống tự động kiểm tra schema, baseline migration và đồng bộ:
+```powershell
+dotnet run --project src/Server/WebXemPhim.Server
+```
 
 ### Cách 2 — Script SQL thủ công
 

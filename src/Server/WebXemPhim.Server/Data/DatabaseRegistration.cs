@@ -23,8 +23,11 @@ public static class DatabaseRegistration
             {
                 configuration.GetConnectionString("Default"),
                 configuration.GetConnectionString("PostgreSql"),
+                configuration.GetConnectionString("Supabase"),
                 configuration["DATABASE_URL"],
-                configuration["DATABASE_CONNECTION_STRING"]
+                configuration["DATABASE_CONNECTION_STRING"],
+                configuration["SUPABASE_DB_URL"],
+                configuration["SUPABASE_CONNECTION_STRING"]
             }.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s));
             if (string.IsNullOrWhiteSpace(rawConnectionString))
             {
@@ -104,7 +107,7 @@ public static class DatabaseRegistration
                 Username = username,
                 Password = password,
                 SslMode = isSupabase ? SslMode.Require : SslMode.Prefer,
-                SearchPath = "webxemphim,public"
+                SearchPath = "public,webxemphim"
             };
 
             if (!string.IsNullOrEmpty(uri.Query))
@@ -129,6 +132,35 @@ public static class DatabaseRegistration
             }
 
             return builder.ConnectionString;
+        }
+
+        if (trimmed.Contains("supabase.co", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("supabase.com", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var builder = new NpgsqlConnectionStringBuilder(trimmed);
+                var host = builder.Host ?? string.Empty;
+                if (host.StartsWith("db.", StringComparison.OrdinalIgnoreCase) && host.EndsWith(".supabase.co", StringComparison.OrdinalIgnoreCase))
+                {
+                    var projectRef = host["db.".Length..^".supabase.co".Length];
+                    builder.Host = "aws-0-ap-south-1.pooler.supabase.com";
+                    if (!string.IsNullOrEmpty(builder.Username) && !builder.Username.Contains('.'))
+                    {
+                        builder.Username = $"{builder.Username}.{projectRef}";
+                    }
+                }
+                builder.SslMode = SslMode.Require;
+                if (string.IsNullOrWhiteSpace(builder.SearchPath))
+                {
+                    builder.SearchPath = "public,webxemphim";
+                }
+                return builder.ConnectionString;
+            }
+            catch
+            {
+                // If parsing fails, fall back to returning trimmed
+            }
         }
 
         return trimmed;

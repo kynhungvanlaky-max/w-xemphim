@@ -11,9 +11,13 @@ public sealed class AppDbContextDesignTimeFactory : IDesignTimeDbContextFactory<
 {
     public AppDbContext CreateDbContext(string[] args)
     {
-        var connectionString =
+        var raw =
             Environment.GetEnvironmentVariable("ConnectionStrings__Default")
+            ?? Environment.GetEnvironmentVariable("DATABASE_URL")
+            ?? Environment.GetEnvironmentVariable("SUPABASE_CONNECTION_STRING")
             ?? "Host=localhost;Port=5432;Database=webxemphim;Username=webxemphim;Password=webxemphim";
+
+        var connectionString = DatabaseRegistration.NormalizePostgresConnectionString(raw);
 
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql(connectionString)
