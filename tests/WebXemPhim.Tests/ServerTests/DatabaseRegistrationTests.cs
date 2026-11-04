@@ -59,6 +59,19 @@ public class DatabaseRegistrationTests
         Assert.Contains("Database=gamestore_3t6q", result);
     }
 
+    [Fact]
+    public void NormalizePostgresConnectionString_WithSupabaseDirectHost_RoutesToPoolerAndScopesUsername()
+    {
+        var uri = "postgresql://postgres:Hoangky123%40@db.qczivykdsiuhbmxcvbyl.supabase.co:5432/postgres";
+        var result = DatabaseRegistration.NormalizePostgresConnectionString(uri);
+
+        Assert.Contains("Host=aws-0-ap-south-1.pooler.supabase.com", result);
+        Assert.Contains("Username=postgres.qczivykdsiuhbmxcvbyl", result);
+        Assert.Contains("Password=Hoangky123@", result);
+        Assert.Contains("SSL Mode=Require", result);
+        Assert.Contains("Search Path=webxemphim,public", result);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]

@@ -81,6 +81,20 @@ public static class DatabaseRegistration
             {
                 host = $"{host}.singapore-postgres.render.com";
             }
+            else if (host.StartsWith("db.", StringComparison.OrdinalIgnoreCase) && host.EndsWith(".supabase.co", StringComparison.OrdinalIgnoreCase))
+            {
+                // Supabase direct host (db.xxx.supabase.co) is IPv6-only.
+                // Auto-route to the IPv4/IPv6 connection pooler with tenant-scoped username.
+                var projectRef = host["db.".Length..^".supabase.co".Length];
+                host = "aws-0-ap-south-1.pooler.supabase.com";
+                if (!username.Contains('.'))
+                {
+                    username = $"{username}.{projectRef}";
+                }
+            }
+
+            var isSupabase = host.Contains("supabase.com", StringComparison.OrdinalIgnoreCase) ||
+                             host.Contains("supabase.co", StringComparison.OrdinalIgnoreCase);
 
             var builder = new NpgsqlConnectionStringBuilder
             {
@@ -89,7 +103,7 @@ public static class DatabaseRegistration
                 Database = database,
                 Username = username,
                 Password = password,
-                SslMode = SslMode.Prefer,
+                SslMode = isSupabase ? SslMode.Require : SslMode.Prefer,
                 SearchPath = "webxemphim,public"
             };
 
