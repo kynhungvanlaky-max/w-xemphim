@@ -416,7 +416,7 @@ public class StreamController(
                 var headR2Url = await cloudStorage.ResolvePlaybackUrlAsync(headStream.StreamUrl, httpMethod: "HEAD", cancellationToken: cancellationToken);
                 if (!string.IsNullOrWhiteSpace(headR2Url))
                 {
-                    return Redirect(headR2Url);
+                    headStream.StreamUrl = headR2Url;
                 }
             }
 
@@ -536,14 +536,7 @@ public class StreamController(
             var r2Url = await cloudStorage.ResolvePlaybackUrlAsync(stream.StreamUrl, cancellationToken: cancellationToken);
             if (!string.IsNullOrWhiteSpace(r2Url))
             {
-                if (HlsManifestRewriter.LooksLikeHlsUrl(r2Url))
-                {
-                    stream.StreamUrl = r2Url;
-                }
-                else
-                {
-                    return Redirect(r2Url);
-                }
+                stream.StreamUrl = r2Url;
             }
         }
 
