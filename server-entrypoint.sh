@@ -36,8 +36,12 @@ if [ "$ASPNETCORE_ENVIRONMENT" = "Production" ]; then
     if [ -z "$Security__AllowedOrigins__0" ] && [ -z "$Security__AllowedOrigins" ]; then
         export Security__AllowedOrigins__0="https://w-phim-client.onrender.com"
     fi
-    if [ -z "$Security__PublicApiBaseUrl" ] && [ -n "$RENDER_EXTERNAL_HOSTNAME" ]; then
-        export Security__PublicApiBaseUrl="https://${RENDER_EXTERNAL_HOSTNAME}"
+    if [ -z "$Security__PublicApiBaseUrl" ]; then
+        if [ -n "$RENDER_EXTERNAL_HOSTNAME" ]; then
+            export Security__PublicApiBaseUrl="https://${RENDER_EXTERNAL_HOSTNAME}"
+        else
+            export Security__PublicApiBaseUrl="https://w-phim-api.onrender.com"
+        fi
     fi
 fi
 

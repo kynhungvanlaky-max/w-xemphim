@@ -56,6 +56,8 @@ ENV ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_RUNNING_IN_CONTAINER=true \
     Security__DataProtectionKeyPath=/app/keys \
     Security__BehindReverseProxy=true \
+    Security__PublicApiBaseUrl=https://w-phim-api.onrender.com \
+    Security__AllowedOrigins__0=https://w-phim-client.onrender.com \
     AllowedHosts=w-phim-api.onrender.com;localhost;127.0.0.1;[::1] \
     PORT=10000
 

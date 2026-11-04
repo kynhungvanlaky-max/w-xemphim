@@ -94,7 +94,4 @@ services:
       - key: AllowedHosts
         value: "w-phim-client.onrender.com;localhost;127.0.0.1;[::1]"
       - key: ApiBaseUrl
-        fromService:
-          type: web
-          name: w-phim-api
-          property: host
+        value: "https://w-phim-api.onrender.com"

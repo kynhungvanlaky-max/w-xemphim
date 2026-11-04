@@ -413,10 +413,17 @@ public class StreamController(
             // Ưu tiên: Phát từ Cloud Storage riêng (Cloudflare R2 / S3)
             if (cloudStorage?.IsCloudStorageUrl(headStream.StreamUrl) == true)
             {
-                var headR2Url = await cloudStorage.ResolvePlaybackUrlAsync(headStream.StreamUrl, httpMethod: "HEAD", cancellationToken: cancellationToken);
-                if (!string.IsNullOrWhiteSpace(headR2Url))
+                try
                 {
-                    headStream.StreamUrl = headR2Url;
+                    var headR2Url = await cloudStorage.ResolvePlaybackUrlAsync(headStream.StreamUrl, httpMethod: "HEAD", cancellationToken: cancellationToken);
+                    if (!string.IsNullOrWhiteSpace(headR2Url))
+                    {
+                        headStream.StreamUrl = headR2Url;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Lỗi resolve Cloud Storage HEAD URL cho {StreamUrl}", headStream.StreamUrl);
                 }
             }
 
@@ -436,13 +443,13 @@ public class StreamController(
                     Response.Headers["X-Content-Type-Options"] = "nosniff";
                     return new EmptyResult();
                 }
-                headStream.StreamUrl = ResolveCloudFallbackMedia(headStream.StreamUrl);
+                headStream.StreamUrl = ResolveCloudFallbackMedia(headStream.StreamUrl, headStream.Quality);
             }
 
             if (!Uri.TryCreate(headStream.StreamUrl, UriKind.Absolute, out var headUpstreamUri)
                 || (headUpstreamUri.Scheme != Uri.UriSchemeHttp && headUpstreamUri.Scheme != Uri.UriSchemeHttps))
             {
-                headStream.StreamUrl = ResolveCloudFallbackMedia(headStream.StreamUrl);
+                headStream.StreamUrl = ResolveCloudFallbackMedia(headStream.StreamUrl, headStream.Quality);
                 if (!Uri.TryCreate(headStream.StreamUrl, UriKind.Absolute, out headUpstreamUri))
                 {
                     return StatusCode(StatusCodes.Status502BadGateway,
@@ -457,6 +464,18 @@ public class StreamController(
 
             var headClient = httpClientFactory.CreateClient(StreamProxyClientName);
             var probeResult = await ProbeUpstreamAsync(headClient, headUpstreamUri, cancellationToken);
+            if (!probeResult.IsSecurityFailure && (probeResult.Error is not null || (probeResult.Probe is not null && probeResult.Probe.StatusCode >= 400)))
+            {
+                var fallbackUrl = ResolveCloudFallbackMedia(headStream.StreamUrl, headStream.Quality);
+                if (Uri.TryCreate(fallbackUrl, UriKind.Absolute, out var fallbackHeadUri) && fallbackHeadUri != headUpstreamUri)
+                {
+                    logger.LogWarning("Probe nguồn phát {UpstreamUri} lỗi ({Status}), chuyển sang nguồn dự phòng CDN: {FallbackUri}",
+                        headUpstreamUri, probeResult.Probe?.StatusCode, fallbackHeadUri);
+                    headUpstreamUri = fallbackHeadUri;
+                    probeResult = await ProbeUpstreamAsync(headClient, headUpstreamUri, cancellationToken);
+                }
+            }
+
             if (probeResult.Error is not null)
             {
                 return probeResult.Error;
@@ -533,10 +552,17 @@ public class StreamController(
         // Ưu tiên: Phát từ Cloud Storage riêng (Cloudflare R2 / S3)
         if (cloudStorage?.IsCloudStorageUrl(stream.StreamUrl) == true)
         {
-            var r2Url = await cloudStorage.ResolvePlaybackUrlAsync(stream.StreamUrl, cancellationToken: cancellationToken);
-            if (!string.IsNullOrWhiteSpace(r2Url))
+            try
             {
-                stream.StreamUrl = r2Url;
+                var r2Url = await cloudStorage.ResolvePlaybackUrlAsync(stream.StreamUrl, cancellationToken: cancellationToken);
+                if (!string.IsNullOrWhiteSpace(r2Url))
+                {
+                    stream.StreamUrl = r2Url;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Lỗi resolve Cloud Storage URL cho {StreamUrl}", stream.StreamUrl);
             }
         }
 
@@ -547,7 +573,7 @@ public class StreamController(
                 var contentType = GetMediaContentType(localPath);
                 return PhysicalFile(localPath, contentType, enableRangeProcessing: true);
             }
-            stream.StreamUrl = ResolveCloudFallbackMedia(stream.StreamUrl);
+            stream.StreamUrl = ResolveCloudFallbackMedia(stream.StreamUrl, stream.Quality);
         }
 
         // URL lưu trong DB cũng phải được kiểm tra lại tại thời điểm phát: dữ liệu cũ hoặc do
@@ -555,7 +581,7 @@ public class StreamController(
         if (!Uri.TryCreate(stream.StreamUrl, UriKind.Absolute, out var upstreamUri)
             || (upstreamUri.Scheme != Uri.UriSchemeHttp && upstreamUri.Scheme != Uri.UriSchemeHttps))
         {
-            stream.StreamUrl = ResolveCloudFallbackMedia(stream.StreamUrl);
+            stream.StreamUrl = ResolveCloudFallbackMedia(stream.StreamUrl, stream.Quality);
             if (!Uri.TryCreate(stream.StreamUrl, UriKind.Absolute, out upstreamUri))
             {
                 return StatusCode(StatusCodes.Status502BadGateway,
@@ -576,6 +602,19 @@ public class StreamController(
             : null;
 
         var fetch = await FetchUpstreamAsync(httpClient, upstreamUri, rangeHeader, cancellationToken);
+        if (!fetch.IsSecurityFailure && (fetch.Error is not null || (fetch.Response is not null && !fetch.Response.IsSuccessStatusCode && fetch.Response.StatusCode != HttpStatusCode.PartialContent)))
+        {
+            var fallbackUrl = ResolveCloudFallbackMedia(stream.StreamUrl, stream.Quality);
+            if (Uri.TryCreate(fallbackUrl, UriKind.Absolute, out var fallbackUri) && fallbackUri != upstreamUri)
+            {
+                logger.LogWarning("Nguồn phát {UpstreamUri} lỗi ({Status}), chuyển sang nguồn dự phòng CDN: {FallbackUri}",
+                    upstreamUri, fetch.Response?.StatusCode, fallbackUri);
+                fetch.Response?.Dispose();
+                upstreamUri = fallbackUri;
+                fetch = await FetchUpstreamAsync(httpClient, upstreamUri, rangeHeader, cancellationToken);
+            }
+        }
+
         if (fetch.Error is not null) return fetch.Error;
 
         using (var upstreamResponse = fetch.Response!)
@@ -1005,7 +1044,7 @@ public class StreamController(
     /// vào mạng nội bộ. Range header được giữ nguyên để tua video vẫn hoạt động.
     /// Header timeout ngắn để CDN treo không giữ request vô hạn; body có idle timeout riêng.
     /// </summary>
-    private async Task<(HttpResponseMessage? Response, Uri? FinalUri, IActionResult? Error)> FetchUpstreamAsync(
+    private async Task<(HttpResponseMessage? Response, Uri? FinalUri, IActionResult? Error, bool IsSecurityFailure)> FetchUpstreamAsync(
         HttpClient httpClient,
         Uri initialUri,
         string? rangeHeader,
@@ -1014,7 +1053,7 @@ public class StreamController(
         var originKey = StreamOriginCircuitBreaker.GetOriginKey(initialUri);
         if (_circuitBreaker.IsOpen(originKey))
         {
-            return (null, null, CircuitOpenError());
+            return (null, null, CircuitOpenError(), false);
         }
 
         var currentUri = initialUri;
@@ -1025,7 +1064,7 @@ public class StreamController(
             if (!isSafe || validatedUri is null)
             {
                 return (null, null, StatusCode(StatusCodes.Status502BadGateway,
-                    ApiResponse<string>.Fail(errorMessage ?? "Nguồn phát trỏ tới địa chỉ không an toàn.")));
+                    ApiResponse<string>.Fail(errorMessage ?? "Nguồn phát trỏ tới địa chỉ không an toàn.")), true);
             }
 
             HttpResponseMessage upstreamResponse;
@@ -1054,14 +1093,14 @@ public class StreamController(
                 _circuitBreaker.RecordFailure(originKey);
                 logger.LogWarning("Het thoi gian cho header tu nguon phat {EpisodeOrigin}.", originKey);
                 return (null, null, StatusCode(StatusCodes.Status504GatewayTimeout,
-                    ApiResponse<string>.Fail("Máy chủ phát video phản hồi quá chậm.")));
+                    ApiResponse<string>.Fail("Máy chủ phát video phản hồi quá chậm.")), false);
             }
             catch (HttpRequestException ex)
             {
                 _circuitBreaker.RecordFailure(originKey);
                 logger.LogWarning(ex, "Khong the ket noi toi nguon phat {EpisodeOrigin}.", originKey);
                 return (null, null, StatusCode(StatusCodes.Status502BadGateway,
-                    ApiResponse<string>.Fail("Không kết nối được tới máy chủ phát video.")));
+                    ApiResponse<string>.Fail("Không kết nối được tới máy chủ phát video.")), false);
             }
 
             if (!IsRedirect(upstreamResponse.StatusCode))
@@ -1075,7 +1114,7 @@ public class StreamController(
                     _circuitBreaker.RecordSuccess(originKey);
                 }
 
-                return (upstreamResponse, validatedUri, null);
+                return (upstreamResponse, validatedUri, null, false);
             }
 
             var location = upstreamResponse.Headers.Location;
@@ -1084,20 +1123,20 @@ public class StreamController(
             if (location is null)
             {
                 return (null, null, StatusCode(StatusCodes.Status502BadGateway,
-                    ApiResponse<string>.Fail("Nguồn phát trả về chuyển hướng không hợp lệ.")));
+                    ApiResponse<string>.Fail("Nguồn phát trả về chuyển hướng không hợp lệ.")), true);
             }
 
             if (hop == MaxUpstreamRedirects)
             {
                 return (null, null, StatusCode(StatusCodes.Status502BadGateway,
-                    ApiResponse<string>.Fail("Nguồn phát chuyển hướng quá nhiều lần.")));
+                    ApiResponse<string>.Fail("Nguồn phát chuyển hướng quá nhiều lần.")), true);
             }
 
             currentUri = location.IsAbsoluteUri ? location : new Uri(validatedUri, location);
         }
 
         return (null, null, StatusCode(StatusCodes.Status502BadGateway,
-            ApiResponse<string>.Fail("Nguồn phát chuyển hướng quá nhiều lần.")));
+            ApiResponse<string>.Fail("Nguồn phát chuyển hướng quá nhiều lần.")), true);
     }
 
     private void ForwardRequestHeader(HttpRequestMessage request, string name)
@@ -1121,7 +1160,7 @@ public class StreamController(
     /// HEAD thật tới nguồn để lấy metadata. Một số CDN không hỗ trợ HEAD nên fallback
     /// GET <c>Range: bytes=0-0</c>; body không được đọc vào bộ nhớ.
     /// </summary>
-    private async Task<(StreamProbeResult? Probe, IActionResult? Error)> ProbeUpstreamAsync(
+    private async Task<(StreamProbeResult? Probe, IActionResult? Error, bool IsSecurityFailure)> ProbeUpstreamAsync(
         HttpClient httpClient,
         Uri initialUri,
         CancellationToken cancellationToken)
@@ -1129,7 +1168,7 @@ public class StreamController(
         var originKey = StreamOriginCircuitBreaker.GetOriginKey(initialUri);
         if (_circuitBreaker.IsOpen(originKey))
         {
-            return (null, CircuitOpenError());
+            return (null, CircuitOpenError(), false);
         }
 
         var currentUri = initialUri;
@@ -1140,7 +1179,7 @@ public class StreamController(
             if (!isSafe || validatedUri is null)
             {
                 return (null, StatusCode(StatusCodes.Status502BadGateway,
-                    ApiResponse<string>.Fail(errorMessage ?? "Nguồn phát trỏ tới địa chỉ không an toàn.")));
+                    ApiResponse<string>.Fail(errorMessage ?? "Nguồn phát trỏ tới địa chỉ không an toàn.")), true);
             }
 
             HttpResponseMessage? response = null;
@@ -1172,14 +1211,14 @@ public class StreamController(
             {
                 _circuitBreaker.RecordFailure(originKey);
                 return (null, StatusCode(StatusCodes.Status504GatewayTimeout,
-                    ApiResponse<string>.Fail("Máy chủ phát video phản hồi quá chậm.")));
+                    ApiResponse<string>.Fail("Máy chủ phát video phản hồi quá chậm.")), false);
             }
             catch (HttpRequestException ex)
             {
                 _circuitBreaker.RecordFailure(originKey);
                 logger.LogWarning(ex, "Khong the probe nguon phat {EpisodeOrigin}.", originKey);
                 return (null, StatusCode(StatusCodes.Status502BadGateway,
-                    ApiResponse<string>.Fail("Không kết nối được tới máy chủ phát video.")));
+                    ApiResponse<string>.Fail("Không kết nối được tới máy chủ phát video.")), false);
             }
 
             if (IsRedirect(response.StatusCode))
@@ -1189,13 +1228,13 @@ public class StreamController(
                 if (location is null)
                 {
                     return (null, StatusCode(StatusCodes.Status502BadGateway,
-                        ApiResponse<string>.Fail("Nguồn phát trả về chuyển hướng không hợp lệ.")));
+                        ApiResponse<string>.Fail("Nguồn phát trả về chuyển hướng không hợp lệ.")), true);
                 }
 
                 if (hop == MaxUpstreamRedirects)
                 {
                     return (null, StatusCode(StatusCodes.Status502BadGateway,
-                        ApiResponse<string>.Fail("Nguồn phát chuyển hướng quá nhiều lần.")));
+                        ApiResponse<string>.Fail("Nguồn phát chuyển hướng quá nhiều lần.")), true);
                 }
 
                 currentUri = location.IsAbsoluteUri ? location : new Uri(validatedUri, location);
@@ -1221,11 +1260,11 @@ public class StreamController(
                 response.Content.Headers.LastModified);
 
             response.Dispose();
-            return (probe, null);
+            return (probe, null, false);
         }
 
         return (null, StatusCode(StatusCodes.Status502BadGateway,
-            ApiResponse<string>.Fail("Nguồn phát chuyển hướng quá nhiều lần.")));
+            ApiResponse<string>.Fail("Nguồn phát chuyển hướng quá nhiều lần.")), true);
     }
 
     private void ApplyProbeHeaders(StreamProbeResult probe)
@@ -1434,13 +1473,25 @@ public class StreamController(
             || host.Contains("kkphim", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string ResolveCloudFallbackMedia(string? localUrl)
+    private static string ResolveCloudFallbackMedia(string? localUrl, string? quality = null)
     {
         var url = localUrl ?? string.Empty;
+        var q = quality ?? string.Empty;
+
         if (url.Contains("tears", StringComparison.OrdinalIgnoreCase))
-            return "https://archive.org/download/Tears-of-Steel/tears_of_steel_720p.mp4";
+            return "https://dn600309.us.archive.org/0/items/Tears-of-Steel/tears_of_steel_720p.mp4";
         if (url.Contains("sintel", StringComparison.OrdinalIgnoreCase))
             return "https://media.w3.org/2010/05/sintel/trailer.mp4";
+        if (url.Contains("ocean", StringComparison.OrdinalIgnoreCase))
+            return "https://vjs.zencdn.net/v/oceans.mp4";
+
+        if (q.Contains("4K", StringComparison.OrdinalIgnoreCase) || q.Contains("1080p", StringComparison.OrdinalIgnoreCase))
+            return "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4";
+        if (q.Contains("720p", StringComparison.OrdinalIgnoreCase))
+            return "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4";
+        if (q.Contains("480p", StringComparison.OrdinalIgnoreCase) || q.Contains("SD", StringComparison.OrdinalIgnoreCase))
+            return "https://vjs.zencdn.net/v/oceans.mp4";
+
         return "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4";
     }
 
