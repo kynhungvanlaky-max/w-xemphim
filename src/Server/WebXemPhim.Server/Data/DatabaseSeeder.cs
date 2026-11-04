@@ -2209,7 +2209,9 @@ public static class DatabaseSeeder
             var bootstrapEmail = bootstrapAdminEmail?.Trim().ToLowerInvariant();
             if (!string.IsNullOrWhiteSpace(bootstrapEmail) && !string.IsNullOrWhiteSpace(bootstrapAdminPassword))
             {
-                if (bootstrapAdminPassword.Length < 12 || PasswordPolicyValidator.IsCommonOrWeak(bootstrapAdminPassword))
+                if (bootstrapAdminPassword.Length < 12 ||
+                    PasswordPolicyValidator.IsCommonOrWeak(bootstrapAdminPassword) ||
+                    PasswordPolicyValidator.IsKnownDemoPassword(bootstrapAdminPassword))
                 {
                     throw new InvalidOperationException("Database:BootstrapAdminPassword must be at least 12 characters long and must not be a common or default password.");
                 }

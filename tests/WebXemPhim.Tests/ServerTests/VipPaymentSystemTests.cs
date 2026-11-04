@@ -31,6 +31,7 @@ public sealed class VipPaymentSystemTests
             .Options;
         var factory = new TestContextFactory(options);
         var envMock = new Mock<IHostEnvironment>();
+        envMock.SetupGet(e => e.EnvironmentName).Returns("Testing");
         var configMock = new Mock<IConfiguration>();
 
         var paymentService = new PaymentService(factory, TimeProvider.System, envMock.Object, configMock.Object);

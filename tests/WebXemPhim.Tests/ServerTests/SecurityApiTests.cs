@@ -241,7 +241,8 @@ public sealed class SecurityApiTests(TestApiFactory factory) : IClassFixture<Tes
         Assert.True(pending.RequiresMfa);
         Assert.Empty(pending.AccessToken);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/auth/mfa/verify-login", new VerifyMfaLoginRequest { ChallengeToken = pending.MfaChallengeToken, Code = "000000" })).StatusCode);
-        var verifiedResponse = await client.PostAsJsonAsync("/api/auth/mfa/verify-login", new VerifyMfaLoginRequest { ChallengeToken = pending.MfaChallengeToken, Code = CurrentTotp(secret) });
+        // Enabling MFA consumes the current time step, so the login must use the next one.
+        var verifiedResponse = await client.PostAsJsonAsync("/api/auth/mfa/verify-login", new VerifyMfaLoginRequest { ChallengeToken = pending.MfaChallengeToken, Code = CurrentTotp(secret, stepOffset: 1) });
         Assert.Equal(HttpStatusCode.OK, verifiedResponse.StatusCode);
         var verified = (await verifiedResponse.Content.ReadFromJsonAsync<ApiResponse<AuthDto>>())!.Data!;
         Assert.False(verified.RequiresMfa);
@@ -500,9 +501,9 @@ public sealed class SecurityApiTests(TestApiFactory factory) : IClassFixture<Tes
         return (await response.Content.ReadFromJsonAsync<ApiResponse<AuthDto>>())!.Data!;
     }
 
-    private static string CurrentTotp(byte[] secret)
+    private static string CurrentTotp(byte[] secret, long stepOffset = 0)
     {
-        var counter = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30;
+        var counter = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30 + stepOffset;
         Span<byte> bytes = stackalloc byte[8];
         BinaryPrimitives.WriteInt64BigEndian(bytes, counter);
         var hash = HMACSHA1.HashData(secret, bytes);

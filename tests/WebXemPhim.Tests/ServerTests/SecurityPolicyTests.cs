@@ -33,6 +33,7 @@ public sealed class SecurityPolicyTests
     [Theory]
     [InlineData("AllowedHosts", "*")]
     [InlineData("Database:SeedDemoData", "true")]
+    [InlineData("Database:SeedDemoCoupons", "true")]
     [InlineData("Security:AllowDemoPayments", "true")]
     [InlineData("Security:DataProtectionKeyPath", "relative/keys")]
     [InlineData("ApiBaseUrl", "http://api.example.test")]

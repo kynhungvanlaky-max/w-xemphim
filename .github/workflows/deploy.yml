@@ -161,6 +161,7 @@ jobs:
               POSTGRES_PW=$(openssl rand -hex 16)
               SIGNING_KEY=$(openssl rand -hex 32)
               WEBHOOK_KEY=$(openssl rand -hex 32)
+              ALLOWED_HOSTS_VALUE="$SERVER_DOMAIN;www.$SERVER_DOMAIN;localhost;127.0.0.1;[::1]"
               cat << EOF > .env
 DOMAIN=$SERVER_DOMAIN
 ACME_EMAIL=$SERVER_EMAIL
@@ -169,16 +170,19 @@ POSTGRES_PASSWORD=$POSTGRES_PW
 POSTGRES_DB=webxemphim
 STREAM_SIGNING_KEY=$SIGNING_KEY
 PAYMENT_WEBHOOK_SECRET=$WEBHOOK_KEY
+ALLOWED_HOSTS=$ALLOWED_HOSTS_VALUE
 IMAGE_REPO=$IMAGE_REPO
 IMAGE_TAG=latest
 PUBLIC_API_BASE_URL=https://$SERVER_DOMAIN
 EOF
             else
               echo "Updating existing .env with latest domain and image configuration..."
+              ALLOWED_HOSTS_VALUE="$SERVER_DOMAIN;www.$SERVER_DOMAIN;localhost;127.0.0.1;[::1]"
               grep -q "^DOMAIN=" .env && sed -i "s|^DOMAIN=.*|DOMAIN=$SERVER_DOMAIN|" .env || echo "DOMAIN=$SERVER_DOMAIN" >> .env
               grep -q "^ACME_EMAIL=" .env && sed -i "s|^ACME_EMAIL=.*|ACME_EMAIL=$SERVER_EMAIL|" .env || echo "ACME_EMAIL=$SERVER_EMAIL" >> .env
               grep -q "^IMAGE_REPO=" .env && sed -i "s|^IMAGE_REPO=.*|IMAGE_REPO=$IMAGE_REPO|" .env || echo "IMAGE_REPO=$IMAGE_REPO" >> .env
               grep -q "^PUBLIC_API_BASE_URL=" .env && sed -i "s|^PUBLIC_API_BASE_URL=.*|PUBLIC_API_BASE_URL=https://$SERVER_DOMAIN|" .env || echo "PUBLIC_API_BASE_URL=https://$SERVER_DOMAIN" >> .env
+              grep -q "^ALLOWED_HOSTS=" .env && sed -i "s|^ALLOWED_HOSTS=.*|ALLOWED_HOSTS=$ALLOWED_HOSTS_VALUE|" .env || echo "ALLOWED_HOSTS=$ALLOWED_HOSTS_VALUE" >> .env
             fi
 
             export IMAGE_REPO="$IMAGE_REPO"

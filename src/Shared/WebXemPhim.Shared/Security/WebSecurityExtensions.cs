@@ -217,7 +217,9 @@ public static class WebSecurityExtensions
             }
             if (hasBootstrapPassword)
             {
-                if (bootstrapPassword!.Length < 12 || PasswordPolicyValidator.IsCommonOrWeak(bootstrapPassword))
+                if (bootstrapPassword!.Length < 12 ||
+                    PasswordPolicyValidator.IsCommonOrWeak(bootstrapPassword) ||
+                    PasswordPolicyValidator.IsKnownDemoPassword(bootstrapPassword))
                 {
                     throw new InvalidOperationException("Database:BootstrapAdminPassword must be at least 12 characters long and must not be a common or default password.");
                 }

@@ -260,7 +260,7 @@ public class MovieServiceTests : IAsyncLifetime
 
     [Theory]
     [InlineData(2024, 10)]
-    [InlineData(2026, 3)]
+    [InlineData(2026, 8)]
     [InlineData(1900, 0)]
     public async Task FilterMoviesAsync_FiltersReleaseYear(int year, int expectedCount)
     {
@@ -289,7 +289,7 @@ public class MovieServiceTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(MovieType.Movie, 19)]
+    [InlineData(MovieType.Movie, 24)]
     [InlineData(MovieType.Series, 11)]
     [InlineData(MovieType.Anime, 10)]
     public async Task FilterMoviesAsync_FiltersMovieType(MovieType type, int expectedCount)
@@ -375,7 +375,7 @@ public class MovieServiceTests : IAsyncLifetime
         Assert.Equal(DatabaseSeeder.CatalogMovies.Count, second.TotalItems);
         Assert.Equal(2, second.Page);
         Assert.Equal(5, second.PageSize);
-        Assert.Equal(8, second.TotalPages);
+        Assert.Equal(9, second.TotalPages);
         Assert.True(second.HasNextPage);
         Assert.True(second.HasPreviousPage);
         Assert.Empty(first.Items.Select(movie => movie.Id).Intersect(second.Items.Select(movie => movie.Id)));
@@ -384,7 +384,7 @@ public class MovieServiceTests : IAsyncLifetime
     [Fact]
     public async Task FilterMoviesAsync_LastPageHasNoNextPage()
     {
-        var result = await _service.FilterMoviesAsync(new MovieFilterRequest { Page = 8, PageSize = 5 });
+        var result = await _service.FilterMoviesAsync(new MovieFilterRequest { Page = 9, PageSize = 5 });
 
         Assert.Equal(5, result.Items.Count);
         Assert.False(result.HasNextPage);
