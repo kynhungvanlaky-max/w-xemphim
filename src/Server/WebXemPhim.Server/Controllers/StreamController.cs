@@ -135,8 +135,23 @@ public class StreamController(
 
             if (lease.EpisodeId != request.EpisodeId)
             {
-                return StatusCode(StatusCodes.Status403Forbidden,
-                    ApiResponse<SignedStreamDto>.Fail("Phiên phát không khớp với tập phim được yêu cầu."));
+                var ep = await db.Episodes.AsNoTracking().FirstOrDefaultAsync(e => e.Id == request.EpisodeId);
+                if (ep is not null && lease.MovieId == ep.MovieId)
+                {
+                    // Cho phép cập nhật tập phim trong cùng một phiên của bộ phim (chuyển tập hoặc phiên khởi tạo trước khi chọn tập)
+                    await streamSessionService.AcquireLeaseAsync(
+                        userId,
+                        ep.MovieId,
+                        ep.Id,
+                        lease.SessionId,
+                        deviceName: "Xem tập phim",
+                        ipAddress: clientIp);
+                }
+                else
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        ApiResponse<SignedStreamDto>.Fail("Phiên phát không khớp với tập phim được yêu cầu."));
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(lease.IpAddress) && lease.IpAddress != "127.0.0.1" && lease.IpAddress != "::1")

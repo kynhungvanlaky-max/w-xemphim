@@ -156,6 +156,15 @@ public sealed class WatchPlaybackState
             ?? Sources.FirstOrDefault();
     }
 
+    public void SelectPreferred(int? number)
+    {
+        Current = Episodes.FirstOrDefault(episode => episode.EpisodeNumber == number) ?? Episodes.FirstOrDefault();
+        var playable = Sources.Where(CanPlay).ToList();
+        Source = FindPreferredSource(playable)
+            ?? playable.FirstOrDefault()
+            ?? Sources.FirstOrDefault();
+    }
+
     public bool SetServer(string server)
     {
         var matching = Sources.Where(source => source.ServerName == server).ToList();

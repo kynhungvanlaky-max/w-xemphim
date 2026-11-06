@@ -418,14 +418,29 @@
         if (firstRender)
         {
             await Auth.InitializeAsync();
+            var wasVip = playback.IsVipUser;
             playback.IsVipUser = Auth.User?.IsVip == true || Auth.User?.IsAdmin == true;
             if (Auth.IsAuthenticated)
             {
                 await Watchlist.InitializeAsync();
                 await ApplyUserSettingsAsync();
-                var targetEp = EpQuery ?? EpisodeIdQuery;
-                playback.Select(targetEp);
-                await AcquireLeaseAndStartHeartbeatAsync();
+                if (movie is not null)
+                {
+                    var targetEp = EpQuery ?? EpisodeIdQuery;
+                    if (!wasVip && playback.IsVipUser)
+                    {
+                        playback.SelectPreferred(targetEp);
+                    }
+                    else
+                    {
+                        playback.Select(targetEp);
+                    }
+
+                    if (playback.Source is not null && string.IsNullOrEmpty(playback.Source.StreamUrl))
+                    {
+                        await AcquireLeaseAndStartHeartbeatAsync();
+                    }
+                }
                 StateHasChanged();
             }
         }
@@ -558,7 +573,7 @@
         await Api.SaveProgressAsync(req);
     }
 
-    private async Task GoTo(EpisodeDto? episode)
+    private void GoTo(EpisodeDto? episode)
     {
         if (episode is null) return;
         if (currentCursorSeconds > 0)
@@ -569,10 +584,6 @@
         ResetFailoverBudget();
         playback.Select(episode.EpisodeNumber);
         Nav.NavigateTo($"/watch/{MovieId}?ep={episode.EpisodeNumber}");
-        if (Auth.IsAuthenticated)
-        {
-            await AcquireLeaseAndStartHeartbeatAsync();
-        }
     }
 
     private void ResetFailoverBudget()
@@ -747,7 +758,7 @@
         await SelectQuality(quality);
     }
 
-    private void OnVideoEnded() { _ = GoTo(playback.OnEnded()); }
+    private void OnVideoEnded() { GoTo(playback.OnEnded()); }
     private void SignIn() => Nav.NavigateTo("/login?ReturnUrl=" + Uri.EscapeDataString(ReturnUrl));
 
     private async Task ToggleSaved()
@@ -801,12 +812,27 @@
     {
         if (Auth.IsAuthenticated)
         {
+            var wasVip = playback.IsVipUser;
             playback.IsVipUser = Auth.User?.IsVip == true || Auth.User?.IsAdmin == true;
             await Watchlist.InitializeAsync();
             await ApplyUserSettingsAsync();
-            var targetEp = EpQuery ?? EpisodeIdQuery;
-            playback.Select(targetEp);
-            await AcquireLeaseAndStartHeartbeatAsync();
+            if (movie is not null && playback.Current is not null)
+            {
+                var targetEp = EpQuery ?? EpisodeIdQuery;
+                if (!wasVip && playback.IsVipUser)
+                {
+                    playback.SelectPreferred(targetEp);
+                }
+                else
+                {
+                    playback.Select(targetEp);
+                }
+
+                if (playback.Source is not null && string.IsNullOrEmpty(playback.Source.StreamUrl))
+                {
+                    await AcquireLeaseAndStartHeartbeatAsync();
+                }
+            }
         }
         else
         {
@@ -821,23 +847,19 @@
     private async Task AcquireLeaseAndStartHeartbeatAsync()
     {
         if (!Auth.IsAuthenticated) return;
+        if (playback.Current is null || playback.Source is null) return;
         await _leaseLock.WaitAsync();
         try
         {
             StopHeartbeatTimer();
-            if (!string.IsNullOrEmpty(currentStreamSessionId))
-            {
-                _ = HubClient.ReleaseStreamLeaseAsync(currentStreamSessionId);
-            }
-
-            var sessionId = Guid.NewGuid().ToString("N");
+            var sessionId = !string.IsNullOrEmpty(currentStreamSessionId) ? currentStreamSessionId : Guid.NewGuid().ToString("N");
             currentStreamSessionId = sessionId;
             isEvicted = false;
             evictionNotice = null;
 
             var result = await HubClient.AcquireStreamLeaseAsync(
                 MovieId,
-                playback.Current?.Id,
+                playback.Current.Id,
                 sessionId,
                 "Trình duyệt Web");
 
