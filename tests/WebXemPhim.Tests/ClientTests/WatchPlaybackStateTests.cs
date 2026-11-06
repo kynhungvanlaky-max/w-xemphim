@@ -179,4 +179,99 @@ public sealed class WatchPlaybackStateTests
     {
         Assert.Equal(expectedBadge, WatchPlaybackState.GetResolutionBadge(quality));
     }
+[Fact]
+    public void SwitchingBetweenServersWithSignedRelativeUrlsDoesNotDropSourcesOrServers()
+    {
+        var movie = new MovieDetailDto
+        {
+            Episodes =
+            [
+                new()
+                {
+                    Id = 101,
+                    EpisodeNumber = 1,
+                    Title = "Tập 1",
+                    Streams =
+                    [
+                        new() { ServerName = "Nguồn 1", Quality = "4K", StreamUrl = "https://cdn.example.com/4k.mp4" },
+                        new() { ServerName = "Nguồn 2", Quality = "1080p", StreamUrl = "https://cdn.example.com/1080p.mp4" },
+                        new() { ServerName = "Nguồn 3", Quality = "720p", StreamUrl = "https://cdn.example.com/720p.mp4" },
+                        new() { ServerName = "Nguồn 4", Quality = "480p", StreamUrl = "https://cdn.example.com/480p.mp4" }
+                    ]
+                }
+            ]
+        };
+
+        var state = new WatchPlaybackState();
+        state.Load(movie, 1);
+        Assert.Equal(4, state.Servers.Count());
+
+        // Simulate switching servers and mutating StreamUrl to relative signed URLs (e.g. /api/stream/101/1?...)
+        for (var i = 0; i < 5; i++)
+        {
+            Assert.True(state.SetServer("Nguồn 2"));
+            state.Source!.StreamUrl = $"/api/stream/101/2?exp={1700000000 + i}&sid=abc{i}";
+            Assert.Equal(4, state.Servers.Count());
+
+            Assert.True(state.SetServer("Nguồn 3"));
+            state.Source!.StreamUrl = $"/api/stream/101/3?exp={1700000000 + i}&sid=def{i}";
+            Assert.Equal(4, state.Servers.Count());
+
+            Assert.True(state.SetServer("Nguồn 4"));
+            state.Source!.StreamUrl = $"/api/stream/101/4?exp={1700000000 + i}&sid=ghi{i}";
+            Assert.Equal(4, state.Servers.Count());
+
+            Assert.True(state.SetServer("Nguồn 1"));
+            state.Source!.StreamUrl = $"/api/stream/101/1?exp={1700000000 + i}&sid=jkl{i}";
+            Assert.Equal(4, state.Servers.Count());
+        }
+
+        // None of the servers were dropped
+        Assert.Equal(["Nguồn 1", "Nguồn 2", "Nguồn 3", "Nguồn 4"], state.Servers);
+    }
+
+    [Fact]
+    public void EpisodeQualitiesRetainsAllQualitiesAndSetQualitySwitchesServerWhenNeeded()
+    {
+        var movie = new MovieDetailDto
+        {
+            Episodes =
+            [
+                new()
+                {
+                    Id = 1,
+                    EpisodeNumber = 1,
+                    Title = "Tập 1",
+                    Streams =
+                    [
+                        new() { ServerName = "Server A", Quality = "4K", StreamUrl = "https://cdn.example.com/4k.mp4" },
+                        new() { ServerName = "Server A", Quality = "1080p", StreamUrl = "https://cdn.example.com/1080p.mp4" },
+                        new() { ServerName = "Server B", Quality = "720p", StreamUrl = "https://cdn.example.com/720p.mp4" },
+                        new() { ServerName = "Server B", Quality = "480p", StreamUrl = "https://cdn.example.com/480p.mp4" }
+                    ]
+                }
+            ]
+        };
+
+        var state = new WatchPlaybackState();
+        state.Load(movie, 1);
+
+        // EpisodeQualities contains all 4 distinct qualities
+        Assert.Equal(4, state.EpisodeQualities.Count());
+        Assert.Contains("4K", state.EpisodeQualities);
+        Assert.Contains("1080p", state.EpisodeQualities);
+        Assert.Contains("720p", state.EpisodeQualities);
+        Assert.Contains("480p", state.EpisodeQualities);
+
+        // Switch to Server B (only has 720p and 480p on Server B)
+        Assert.True(state.SetServer("Server B"));
+        Assert.Equal("Server B", state.Source!.ServerName);
+        // EpisodeQualities STILL retains all 4 qualities!
+        Assert.Equal(4, state.EpisodeQualities.Count());
+
+        // When user chooses 4K while on Server B, SetQuality automatically switches to Server A!
+        Assert.True(state.SetQuality("4K"));
+        Assert.Equal("Server A", state.Source.ServerName);
+        Assert.Equal("4K", state.Source.Quality);
+    }
 }

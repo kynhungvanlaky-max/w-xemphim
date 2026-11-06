@@ -43,4 +43,14 @@ public interface ICloudStorageService
     /// Kiểm tra tệp có tồn tại trên bucket hay không.
     /// </summary>
     Task<bool> ExistsAsync(string objectKey, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sinh URL Pre-signed PUT để trình duyệt hoặc client tải tệp trực tiếp lên Cloudflare R2 bucket.
+    /// </summary>
+    Task<WebXemPhim.Shared.Models.CloudStoragePresignedUploadDto?> GeneratePresignedUploadUrlAsync(
+        string fileName,
+        string? contentType = null,
+        string folder = "episodes",
+        TimeSpan? expiry = null,
+        CancellationToken cancellationToken = default);
 }

@@ -27,10 +27,10 @@ if (string.IsNullOrWhiteSpace(rawServerHosts) || rawServerHosts.Trim() == "*")
 
 WebSecurityExtensions.ApplyDevelopmentDefaults(builder.Configuration, builder.Environment, client: false);
 WebSecurityExtensions.ValidateProduction(builder.Configuration, builder.Environment, client: false);
-// Giới hạn mặc định 64 KB cho mọi API. Riêng endpoint tải ảnh nền tập dùng giới hạn
-// riêng (RequestSizeLimit trên action) nên Kestrel phải cho phép mức cao hơn — giới hạn
-// của action vẫn được áp dụng, các endpoint khác không bị nới ra.
-builder.WebHost.ConfigureKestrel(options => { options.AddServerHeader = false; options.Limits.MaxRequestBodySize = 6 * 1024 * 1024; });
+// Giới hạn mặc định 64 KB cho mọi API. Riêng endpoint tải ảnh nền hoặc video tập dùng giới hạn
+// riêng (RequestSizeLimit trên action) nên Kestrel phải cho phép mức trần nhận tệp (4 GB) — giới hạn
+// của action vẫn được áp dụng, các endpoint khác vẫn được bảo vệ bởi global filter 64 KB.
+builder.WebHost.ConfigureKestrel(options => { options.AddServerHeader = false; options.Limits.MaxRequestBodySize = 4L * 1024 * 1024 * 1024; });
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Services.AddSiteDataProtection(builder.Configuration, "WebXemPhim.Server");
@@ -112,6 +112,7 @@ builder.Services.AddHttpClient("StreamProbe", client =>
 builder.Services.AddScoped<IMovieService, DatabaseMovieService>();
 builder.Services.AddScoped<IGenreService, DatabaseGenreService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddSingleton<IAuthSessionCache, AuthSessionCache>();
 builder.Services.AddScoped<IPasswordResetEmailSender, PasswordResetEmailSender>();
 builder.Services.AddScoped<ISecurityAuditService, SecurityAuditService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
@@ -123,10 +124,13 @@ builder.Services.AddSingleton<PublicUrlResolver>();
 // Ảnh nền tập do quản trị viên tải lên nằm trong volume server_data (/app/data) nên
 // không mất khi build lại container.
 builder.Services.AddSingleton<EpisodeThumbnailStorage>();
+builder.Services.AddSingleton<WebXemPhim.Server.Services.VideoTranscoding.IVideoTranscoderService, WebXemPhim.Server.Services.VideoTranscoding.FfmpegVideoTranscoderService>();
+builder.Services.AddSingleton<EpisodeVideoStorage>();
 builder.Services.AddSingleton<IPaymentWebhookVerifier, PaymentWebhookVerifier>();
 builder.Services.AddSingleton<IFieldEncryptor, FieldEncryptor>();
 builder.Services.Configure<CloudStorageOptions>(builder.Configuration.GetSection(CloudStorageOptions.SectionName));
 builder.Services.AddSingleton<ICloudStorageService, CloudflareR2StorageService>();
+builder.Services.AddSingleton<IStreamPolicyService, StreamPolicyService>();
 builder.Services.AddScoped<IStreamSessionService, StreamSessionService>();
 builder.Services.AddHostedService<StreamSessionCleanupWorker>();
 builder.Services.AddAuthentication("Bearer")
@@ -351,6 +355,7 @@ if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Databas
             {
                 await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
                 await DatabaseSchemaHelper.SyncIdentitySequencesAsync(context);
+                await DatabaseSchemaHelper.BackfillUserSearchNamesAsync(context);
             }
         }
     }
@@ -378,6 +383,7 @@ else if (!app.Environment.IsEnvironment("Testing"))
             {
                 await DatabaseSchemaHelper.SyncMovieSearchIndexAsync(context);
                 await DatabaseSchemaHelper.SyncIdentitySequencesAsync(context);
+                await DatabaseSchemaHelper.BackfillUserSearchNamesAsync(context);
             }
 
             if (!await context.Users.AnyAsync())

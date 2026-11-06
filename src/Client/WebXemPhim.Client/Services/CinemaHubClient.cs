@@ -11,6 +11,7 @@ public sealed class CinemaHubClient : IAsyncDisposable
     private readonly string _hubUrl;
     private readonly ILogger<CinemaHubClient> _logger;
     private readonly ICircuitClientIpProvider? _circuitIpProvider;
+    private readonly SemaphoreSlim _connectionLock = new(1, 1);
     private HubConnection? _hubConnection;
     private bool _disposed;
 
@@ -34,11 +35,21 @@ public sealed class CinemaHubClient : IAsyncDisposable
 
     public async Task StartAsync()
     {
-        if (_hubConnection is not null || !_auth.IsAuthenticated || string.IsNullOrWhiteSpace(_auth.AccessToken))
+        if (!_auth.IsAuthenticated || string.IsNullOrWhiteSpace(_auth.AccessToken))
             return;
 
+        await _connectionLock.WaitAsync();
         try
         {
+            if (_hubConnection is not null && _hubConnection.State == HubConnectionState.Connected)
+                return;
+
+            if (_hubConnection is not null)
+            {
+                try { await _hubConnection.DisposeAsync(); } catch { }
+                _hubConnection = null;
+            }
+
             _hubConnection = new HubConnectionBuilder()
                 .WithUrl(_hubUrl, options =>
                 {
@@ -70,20 +81,37 @@ public sealed class CinemaHubClient : IAsyncDisposable
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Không thể kết nối tới CinemaHub.");
+            if (_hubConnection is not null)
+            {
+                try { await _hubConnection.DisposeAsync(); } catch { }
+                _hubConnection = null;
+            }
+        }
+        finally
+        {
+            _connectionLock.Release();
         }
     }
 
     public async Task StopAsync()
     {
-        if (_hubConnection is not null)
+        await _connectionLock.WaitAsync();
+        try
         {
-            try { await _hubConnection.StopAsync(); }
-            catch (Exception ex) { _logger.LogDebug(ex, "Lỗi phát sinh khi ngắt kết nối CinemaHub."); }
-            finally
+            if (_hubConnection is not null)
             {
-                await _hubConnection.DisposeAsync();
-                _hubConnection = null;
+                try { await _hubConnection.StopAsync(); }
+                catch (Exception ex) { _logger.LogDebug(ex, "Lỗi phát sinh khi ngắt kết nối CinemaHub."); }
+                finally
+                {
+                    await _hubConnection.DisposeAsync();
+                    _hubConnection = null;
+                }
             }
+        }
+        finally
+        {
+            _connectionLock.Release();
         }
     }
 
@@ -95,7 +123,15 @@ public sealed class CinemaHubClient : IAsyncDisposable
     {
         if (_hubConnection is null || _hubConnection.State != HubConnectionState.Connected)
         {
-            await StartAsync();
+            if (_hubConnection is null || _hubConnection.State == HubConnectionState.Disconnected)
+            {
+                await StartAsync();
+            }
+
+            for (var i = 0; i < 15 && (_hubConnection is null || _hubConnection.State != HubConnectionState.Connected); i++)
+            {
+                await Task.Delay(100);
+            }
         }
 
         if (_hubConnection is null || _hubConnection.State != HubConnectionState.Connected)
@@ -169,5 +205,6 @@ public sealed class CinemaHubClient : IAsyncDisposable
         _disposed = true;
         _auth.OnChange -= HandleAuthChanged;
         await StopAsync();
+        _connectionLock.Dispose();
     }
 }

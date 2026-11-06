@@ -375,7 +375,7 @@
 
                 @foreach (var log in visibleLogs)
                 {
-                    <div class="audit-timeline-item">
+                    <div class="audit-timeline-item" @key="log.Id">
                         <div class="audit-timeline-node @GetNodeCssClass(log.Action)">
                             <span style="font-size: 0.65rem; font-weight: 800;">@GetActionSymbol(log.Action)</span>
                         </div>
@@ -436,7 +436,7 @@
                     <tbody>
                         @foreach (var log in visibleLogs)
                         {
-                            <tr>
+                            <tr @key="log.Id">
                                 <td>
                                     <div class="audit-time-main font-mono-num">
                                         @log.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
@@ -511,7 +511,7 @@
 @if (activeLog != null)
 {
     <div class="drawer-overlay" @onclick="CloseDetailsModal">
-        <div class="drawer-content audit-modal-drawer" role="dialog" aria-modal="true" aria-labelledby="audit-detail-title" @onclick:stopPropagation="true" style="max-width: 620px;">
+        <div class="drawer-content audit-modal-drawer" role="dialog" aria-modal="true" aria-labelledby="audit-detail-title" tabindex="-1" @onkeydown="HandleDrawerKeyDown" @onclick:stopPropagation="true" style="max-width: 620px;">
             <div class="drawer-header audit-modal-header">
                 <div>
                     <h3 class="audit-modal-title" id="audit-detail-title">
@@ -578,6 +578,13 @@
 
     /// <summary>Bản ghi hiển thị sau khi áp dụng các bộ lọc cục bộ (mức độ rủi ro / khung thời gian).</summary>
     private List<AuditLogDto> visibleLogs = new();
+
+    // Đếm theo mức độ rủi ro được cache sau mỗi lần tải trang (tránh phân loại lại 4 lần mỗi render).
+    private int countCreate;
+    private int countUpdate;
+    private int countDanger;
+    private int countOther;
+    private string? lastPageSignature;
 
     /// <summary>Từ khóa đang gõ trong ô tìm kiếm.</summary>
     private string searchQuery = string.Empty;
@@ -669,6 +676,7 @@
             StateHasChanged();
         }
 
+        var renderNeeded = !silent;
         try
         {
             var result = await AdminApi.GetAuditLogsPagedAsync(
@@ -677,19 +685,33 @@
                 page: currentPage,
                 pageSize: pageSize);
 
-            pageItems = result.Items ?? new List<AuditLogDto>();
+            var newItems = result.Items ?? new List<AuditLogDto>();
+            var signature = BuildPageSignature(newItems, result.TotalItems);
+            if (silent && signature == lastPageSignature)
+            {
+                // Auto-refresh không có gì thay đổi: không re-render để tránh giật/nháy bảng.
+                return;
+            }
+
+            pageItems = newItems;
             totalItems = result.TotalItems;
+            lastPageSignature = signature;
+            RecomputeActionCounts();
             ApplyClientFilters();
+            renderNeeded = true;
         }
         catch (Exception ex)
         {
             if (!silent)
             {
                 actionError = $"Không thể tải dữ liệu nhật ký hệ thống: {ex.Message}";
+                pageItems = new List<AuditLogDto>();
+                visibleLogs = new List<AuditLogDto>();
+                totalItems = 0;
+                RecomputeActionCounts();
+                renderNeeded = true;
             }
-            pageItems = new List<AuditLogDto>();
-            visibleLogs = new List<AuditLogDto>();
-            totalItems = 0;
+            // Silent refresh lỗi tạm thời: giữ nguyên dữ liệu đang hiển thị.
         }
         finally
         {
@@ -697,7 +719,31 @@
             {
                 isLoading = false;
             }
-            StateHasChanged();
+            if (renderNeeded)
+            {
+                StateHasChanged();
+            }
+        }
+    }
+
+    private static string BuildPageSignature(List<AuditLogDto> items, int total) =>
+        $"{total}|{string.Join(',', items.Select(item => item.Id))}";
+
+    private void RecomputeActionCounts()
+    {
+        countCreate = 0;
+        countUpdate = 0;
+        countDanger = 0;
+        countOther = 0;
+        foreach (var item in pageItems)
+        {
+            switch (ClassifyAction(item.Action))
+            {
+                case AuditActionCategory.Create: countCreate++; break;
+                case AuditActionCategory.Update: countUpdate++; break;
+                case AuditActionCategory.Danger: countDanger++; break;
+                default: countOther++; break;
+            }
         }
     }
 
@@ -1024,6 +1070,7 @@
 
     private void OpenDetailsModal(AuditLogDto log)
     {
+        showFilterSettings = false;
         activeLog = log;
         isCopied = false;
     }
@@ -1126,8 +1173,13 @@
         return AuditActionCategory.Other;
     }
 
-    private int CountActions(AuditActionCategory category) =>
-        pageItems.Count(l => ClassifyAction(l.Action) == category);
+    private int CountActions(AuditActionCategory category) => category switch
+    {
+        AuditActionCategory.Create => countCreate,
+        AuditActionCategory.Update => countUpdate,
+        AuditActionCategory.Danger => countDanger,
+        _ => countOther
+    };
 
     private static bool IsCreateAction(string action) =>
         action.Contains("CREATE", StringComparison.OrdinalIgnoreCase) ||
@@ -1149,8 +1201,8 @@
 
     private double GetActionPercent(AuditActionCategory category)
     {
-        if (!pageItems.Any()) return 0;
-        var count = pageItems.Count(l => ClassifyAction(l.Action) == category);
+        if (pageItems.Count == 0) return 0;
+        var count = CountActions(category);
         return Math.Round((double)count / pageItems.Count * 100.0, 1);
     }
 
@@ -1192,6 +1244,14 @@
         if (diff.TotalHours < 24) return $"{(int)diff.TotalHours} giờ trước";
         if (diff.TotalDays < 30) return $"{(int)diff.TotalDays} ngày trước";
         return time.ToLocalTime().ToString("dd/MM/yyyy");
+    }
+
+    private void HandleDrawerKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            CloseDetailsModal();
+        }
     }
 
     public void Dispose()

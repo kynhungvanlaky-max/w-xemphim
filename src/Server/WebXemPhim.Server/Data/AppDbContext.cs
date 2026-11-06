@@ -125,6 +125,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(item => item.CreatedAtUtc);
             entity.HasIndex(item => new { item.EventType, item.CreatedAtUtc });
             entity.HasIndex(item => item.EpisodeId);
+            // Sub-filter theo SessionId trong trang telemetry (lọc/session drilldown).
+            entity.HasIndex(item => item.SessionId);
         });
         modelBuilder.Entity<UserLibraryEntity>(entity =>
         {
@@ -140,9 +142,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasKey(item => item.Id);
             entity.HasIndex(item => item.NormalizedEmail).IsUnique();
             entity.HasIndex(item => item.EmailLookupHash);
+            // Admin user search: duyệt theo tên (lowercase) + sort theo ngày tạo.
+            entity.HasIndex(item => new { item.SearchNameLower, item.CreatedAtUtc });
             entity.Property(item => item.EmailLookupHash).HasMaxLength(64);
             entity.Property(item => item.FullName).HasMaxLength(500).IsRequired()
                 .HasConversion(FieldEncryptionConverter.Instance);
+            entity.Property(item => item.SearchNameLower).HasMaxLength(500).IsRequired();
             entity.Property(item => item.Email).HasMaxLength(500).IsRequired()
                 .HasConversion(FieldEncryptionConverter.Instance);
             entity.Property(item => item.NormalizedEmail).HasMaxLength(160).IsRequired();
@@ -178,6 +183,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(item => item.Status).HasConversion<int>().IsConcurrencyToken();
             entity.Property(item => item.TransactionReference).HasMaxLength(120);
             entity.HasIndex(item => item.TransactionReference);
+            // Trang thanh toán admin: sort/paginate theo CreatedAtUtc, lọc theo Status.
+            entity.HasIndex(item => item.CreatedAtUtc);
+            entity.HasIndex(item => new { item.Status, item.CreatedAtUtc });
             entity.HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<ReviewEntity>(entity =>
@@ -185,6 +193,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.ToTable("reviews");
             entity.HasKey(item => item.Id);
             entity.HasIndex(item => new { item.MovieId, item.UserId }).IsUnique();
+            entity.HasIndex(item => item.CreatedAtUtc);
             entity.Property(item => item.Comment).HasMaxLength(800);
             entity.HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(item => item.Movie).WithMany(movie => movie.Reviews).HasForeignKey(item => item.MovieId).OnDelete(DeleteBehavior.Cascade);
@@ -201,6 +210,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(item => item.Slug).IsUnique();
             entity.HasIndex(item => new { item.Type, item.ReleaseYear });
             entity.HasIndex(item => new { item.IsTrending, item.Rating });
+            // Admin movie list: sort/filter phổ biến, ratings và quốc gia.
+            entity.HasIndex(item => item.ViewCount);
+            entity.HasIndex(item => item.Rating);
+            entity.HasIndex(item => item.Country);
             entity.Property(item => item.Title).HasMaxLength(200).IsRequired();
             entity.Property(item => item.OriginalTitle).HasMaxLength(200).IsRequired();
             entity.Property(item => item.Slug).HasMaxLength(180).IsRequired();
@@ -376,6 +389,8 @@ public sealed class UserEntity
 {
     public Guid Id { get; set; }
     public string FullName { get; set; } = string.Empty;
+    /// <summary>Bản copy lowercase của FullName phục vụ tìm kiếm admin (không mã hoá, có index).</summary>
+    public string SearchNameLower { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string NormalizedEmail { get; set; } = string.Empty;
     public string? EmailLookupHash { get; set; }

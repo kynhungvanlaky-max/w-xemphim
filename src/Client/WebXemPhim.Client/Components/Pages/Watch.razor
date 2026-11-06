@@ -84,7 +84,7 @@
                     }
                     else
                     {
-                        <div class="wv-no-stream"><img src="@PlayerPoster" alt="" /><div><CinemaIcon Name="CinemaIconName.Film" Size="32" /><h2>@(loading || (playback.Source is not null && string.IsNullOrEmpty(playback.Source.StreamUrl)) ? "Đang chuẩn bị luồng phát..." : "Chưa có nguồn phát")</h2><p>@(loading || (playback.Source is not null && string.IsNullOrEmpty(playback.Source.StreamUrl)) ? "Đang thiết lập phiên phát bảo mật, vui lòng chờ trong giây lát." : playback.Current is null ? "Phim chưa có tập được phát hành." : "Tập này chưa có nguồn phát khả dụng. Bạn có thể chọn tập khác.")</p></div></div>
+                        <div class="wv-no-stream"><img src="@PlayerPoster" alt="" onerror="this.onerror=null; this.src='@FallbackBackdrop';" /><div><CinemaIcon Name="CinemaIconName.Film" Size="32" /><h2>@(loading || (playback.Source is not null && string.IsNullOrEmpty(playback.Source.StreamUrl)) ? "Đang chuẩn bị luồng phát..." : "Chưa có nguồn phát")</h2><p>@(loading || (playback.Source is not null && string.IsNullOrEmpty(playback.Source.StreamUrl)) ? "Đang thiết lập phiên phát bảo mật, vui lòng chờ trong giây lát." : playback.Current is null ? "Phim chưa có tập được phát hành." : "Tập này chưa có nguồn phát khả dụng. Bạn có thể chọn tập khác.")</p></div></div>
                     }
                 </section>
                 <!-- Thanh chọn nguồn phát siêu gọn tối giản (Minimalist Stream Bar) -->
@@ -106,7 +106,7 @@
                                         aria-checked="@isCurrentServer"
                                         title="@($"{sInfo.FriendlyName} ({sInfo.PingMs}ms) • {sInfo.Description}")"
                                         @onclick="() => SelectServer(serverName)">
-                                    <span class="wv-sc-pill-name">Nguồn @currentIdx</span>
+                                    <span class="wv-sc-pill-name">@sInfo.FriendlyName</span>
                                     <span class="wv-sc-pill-ping">@sInfo.PingMs ms</span>
                                 </button>
                             }
@@ -175,7 +175,7 @@
                             var active = episode == playback.Current;
                             <button class="wv-episode @(active ? "active" : "")" aria-current="@(active ? "true" : null)" @onclick="() => GoTo(episode)">
                                 <div class="wv-episode-image">
-                                    <img src="@(string.IsNullOrWhiteSpace(episode.ThumbnailUrl) ? PlayerPoster : episode.ThumbnailUrl)" alt="" decoding="async" />
+                                    <img src="@(string.IsNullOrWhiteSpace(episode.ThumbnailUrl) ? FallbackBackdrop : episode.ThumbnailUrl)" alt="" decoding="async" onerror="this.onerror=null; this.src='@FallbackBackdrop';" />
                                     <span>@episode.DurationMinutes phút</span>
                                     <div class="wv-episode-overlay" aria-hidden="true">
                                         <CinemaIcon Name="CinemaIconName.Play" Size="16" Filled="true" />
@@ -376,9 +376,13 @@
     /// <summary>Khoảng nghỉ tối thiểu giữa hai lần tự chuyển nguồn.</summary>
     private static readonly TimeSpan FailoverCooldown = TimeSpan.FromSeconds(10);
     private string ReturnUrl => $"/watch/{MovieId}" + (playback.Current is null ? "" : $"?ep={playback.Current.EpisodeNumber}");
-    private string PlayerKey => $"ep-{playback.Current?.Id}";
+    private string PlayerKey => $"ep-{playback.Current?.Id}-{playback.Source?.ServerName}-{playback.Source?.Position}";
+    private readonly SemaphoreSlim _leaseLock = new(1, 1);
+    private string FallbackBackdrop => !string.IsNullOrWhiteSpace(movie?.BackdropUrl) ? movie.BackdropUrl
+        : !string.IsNullOrWhiteSpace(movie?.PosterUrl) ? movie.PosterUrl
+        : "/images/movies/movie-1-backdrop.webp";
     private string PlayerPoster => !string.IsNullOrWhiteSpace(playback.Current?.ThumbnailUrl) ? playback.Current.ThumbnailUrl
-        : !string.IsNullOrWhiteSpace(movie?.BackdropUrl) ? movie.BackdropUrl : movie?.PosterUrl ?? "";
+        : FallbackBackdrop;
 
     protected override void OnInitialized()
     {
@@ -402,6 +406,10 @@
             playback.Select(targetEp);
             reportOpen = false;
             status = null;
+            if (Auth.IsAuthenticated)
+            {
+                await AcquireLeaseAndStartHeartbeatAsync();
+            }
         }
     }
 
@@ -415,6 +423,10 @@
             {
                 await Watchlist.InitializeAsync();
                 await ApplyUserSettingsAsync();
+                var targetEp = EpQuery ?? EpisodeIdQuery;
+                playback.Select(targetEp);
+                await AcquireLeaseAndStartHeartbeatAsync();
+                StateHasChanged();
             }
         }
         if (focusReport) { focusReport = false; await JS.InvokeVoidAsync("CinemaPlayer.focusDialog", reportDialog); }
@@ -489,7 +501,10 @@
                 }
 
                 playback.Load(movie, targetEpisode);
-                await AcquireLeaseAndStartHeartbeatAsync();
+                if (Auth.IsAuthenticated)
+                {
+                    await AcquireLeaseAndStartHeartbeatAsync();
+                }
             }
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
@@ -552,8 +567,12 @@
         }
         autoPlayEpisodeId = episode.Id; resumeSeconds = 0; currentCursorSeconds = 0;
         ResetFailoverBudget();
+        playback.Select(episode.EpisodeNumber);
         Nav.NavigateTo($"/watch/{MovieId}?ep={episode.EpisodeNumber}");
-        await AcquireLeaseAndStartHeartbeatAsync();
+        if (Auth.IsAuthenticated)
+        {
+            await AcquireLeaseAndStartHeartbeatAsync();
+        }
     }
 
     private void ResetFailoverBudget()
@@ -785,6 +804,8 @@
             playback.IsVipUser = Auth.User?.IsVip == true || Auth.User?.IsAdmin == true;
             await Watchlist.InitializeAsync();
             await ApplyUserSettingsAsync();
+            var targetEp = EpQuery ?? EpisodeIdQuery;
+            playback.Select(targetEp);
             await AcquireLeaseAndStartHeartbeatAsync();
         }
         else
@@ -800,44 +821,76 @@
     private async Task AcquireLeaseAndStartHeartbeatAsync()
     {
         if (!Auth.IsAuthenticated) return;
-        StopHeartbeatTimer();
-        if (!string.IsNullOrEmpty(currentStreamSessionId))
+        await _leaseLock.WaitAsync();
+        try
         {
-            _ = HubClient.ReleaseStreamLeaseAsync(currentStreamSessionId);
-        }
-
-        var sessionId = Guid.NewGuid().ToString("N");
-        currentStreamSessionId = sessionId;
-        isEvicted = false;
-        evictionNotice = null;
-
-        var result = await HubClient.AcquireStreamLeaseAsync(
-            MovieId,
-            playback.Current?.Id,
-            sessionId,
-            "Trình duyệt Web");
-
-        if (result is not null && result.Success)
-        {
-            StartHeartbeatTimer(sessionId);
-            var signed = await ApplySessionSignedUrlAsync(sessionId);
-            if (signed is not null)
+            StopHeartbeatTimer();
+            if (!string.IsNullOrEmpty(currentStreamSessionId))
             {
-                StartTokenRefreshLoop(signed, sessionId);
+                _ = HubClient.ReleaseStreamLeaseAsync(currentStreamSessionId);
             }
-        }
-        else if (result is not null && !result.Success)
-        {
-            await HandleSessionEvictionAsync(new ForceDisconnectNotice
+
+            var sessionId = Guid.NewGuid().ToString("N");
+            currentStreamSessionId = sessionId;
+            isEvicted = false;
+            evictionNotice = null;
+
+            var result = await HubClient.AcquireStreamLeaseAsync(
+                MovieId,
+                playback.Current?.Id,
+                sessionId,
+                "Trình duyệt Web");
+
+            if (result is not null && result.Success)
             {
-                SessionId = sessionId,
-                Reason = result.ErrorMessage ?? "Không thể khởi tạo phiên xem phim do vượt quá giới hạn thiết bị.",
-                DisconnectedAtUtc = DateTime.UtcNow
-            });
+                StartHeartbeatTimer(sessionId);
+                var signed = await ApplySessionSignedUrlAsync(sessionId);
+                if (signed is not null)
+                {
+                    StartTokenRefreshLoop(signed, sessionId);
+                }
+            }
+            else if (result is not null && !result.Success)
+            {
+                await HandleSessionEvictionAsync(new ForceDisconnectNotice
+                {
+                    SessionId = sessionId,
+                    Reason = result.ErrorMessage ?? "Không thể khởi tạo phiên xem phim do vượt quá giới hạn thiết bị.",
+                    DisconnectedAtUtc = DateTime.UtcNow
+                });
+            }
+            else
+            {
+                // Fallback: SignalR chưa kết nối xong, yêu cầu máy chủ tự sinh lease và ký luồng trực tiếp
+                var signed = await ApplySessionSignedUrlAsync(null);
+                if (signed is not null && !string.IsNullOrWhiteSpace(signed.SessionId))
+                {
+                    currentStreamSessionId = signed.SessionId;
+                    StartHeartbeatTimer(signed.SessionId);
+                    StartTokenRefreshLoop(signed, signed.SessionId);
+                }
+            }
+
+            if (playback.Source is not null && string.IsNullOrEmpty(playback.Source.StreamUrl))
+            {
+                var fallbackSigned = await ApplySessionSignedUrlAsync(null);
+                if (fallbackSigned is not null && !string.IsNullOrWhiteSpace(fallbackSigned.SessionId))
+                {
+                    currentStreamSessionId = fallbackSigned.SessionId;
+                    StartHeartbeatTimer(fallbackSigned.SessionId);
+                    StartTokenRefreshLoop(fallbackSigned, fallbackSigned.SessionId);
+                }
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            _leaseLock.Release();
         }
     }
 
-    private async Task<SignedStreamDto?> ApplySessionSignedUrlAsync(string sessionId)
+    private async Task<SignedStreamDto?> ApplySessionSignedUrlAsync(string? sessionId = null)
     {
         var episode = playback.Current;
         var source = playback.Source;

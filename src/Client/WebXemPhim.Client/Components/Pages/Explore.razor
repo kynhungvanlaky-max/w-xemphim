@@ -26,7 +26,7 @@
             <form class="explore-search-box" @onsubmit="Search" @onsubmit:preventDefault>
                 <div class="search-pill">
                     <CinemaIcon Name="CinemaIconName.Search" Size="18" Class="search-icon" />
-                    <input type="search" aria-label="Từ khóa khám phá" placeholder="Tên phim, đạo diễn, diễn viên..." @bind="keyword" @bind:event="oninput" maxlength="200" />
+                    <input type="search" aria-label="Từ khóa khám phá" placeholder="Tên phim, đạo diễn, diễn viên..." @bind="keyword" maxlength="200" />
                     <button type="button"
                             class="discovery-search-filter-btn @(filtersOpen ? "open" : "") @(ActiveCount > 0 ? "has-active" : "")"
                             aria-expanded="@filtersOpen.ToString().ToLowerInvariant()"

@@ -407,7 +407,7 @@
                     @foreach (var m in CurrentPageMovies)
                     {
                         var isSelected = selectedMovieIds.Contains(m.Id);
-                        <tr class="@(isSelected ? "is-selected-row" : "")">
+                        <tr @key="m.Id" class="@(isSelected ? "is-selected-row" : "")">
                             <td style="text-align: center;">
                                 <input type="checkbox" checked="@isSelected" @onchange="e => ToggleSelectMovie(m.Id, (bool)e.Value!)" />
                             </td>
@@ -478,25 +478,6 @@
         }
     </div>
 </section>
-
-<!-- XÁC NHẬN XÓA: mọi hành động không thể hoàn tác đều phải qua hộp thoại này -->
-<AdminConfirmDialog IsOpen="@showDeleteConfirm"
-                    Title="Xóa phim khỏi kho?"
-                    Message="@deleteConfirmMessage"
-                    ConfirmText="Xóa phim"
-                    CancelText="Giữ lại"
-                    Variant="danger"
-                    OnConfirm="ConfirmDeleteMovie"
-                    OnCancel="CancelDeleteMovie" />
-
-<AdminConfirmDialog IsOpen="@showBulkDeleteConfirm"
-                    Title="Xóa hàng loạt"
-                    Message="@bulkDeleteConfirmMessage"
-                    ConfirmText="Xóa hàng loạt"
-                    CancelText="Giữ lại"
-                    Variant="danger"
-                    OnConfirm="ConfirmBulkDelete"
-                    OnCancel="CancelBulkDelete" />
 
 
 <!-- MODAL THÊM / CHỈNH SỬA PHIM -->
@@ -639,8 +620,8 @@
 <!-- MODAL NHÂN BẢN PHIM (CLONE) -->
 @if (showCloneModal && targetCloneMovie != null)
 {
-    <div class="admin-modal-backdrop" @onclick="CloseCloneModal">
-        <div class="admin-modal-card" style="max-width: 500px;" role="dialog" aria-modal="true" aria-labelledby="clone-movie-modal-title" @onclick:stopPropagation>
+    <div class="admin-modal-backdrop is-stacked" @onclick="CloseCloneModal">
+        <div class="admin-modal-card" style="max-width: 500px;" role="dialog" aria-modal="true" aria-labelledby="clone-movie-modal-title" tabindex="-1" @onkeydown="HandleCloneModalKeyDown" @onclick:stopPropagation>
             <div class="admin-modal-header">
                 <h3 id="clone-movie-modal-title">Nhân bản phim: @targetCloneMovie.Title</h3>
                 <button type="button" class="btn-close-modal" @onclick="CloseCloneModal">&times;</button>
@@ -682,7 +663,7 @@
 @if (inspectingMovie != null)
 {
     <div class="cockpit-drawer-backdrop" @onclick="CloseInspector">
-        <aside class="cockpit-drawer" role="dialog" aria-modal="true" aria-labelledby="movie-inspector-title" @onclick:stopPropagation>
+        <aside class="cockpit-drawer" role="dialog" aria-modal="true" aria-labelledby="movie-inspector-title" tabindex="-1" @onkeydown="HandleMovieDrawerKeyDown" @onclick:stopPropagation>
             <div class="drawer-header">
                 <h3 class="drawer-title" id="movie-inspector-title">Thanh Tra Tác Phẩm</h3>
                 <button type="button" class="btn-close-modal" aria-label="Đóng chi tiết phim" @onclick="CloseInspector">&times;</button>
@@ -762,6 +743,26 @@
     </div>
 }
 
+<!-- XÁC NHẬN XÓA: mọi hành động không thể hoàn tác đều phải qua hộp thoại này -->
+<AdminConfirmDialog IsOpen="@showDeleteConfirm"
+                    Title="Xóa phim khỏi kho?"
+                    Message="@deleteConfirmMessage"
+                    ConfirmText="Xóa phim"
+                    CancelText="Giữ lại"
+                    Variant="danger"
+                    OnConfirm="ConfirmDeleteMovie"
+                    OnCancel="CancelDeleteMovie" />
+
+<AdminConfirmDialog IsOpen="@showBulkDeleteConfirm"
+                    Title="Xóa hàng loạt"
+                    Message="@bulkDeleteConfirmMessage"
+                    ConfirmText="Xóa hàng loạt"
+                    CancelText="Giữ lại"
+                    Variant="danger"
+                    OnConfirm="ConfirmBulkDelete"
+                    OnCancel="CancelBulkDelete" />
+
+
 @code {
     private List<MovieDetailDto> allMoviesList = [];
     private List<MovieDetailDto> filteredMovies = [];
@@ -786,6 +787,8 @@
     private string? movieFormError;
     private int currentPage = 1;
     private int pageSize = 10;
+    // Chống race: chỉ áp kết quả của request mới nhất khi admin gõ tìm kiếm nhanh.
+    private int moviesLoadTicket;
 
     // Tùy chỉnh bộ lọc: ẩn/hiện từng ô lọc, lưu lại theo trình duyệt.
     private const string FilterPrefsStorageKey = "cinemaflow_admin_movie_filter_prefs_v2";
@@ -905,6 +908,7 @@
         }
 
         isLoadingMovies = true;
+        var ticket = ++moviesLoadTicket;
         try
         {
             var (yearFrom, yearTo) = ParseYearFilter(selectedYearFilter);
@@ -925,17 +929,22 @@
                 minRating: minRating,
                 maxRating: maxRating);
 
+            if (ticket != moviesLoadTicket) return;
             filteredMovies = result.Items.ToList();
             totalMovieItems = result.TotalItems;
         }
         catch (Exception ex)
         {
+            if (ticket != moviesLoadTicket) return;
             actionError = "Không thể tải danh liệu phim: " + ex.Message;
         }
         finally
         {
-            isLoadingMovies = false;
-            StateHasChanged();
+            if (ticket == moviesLoadTicket)
+            {
+                isLoadingMovies = false;
+                StateHasChanged();
+            }
         }
     }
 
@@ -1250,8 +1259,35 @@
         }
     }
 
+    private void HandleMovieDrawerKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            if (showDeleteConfirm || showBulkDeleteConfirm) return;
+            CloseInspector();
+        }
+    }
+
+    private void HandleCloneModalKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            CloseCloneModal();
+        }
+    }
+
+    private void HandleMovieModalKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            CloseMovieModal();
+        }
+    }
+
     private void OpenCloneModal(MovieDetailDto movie)
     {
+        inspectingMovie = null;
+        showFilterSettings = false;
         targetCloneMovie = movie;
         cloneFormError = null;
         cloneModel = new CloneMovieRequest
@@ -1341,6 +1377,8 @@
 
     private void OpenAddMovieModal()
     {
+        inspectingMovie = null;
+        showFilterSettings = false;
         editingMovieId = null;
         movieFormError = null;
         movieModel = new UpsertMovieRequest
@@ -1360,6 +1398,8 @@
 
     private void OpenEditMovieModal(MovieDetailDto movie)
     {
+        inspectingMovie = null;
+        showFilterSettings = false;
         editingMovieId = movie.Id;
         movieFormError = null;
         movieModel = new UpsertMovieRequest

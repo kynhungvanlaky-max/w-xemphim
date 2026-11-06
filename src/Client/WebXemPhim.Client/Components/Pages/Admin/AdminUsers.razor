@@ -339,7 +339,7 @@
                     {
                         var isExpiringSoon = IsExpiringSoonUser(u);
                         var isSelected = selectedUserIds.Contains(u.Id);
-                        <tr>
+                        <tr @key="u.Id">
                             <td style="width: 40px; text-align: center;">
                                 <input type="checkbox" @onchange="(_) => ToggleSelectUser(u.Id)" />
                             </td>
@@ -422,58 +422,12 @@
     </div>
 </section>
 
-<!-- XÁC NHẬN: các hành động không thể hoàn tác trên tài khoản người dùng -->
-<AdminConfirmDialog IsOpen="@showLockConfirm"
-                    Title="@(pendingLockAction ? "Khoá tài khoản" : "Mở khoá tài khoản")"
-                    Message="@lockConfirmMessage"
-                    ConfirmText="@(pendingLockAction ? "Khoá 24 giờ" : "Mở khoá")"
-                    CancelText="Huỷ"
-                    Variant="warning"
-                    OnConfirm="ConfirmToggleLock"
-                    OnCancel="CancelToggleLock" />
-
-<AdminConfirmDialog IsOpen="@showAdminRoleConfirm"
-                    Title="@(pendingAdminRole ? "Cấp quyền quản trị" : "Thu hồi quyền quản trị")"
-                    Message="@adminRoleConfirmMessage"
-                    ConfirmText="@(pendingAdminRole ? "Cấp quyền" : "Thu hồi")"
-                    CancelText="Huỷ"
-                    Variant="warning"
-                    OnConfirm="ConfirmToggleAdminRole"
-                    OnCancel="CancelToggleAdminRole" />
-
-<AdminConfirmDialog IsOpen="@showVipExtendConfirm"
-                    Title="Gia hạn VIP"
-                    Message="@vipExtendConfirmMessage"
-                    ConfirmText="@($"Cộng {pendingVipExtendDays} ngày")"
-                    CancelText="Huỷ"
-                    Variant="warning"
-                    OnConfirm="ConfirmVipExtension"
-                    OnCancel="CancelVipExtension" />
-
-<AdminConfirmDialog IsOpen="@showRevokeVipConfirm"
-                    Title="Thu hồi quyền VIP"
-                    Message="@revokeVipConfirmMessage"
-                    ConfirmText="Thu hồi VIP"
-                    CancelText="Giữ nguyên"
-                    Variant="warning"
-                    OnConfirm="ConfirmRevokeVip"
-                    OnCancel="CancelRevokeVip" />
-
-<AdminConfirmDialog IsOpen="@showBatchUserConfirm"
-                    Title="@batchConfirmTitle"
-                    Message="@batchConfirmMessage"
-                    ConfirmText="@batchConfirmText"
-                    CancelText="Huỷ"
-                    Variant="warning"
-                    OnConfirm="ConfirmBatchUserAction"
-                    OnCancel="CancelBatchUserConfirm" />
-
 
 <!-- USER 360° INSPECTOR DRAWER (440px) -->
 @if (selectedUserDetail != null)
 {
     <div class="cockpit-drawer-backdrop" @onclick="CloseUserDrawer">
-        <aside class="cockpit-drawer" role="dialog" aria-modal="true" aria-labelledby="user-detail-title" @onclick:stopPropagation>
+        <aside class="cockpit-drawer" role="dialog" aria-modal="true" aria-labelledby="user-detail-title" tabindex="-1" @onkeydown="HandleDrawerKeyDown" @onclick:stopPropagation>
             <div class="drawer-header">
                 <h3 class="drawer-title" id="user-detail-title">Hồ Sơ Người Dùng 360°</h3>
                 <button type="button" class="btn-close-modal" aria-label="Đóng hồ sơ người dùng" @onclick="CloseUserDrawer">&times;</button>
@@ -584,6 +538,53 @@
     </div>
 }
 
+
+<!-- XÁC NHẬN: các hành động không thể hoàn tác trên tài khoản người dùng -->
+<AdminConfirmDialog IsOpen="@showLockConfirm"
+                    Title="@(pendingLockAction ? "Khoá tài khoản" : "Mở khoá tài khoản")"
+                    Message="@lockConfirmMessage"
+                    ConfirmText="@(pendingLockAction ? "Khoá 24 giờ" : "Mở khoá")"
+                    CancelText="Huỷ"
+                    Variant="warning"
+                    OnConfirm="ConfirmToggleLock"
+                    OnCancel="CancelToggleLock" />
+
+<AdminConfirmDialog IsOpen="@showAdminRoleConfirm"
+                    Title="@(pendingAdminRole ? "Cấp quyền quản trị" : "Thu hồi quyền quản trị")"
+                    Message="@adminRoleConfirmMessage"
+                    ConfirmText="@(pendingAdminRole ? "Cấp quyền" : "Thu hồi")"
+                    CancelText="Huỷ"
+                    Variant="warning"
+                    OnConfirm="ConfirmToggleAdminRole"
+                    OnCancel="CancelToggleAdminRole" />
+
+<AdminConfirmDialog IsOpen="@showVipExtendConfirm"
+                    Title="Gia hạn VIP"
+                    Message="@vipExtendConfirmMessage"
+                    ConfirmText="@($"Cộng {pendingVipExtendDays} ngày")"
+                    CancelText="Huỷ"
+                    Variant="warning"
+                    OnConfirm="ConfirmVipExtension"
+                    OnCancel="CancelVipExtension" />
+
+<AdminConfirmDialog IsOpen="@showRevokeVipConfirm"
+                    Title="Thu hồi quyền VIP"
+                    Message="@revokeVipConfirmMessage"
+                    ConfirmText="Thu hồi VIP"
+                    CancelText="Giữ nguyên"
+                    Variant="warning"
+                    OnConfirm="ConfirmRevokeVip"
+                    OnCancel="CancelRevokeVip" />
+
+<AdminConfirmDialog IsOpen="@showBatchUserConfirm"
+                    Title="@batchConfirmTitle"
+                    Message="@batchConfirmMessage"
+                    ConfirmText="@batchConfirmText"
+                    CancelText="Huỷ"
+                    Variant="warning"
+                    OnConfirm="ConfirmBatchUserAction"
+                    OnCancel="CancelBatchUserConfirm" />
+
 @code {
     private List<UserDto> usersList = [];
     private AdminDashboardDto? stats;
@@ -604,6 +605,8 @@
     private string? actionError;
     private int currentPage = 1;
     private int pageSize = 10;
+    // Chống race: chỉ áp kết quả của request mới nhất (gõ tìm kiếm nhanh gây nhiều request).
+    private int usersLoadTicket;
 
     // Tùy chỉnh bộ lọc: ẩn/hiện từng ô lọc, lưu lại theo trình duyệt.
     private const string FilterPrefsStorageKey = "cinemaflow_admin_user_filter_prefs_v2";
@@ -683,6 +686,7 @@
         }
 
         isLoadingUsers = true;
+        var ticket = ++usersLoadTicket;
         try
         {
             var result = await AdminApi.GetUsersPagedAsync(
@@ -696,17 +700,22 @@
                 registeredPeriod: string.IsNullOrWhiteSpace(registeredPeriodFilter) ? null : registeredPeriodFilter,
                 sortBy: string.IsNullOrWhiteSpace(userSortBy) ? null : userSortBy);
 
+            if (ticket != usersLoadTicket) return;
             filteredUsers = result.Items.ToList();
             totalUserItems = result.TotalItems;
         }
         catch (Exception ex)
         {
+            if (ticket != usersLoadTicket) return;
             actionError = "Không thể tải danh liệu người dùng: " + ex.Message;
         }
         finally
         {
-            isLoadingUsers = false;
-            StateHasChanged();
+            if (ticket == usersLoadTicket)
+            {
+                isLoadingUsers = false;
+                StateHasChanged();
+            }
         }
     }
 
@@ -927,8 +936,19 @@
 
     private sealed record UserFilterPrefs(List<string> Hidden, bool Collapsed);
 
+    private void HandleDrawerKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            if (showLockConfirm || showAdminRoleConfirm || showVipExtendConfirm || showRevokeVipConfirm || showBatchUserConfirm)
+                return;
+            CloseUserDrawer();
+        }
+    }
+
     private async Task OpenUserDrawer(Guid userId)
     {
+        showFilterSettings = false;
         try
         {
             selectedUserDetail = await AdminApi.GetUserDetailAsync(userId);
@@ -1263,16 +1283,7 @@
     {
         actionAlert = null;
         actionError = null;
-        var success = 0;
-        foreach (var id in ids)
-        {
-            try
-            {
-                var res = await AdminApi.UpdateUserLockStatusAsync(id, new AdminUpdateUserLockRequest { IsLocked = true });
-                if (res?.Success == true) success++;
-            }
-            catch { /* xem tổng kết ở dưới */ }
-        }
+        var success = await RunBulkUserActionAsync("lock", ids, lockMinutes: 1440);
         actionAlert = $"Đã khoá {success}/{ids.Count} tài khoản.";
         await LoadUsers();
     }
@@ -1281,16 +1292,7 @@
     {
         actionAlert = null;
         actionError = null;
-        var success = 0;
-        foreach (var id in ids)
-        {
-            try
-            {
-                var res = await AdminApi.UpdateUserLockStatusAsync(id, new AdminUpdateUserLockRequest { IsLocked = false });
-                if (res?.Success == true) success++;
-            }
-            catch { /* xem tổng kết ở dưới */ }
-        }
+        var success = await RunBulkUserActionAsync("unlock", ids);
         actionAlert = $"Đã mở khoá {success}/{ids.Count} tài khoản.";
         await LoadUsers();
     }
@@ -1299,20 +1301,7 @@
     {
         actionAlert = null;
         actionError = null;
-        var success = 0;
-        foreach (var id in ids)
-        {
-            try
-            {
-                var res = await AdminApi.UpdateUserMembershipAsync(id, new AdminUpdateUserRequest
-                {
-                    MembershipTier = MembershipTier.Vip,
-                    ExtendDays = days
-                });
-                if (res?.Success == true) success++;
-            }
-            catch { /* xem tổng kết ở dưới */ }
-        }
+        var success = await RunBulkUserActionAsync("grant_vip", ids, vipDays: days);
         actionAlert = $"Đã cấp thêm {days} ngày VIP cho {success}/{ids.Count} tài khoản.";
         await LoadUsers();
     }
@@ -1321,22 +1310,39 @@
     {
         actionAlert = null;
         actionError = null;
-        var success = 0;
-        foreach (var id in ids)
-        {
-            try
-            {
-                var res = await AdminApi.UpdateUserMembershipAsync(id, new AdminUpdateUserRequest
-                {
-                    MembershipTier = MembershipTier.Free,
-                    ExtendDays = 0
-                });
-                if (res?.Success == true) success++;
-            }
-            catch { /* xem tổng kết ở dưới */ }
-        }
+        var success = await RunBulkUserActionAsync("revoke_vip", ids);
         actionAlert = $"Đã thu hồi VIP của {success}/{ids.Count} tài khoản.";
         await LoadUsers();
+    }
+
+    /// <summary>
+    /// Gửi 1 request bulk duy nhất thay vì N request tuần tự cho thao tác hàng loạt.
+    /// </summary>
+    private async Task<int> RunBulkUserActionAsync(string action, List<Guid> ids, int lockMinutes = 1440, int vipDays = 30)
+    {
+        try
+        {
+            var res = await AdminApi.BulkUserActionAsync(new AdminBulkUserActionRequest
+            {
+                UserIds = ids,
+                Action = action,
+                LockMinutes = lockMinutes,
+                VipDays = vipDays
+            });
+
+            if (res?.Success == true)
+            {
+                return res.Data;
+            }
+
+            actionError = res?.Message ?? "Thao tác hàng loạt thất bại.";
+        }
+        catch (Exception ex)
+        {
+            actionError = "Lỗi khi thực hiện thao tác hàng loạt: " + ex.Message;
+        }
+
+        return 0;
     }
 
     public void Dispose()

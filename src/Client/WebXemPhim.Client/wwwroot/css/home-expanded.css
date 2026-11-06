@@ -6,7 +6,7 @@ body .site-main .cinema-recovery-page .system-state-panel { width: min(640px, 10
 body .site-main .cinema-recovery-page h1 { font-family: var(--font-display); font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.22; letter-spacing: -0.015em; }
 body .site-main .cinema-recovery-page .system-state-actions { justify-content: flex-start; }
 body .site-main .home-expanded { width: min(1520px, calc(100% - clamp(2rem, 6vw, 6rem))); margin: 0 auto; }
-body .site-main .home-movie-section { padding-block: 3.5rem 1rem; }
+body .site-main .home-movie-section { padding-block: 3.5rem 1rem; content-visibility: auto; contain-intrinsic-size: 0 380px; }
 body .site-main .home-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem; }
 body .site-main .home-section-heading h2 { font-size: clamp(1.4rem, 2.2vw, 2rem); line-height: 1.25; letter-spacing: -0.012em; margin: 0; }
 body .site-main .home-section-heading p { color: var(--text-2); margin: .5rem 0 0; font-size: .9rem; }
@@ -64,11 +64,9 @@ body .site-main .explore-pagination button:disabled { opacity: .45; cursor: not-
 body .site-main .home-expanded a:focus-visible,
 body .site-main .explore-live-grid a:focus-visible { outline: 2px solid var(--amber); outline-offset: 5px; }
 @media (prefers-reduced-motion: no-preference) {
-    @supports (animation-timeline: view()) {
-        body .site-main .home-movie-section,
-        body .site-main .home-spotlight,
-        body .site-main .home-discovery { animation: cinema-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 18%; }
-    }
+    /* Subtle section entrance without continuous scroll-driven reflow and compositor thrashing */
+    body .site-main .home-spotlight,
+    body .site-main .home-discovery { animation: cinema-rise .6s var(--ease) both; }
 }
 @media (max-width: 1180px) {
     body .site-main .home-movie-rail,

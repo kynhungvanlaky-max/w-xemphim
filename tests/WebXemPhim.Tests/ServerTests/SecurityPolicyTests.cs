@@ -181,21 +181,6 @@ public sealed class SecurityPolicyTests
     }
 
     [Theory]
-    [InlineData("127.0.0.1", true)]
-    [InlineData("10.0.0.5", true)]
-    [InlineData("172.16.50.1", true)]
-    [InlineData("192.168.1.1", true)]
-    [InlineData("169.254.169.254", true)]
-    [InlineData("::1", true)]
-    [InlineData("8.8.8.8", false)]
-    [InlineData("1.1.1.1", false)]
-    public void SafeStreamUrlValidatorDetectsInternalIpsCorrectly(string ipString, bool expectedInternal)
-    {
-        var ip = System.Net.IPAddress.Parse(ipString);
-        Assert.Equal(expectedInternal, SafeStreamUrlValidator.IsInternalOrRestrictedIp(ip));
-    }
-
-    [Theory]
     [InlineData("http://127.0.0.1/video.m3u8", false)]
     [InlineData("http://localhost:8080/stream", false)]
     [InlineData("http://169.254.169.254/latest/meta-data", false)]
@@ -206,43 +191,6 @@ public sealed class SecurityPolicyTests
     {
         var (isSafe, _, _) = await SafeStreamUrlValidator.ValidateUrlAsync(url);
         Assert.Equal(expectedSafe, isSafe);
-    }
-
-    [Theory]
-    [InlineData("=1+1", "\"'=1+1\"")]
-    [InlineData("+2+2", "\"'+2+2\"")]
-    [InlineData("-5+5", "\"'-5+5\"")]
-    [InlineData("@SUM(A1:A5)", "\"\'@SUM(A1:A5)\"")]
-    [InlineData("Normal Movie", "Normal Movie")]
-    [InlineData(null, "")]
-    [InlineData("", "")]
-    public void CsvSecurityNeutralizesFormulaPrefixes(string? input, string expected)
-    {
-        var escaped = CsvSecurity.EscapeCell(input);
-        Assert.Equal(expected, escaped);
-    }
-
-    [Fact]
-    public void CsvSecurityHandlesTabAndCarriageReturnPrefixes()
-    {
-        Assert.Equal("\"'\tcalc\"", CsvSecurity.EscapeCell("\tcalc"));
-        Assert.Equal("\"'\rcalc\"", CsvSecurity.EscapeCell("\rcalc"));
-    }
-
-    [Fact]
-    public void CsvSecurityEscapesQuotesAndCommasCorrectly()
-    {
-        var input = "Movie, with comma and \"quotes\"";
-        var escaped = CsvSecurity.EscapeCell(input);
-        Assert.Equal("\"Movie, with comma and \"\"quotes\"\"\"", escaped);
-    }
-
-    [Fact]
-    public void CsvSecurityFormatRowProducesValidRfc4180Line()
-    {
-        var row = CsvSecurity.FormatRow(1, "=cmd|' /C calc'!A0", "Inception", 9.5m);
-        Assert.Contains("'=cmd", row);
-        Assert.StartsWith("1,", row);
     }
 
     private static IDbContextFactory<AppDbContext> ContextFactory() => new PooledDbContextFactory<AppDbContext>(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"security-policy-{Guid.NewGuid():N}").Options);

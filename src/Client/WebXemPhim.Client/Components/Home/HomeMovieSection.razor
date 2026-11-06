@@ -17,7 +17,7 @@
             {
                 @if (Landscape)
                 {
-                    <a class="home-landscape-card" href="@($"/movie/{movie.Id}")">
+                    <a @key="movie.Id" class="home-landscape-card" href="@($"/movie/{movie.Id}")">
                         <img src="@(string.IsNullOrWhiteSpace(movie.BackdropUrl) ? movie.PosterUrl : movie.BackdropUrl)" alt="" loading="lazy" />
                         <h3>@movie.Title</h3>
                         <p>@movie.ReleaseYear <span>@movie.Quality</span> <span>@movie.Rating.ToString("0.0") / 10</span></p>
@@ -25,7 +25,7 @@
                 }
                 else
                 {
-                    <MovieCard Movie="movie" />
+                    <MovieCard @key="movie.Id" Movie="movie" />
                 }
             }
         }

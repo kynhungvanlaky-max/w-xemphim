@@ -41,14 +41,8 @@ button, input, select, textarea {
 }
 
 body::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: 999;
-    pointer-events: none;
-    opacity: .12;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.95' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.28'/%3E%3C/svg%3E");
-    mix-blend-mode: soft-light;
+    /* Fullscreen procedural SVG feTurbulence overlay removed to eliminate GPU compositor readback and 60fps blending lag */
+    display: none;
 }
 
 body .page-wrapper::before { display: none; }
@@ -812,9 +806,9 @@ body .site-main .merged-history .history-row {
     grid-template-columns: 150px minmax(0, 1fr) auto auto;
     gap: clamp(1rem, 2.5vw, 2.3rem);
     border-radius: 0;
-    transition: padding .25s var(--ease), background-color .25s;
+    transition: transform .25s var(--ease), background-color .25s;
 }
-body .site-main .merged-history .history-row:hover { padding-inline: 1rem; background: rgb(255 255 255 / 2.5%); }
+body .site-main .merged-history .history-row:hover { transform: translateX(4px); background: rgb(255 255 255 / 2.5%); }
 body .site-main .history-poster { overflow: hidden; border-radius: var(--radius-control); }
 body .site-main .merged-history .history-row img { width: 150px; height: 88px; border-radius: 0; transition: transform .45s var(--ease); }
 body .site-main .merged-history .history-row:hover img { transform: scale(1.04); }

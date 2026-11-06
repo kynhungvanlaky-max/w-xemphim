@@ -225,66 +225,24 @@ public class PostgresFullTextSearchTests : IClassFixture<PostgresTestDatabaseFix
     [InlineData("Kỵ Sĩ Bóng Đêm", "Kỵ Sĩ Bóng Đêm")]
     [InlineData("Bố Già", "Bố Già")]
     [InlineData("Mắt Biếc", "Mắt Biếc")]
-    public async Task Search_WithVietnameseDiacritics_ReturnsCorrectMovie(string keyword, string expectedTitle)
-    {
-        var database = Database;
-        await database.ResetAsync();
-        await using var context = database.CreateContext();
-        await SeedSampleMoviesAsync(context);
-        var service = new DatabaseMovieService(database.CreateFactory());
-
-        var results = await service.SearchMoviesAsync(keyword, 10);
-        Assert.NotEmpty(results);
-        Assert.Contains(results, m => m.Title == expectedTitle);
-    }
-
-    [Theory]
     [InlineData("xu cat", "Xứ Cát: Phần Hai")]
     [InlineData("dang tien tri", "Xứ Cát: Phần Hai")]
     [InlineData("ky si bong dem", "Kỵ Sĩ Bóng Đêm")]
     [InlineData("toi thang cap mot minh", "Tôi Thăng Cấp Một Mình")]
     [InlineData("bo gia", "Bố Già")]
     [InlineData("mat biec", "Mắt Biếc")]
-    public async Task Search_WithoutDiacritics_MatchesAccentInsensitive(string keyword, string expectedTitle)
-    {
-        var database = Database;
-        await database.ResetAsync();
-        await using var context = database.CreateContext();
-        await SeedSampleMoviesAsync(context);
-        var service = new DatabaseMovieService(database.CreateFactory());
-
-        var results = await service.SearchMoviesAsync(keyword, 10);
-        Assert.NotEmpty(results);
-        Assert.Contains(results, m => m.Title == expectedTitle);
-    }
-
-    [Theory]
     [InlineData("Timothée Chalamet", "Xứ Cát: Phần Hai")]
     [InlineData("chalamet", "Xứ Cát: Phần Hai")]
     [InlineData("Zendaya", "Xứ Cát: Phần Hai")]
     [InlineData("Heath Ledger", "Kỵ Sĩ Bóng Đêm")]
     [InlineData("Tuấn Trần", "Bố Già")]
     [InlineData("tuan tran", "Bố Già")]
-    public async Task Search_CastMember_ReturnsExpectedMovie(string keyword, string expectedTitle)
-    {
-        var database = Database;
-        await database.ResetAsync();
-        await using var context = database.CreateContext();
-        await SeedSampleMoviesAsync(context);
-        var service = new DatabaseMovieService(database.CreateFactory());
-
-        var results = await service.SearchMoviesAsync(keyword, 10);
-        Assert.NotEmpty(results);
-        Assert.Contains(results, m => m.Title == expectedTitle);
-    }
-
-    [Theory]
     [InlineData("Christopher Nolan", "Kỵ Sĩ Bóng Đêm")]
     [InlineData("Denis Villeneuve", "Xứ Cát: Phần Hai")]
     [InlineData("Trấn Thành", "Bố Già")]
     [InlineData("tran thanh", "Bố Già")]
     [InlineData("Victor Vu", "Mắt Biếc")]
-    public async Task Search_Director_ReturnsExpectedMovie(string keyword, string expectedTitle)
+    public async Task Search_MatchesDiacriticsAccentInsensitiveCastAndDirector(string keyword, string expectedTitle)
     {
         var database = Database;
         await database.ResetAsync();

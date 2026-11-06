@@ -116,4 +116,37 @@ public abstract class AdminBaseController(
             Overview = e.Overview
         }).ToList()
     };
+
+    /// <summary>
+    /// Mapping nhẹ cho chế độ danh sách admin (summary): chỉ các trường scalar,
+    /// Genres/Cast/Episodes để trống để tránh tải N+1 collection khi xem bảng phim.
+    /// </summary>
+    protected static MovieDetailDto MapMovieSummary(MovieEntity m) => new()
+    {
+        Id = m.Id,
+        Title = m.Title,
+        OriginalTitle = m.OriginalTitle,
+        Slug = m.Slug,
+        Overview = m.Overview,
+        PosterUrl = m.PosterUrl,
+        BackdropUrl = m.BackdropUrl,
+        TrailerUrl = m.TrailerUrl,
+        Rating = m.Rating,
+        VoteCount = m.VoteCount,
+        ReleaseYear = m.ReleaseYear,
+        DurationMinutes = m.DurationMinutes,
+        AgeRating = m.AgeRating,
+        Quality = m.Quality,
+        Type = m.Type,
+        Genres = [],
+        Country = m.Country,
+        ViewCount = m.ViewCount,
+        IsTrending = m.IsTrending,
+        IsFeatured = m.IsFeatured,
+        TotalEpisodes = m.TotalEpisodes,
+        CurrentEpisode = m.CurrentEpisode,
+        Director = m.Director,
+        Cast = [],
+        Episodes = []
+    };
 }

@@ -576,7 +576,7 @@
 @if (approvingPayment != null)
 {
     <div class="admin-modal-backdrop" @onclick="CloseApprovalModal">
-        <div class="admin-modal-card" style="max-width: 520px;" role="dialog" aria-modal="true" @onclick:stopPropagation>
+        <div class="admin-modal-card" style="max-width: 520px;" role="dialog" aria-modal="true" tabindex="-1" @onkeydown="HandleApprovalModalKeyDown" @onclick:stopPropagation>
             <div class="admin-modal-header">
                 <h3>Xác nhận duyệt thanh toán</h3>
                 <button type="button" class="btn-close-modal" @onclick="CloseApprovalModal">&times;</button>
@@ -617,7 +617,7 @@
 @if (rejectingPayment != null)
 {
     <div class="admin-modal-backdrop" @onclick="CloseRejectionModal">
-        <div class="admin-modal-card" style="max-width: 480px;" role="dialog" aria-modal="true" @onclick:stopPropagation>
+        <div class="admin-modal-card" style="max-width: 480px;" role="dialog" aria-modal="true" tabindex="-1" @onkeydown="HandleRejectionModalKeyDown" @onclick:stopPropagation>
             <div class="admin-modal-header">
                 <h3>Từ chối đơn thanh toán</h3>
                 <button type="button" class="btn-close-modal" @onclick="CloseRejectionModal">&times;</button>
@@ -650,7 +650,7 @@
 @if (detailPayment != null)
 {
     <div class="admin-modal-backdrop" @onclick="CloseDetailModal">
-        <div class="admin-modal-card" style="max-width: 560px;" role="dialog" aria-modal="true" @onclick:stopPropagation>
+        <div class="admin-modal-card" style="max-width: 560px;" role="dialog" aria-modal="true" tabindex="-1" @onkeydown="HandleDetailModalKeyDown" @onclick:stopPropagation>
             <div class="admin-modal-header">
                 <h3>Chi tiết đơn giao dịch #@detailPayment.OrderCode</h3>
                 <button type="button" class="btn-close-modal" @onclick="CloseDetailModal">&times;</button>
@@ -715,7 +715,7 @@
 @if (isEditingPlanModal && editingPlan != null)
 {
     <div class="admin-modal-backdrop" @onclick="ClosePlanModal">
-        <div class="admin-modal-card" style="max-width: 620px;" role="dialog" aria-modal="true" aria-labelledby="vip-plan-modal-title" @onclick:stopPropagation>
+        <div class="admin-modal-card" style="max-width: 620px;" role="dialog" aria-modal="true" aria-labelledby="vip-plan-modal-title" tabindex="-1" @onkeydown="HandlePlanModalKeyDown" @onclick:stopPropagation>
             <div class="admin-modal-header">
                 <h3 id="vip-plan-modal-title">@(isNewPlan ? "Thêm gói VIP mới" : $"Cấu hình gói {editingPlan.Name}")</h3>
                 <button type="button" class="btn-close-modal" @onclick="ClosePlanModal">&times;</button>
@@ -954,17 +954,11 @@
     /// </summary>
     private async Task LoadScopeCountsAsync()
     {
-        var pendingTask = AdminApi.GetPaymentsPagedAsync(page: 1, pageSize: 1, query: NormalizedQuery, status: PaymentStatus.Pending, method: methodFilter);
-        var completedTask = AdminApi.GetPaymentsPagedAsync(page: 1, pageSize: 1, query: NormalizedQuery, status: PaymentStatus.Completed, method: methodFilter);
-        var failedTask = AdminApi.GetPaymentsPagedAsync(page: 1, pageSize: 1, query: NormalizedQuery, status: PaymentStatus.Failed, method: methodFilter);
-        var allTask = AdminApi.GetPaymentsPagedAsync(page: 1, pageSize: 1, query: NormalizedQuery, method: methodFilter);
-
-        await Task.WhenAll(pendingTask, completedTask, failedTask, allTask);
-
-        countPending = pendingTask.Result.TotalItems;
-        countCompleted = completedTask.Result.TotalItems;
-        countFailed = failedTask.Result.TotalItems;
-        countAll = allTask.Result.TotalItems;
+        var summary = await AdminApi.GetPaymentSummaryAsync(NormalizedQuery, methodFilter);
+        countPending = summary?.Pending ?? 0;
+        countCompleted = summary?.Completed ?? 0;
+        countFailed = summary?.Failed ?? 0;
+        countAll = summary?.Total ?? 0;
     }
 
     private string? NormalizedQuery => string.IsNullOrWhiteSpace(searchQuery) ? null : searchQuery.Trim();
@@ -1223,6 +1217,7 @@
     // Modal Handlers
     private void OpenApprovalModal(PaymentDto payment)
     {
+        showFilterSettings = false;
         approvingPayment = payment;
         approvalReference = "";
         approvalNote = "";
@@ -1282,6 +1277,7 @@
 
     private void OpenRejectionModal(PaymentDto payment)
     {
+        showFilterSettings = false;
         rejectingPayment = payment;
         rejectionReason = "";
         rejectionError = null;
@@ -1338,6 +1334,7 @@
 
     private void OpenDetailModal(PaymentDto payment)
     {
+        showFilterSettings = false;
         detailPayment = payment;
     }
 
@@ -1349,6 +1346,7 @@
     // Plan Management
     private void OpenCreatePlanModal()
     {
+        showFilterSettings = false;
         isNewPlan = true;
         editingPlan = new UpsertVipPlanRequest
         {
@@ -1369,6 +1367,7 @@
 
     private void OpenEditPlanModal(VipPlanDto plan)
     {
+        showFilterSettings = false;
         isNewPlan = false;
         editingPlan = new UpsertVipPlanRequest
         {
@@ -1524,51 +1523,22 @@
     {
         try
         {
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine("Id,OrderCode,UserEmail,UserFullName,PlanName,Amount,Method,Status,CreatedAt,PaidAt,TransactionRef,Note");
-            var exportRows = await FetchAllFilteredPaymentsAsync();
-            foreach (var p in exportRows)
+            var csv = await AdminApi.ExportPaymentsCsvAsync(NormalizedQuery, methodFilter, statusFilter);
+            if (string.IsNullOrEmpty(csv))
             {
-                sb.AppendLine(CsvSecurity.FormatRow(
-                    p.Id, p.OrderCode, p.UserEmail, p.UserFullName, p.PlanName, p.Amount, p.Method, p.Status,
-                    p.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
-                    p.PaidAt?.ToString("yyyy-MM-dd HH:mm:ss"),
-                    p.TransactionReference, p.Note));
+                actionError = "Không thể xuất file CSV. Vui lòng thử lại.";
+                return;
             }
-            await JS.InvokeVoidAsync("adminTools.downloadCsv", $"cinemaflow_finance_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv", sb.ToString());
-            actionAlert = $"Đã xuất {exportRows.Count} giao dịch ra file CSV thành công!";
+
+            // Dòng đầu là header; đếm số dòng dữ liệu để báo cho người dùng.
+            var dataRows = Math.Max(0, csv.Split('\n').Count(line => !string.IsNullOrWhiteSpace(line)) - 1);
+            await JS.InvokeVoidAsync("adminTools.downloadCsv", $"cinemaflow_finance_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv", csv);
+            actionAlert = $"Đã xuất {dataRows} giao dịch ra file CSV thành công!";
         }
         catch (Exception ex)
         {
             actionError = "Lỗi khi xuất file CSV: " + ex.Message;
         }
-    }
-
-    /// <summary>
-    /// Gộp toàn bộ các trang khớp bộ lọc hiện tại từ server để xuất CSV không bị thiếu dữ liệu.
-    /// </summary>
-    private async Task<List<PaymentDto>> FetchAllFilteredPaymentsAsync()
-    {
-        var all = new List<PaymentDto>();
-        var page = 1;
-
-        while (true)
-        {
-            var result = await AdminApi.GetPaymentsPagedAsync(
-                page: page,
-                pageSize: 200,
-                query: NormalizedQuery,
-                status: statusFilter,
-                method: methodFilter,
-                sortBy: sortBy);
-
-            all.AddRange(result.Items);
-
-            if (!result.HasNextPage || all.Count >= 5000) break;
-            page++;
-        }
-
-        return all;
     }
 
     private async Task RefreshData()
@@ -1588,6 +1558,38 @@
         if (parts.Length == 0) return "CF";
         if (parts.Length == 1) return parts[0][..Math.Min(2, parts[0].Length)].ToUpper();
         return $"{parts[0][0]}{parts[^1][0]}".ToUpper();
+    }
+
+    private void HandleApprovalModalKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            CloseApprovalModal();
+        }
+    }
+
+    private void HandleRejectionModalKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            CloseRejectionModal();
+        }
+    }
+
+    private void HandleDetailModalKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            CloseDetailModal();
+        }
+    }
+
+    private void HandlePlanModalKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            ClosePlanModal();
+        }
     }
 
     public void Dispose()

@@ -699,18 +699,21 @@
 
 .qr-scan-line {
     position: absolute;
+    top: 0;
     left: 0;
     right: 0;
     height: 2px;
     background: linear-gradient(90deg, transparent, #e50914, #f59e0b, transparent);
     box-shadow: 0 0 8px rgba(229, 9, 20, 0.8);
+    transform: translateY(8px);
+    will-change: transform;
     animation: qrScan 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 @keyframes qrScan {
-    0% { top: 4%; }
-    50% { top: 96%; }
-    100% { top: 4%; }
+    0% { transform: translateY(8px); }
+    50% { transform: translateY(195px); }
+    100% { transform: translateY(8px); }
 }
 
 .bank-details-list {

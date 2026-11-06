@@ -138,10 +138,18 @@ public class MoviesController(
         if (Guid.TryParse(userIdClaim, out var userId) && contextFactory is not null)
         {
             await using var db = await contextFactory.CreateDbContextAsync();
-            var user = await db.Users.FindAsync(userId);
-            if (user is not null && user.Membership != MembershipTier.Free && (!user.VipExpiresAtUtc.HasValue || user.VipExpiresAtUtc.Value > DateTime.UtcNow))
+            var isAdmin = await db.UserSecurity.AsNoTracking().AnyAsync(s => s.UserId == userId && s.IsAdmin);
+            if (isAdmin)
             {
                 isVip = true;
+            }
+            else
+            {
+                var user = await db.Users.FindAsync(userId);
+                if (user is not null && user.Membership != MembershipTier.Free && (!user.VipExpiresAtUtc.HasValue || user.VipExpiresAtUtc.Value > DateTime.UtcNow))
+                {
+                    isVip = true;
+                }
             }
         }
         else if (User.FindFirst("membership")?.Value is { } m && !m.Equals("Free", StringComparison.OrdinalIgnoreCase))

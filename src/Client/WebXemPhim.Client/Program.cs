@@ -25,7 +25,7 @@ if (string.IsNullOrWhiteSpace(rawClientHosts) || rawClientHosts.Trim() == "*")
 
 WebSecurityExtensions.ApplyDevelopmentDefaults(builder.Configuration, builder.Environment, client: true);
 WebSecurityExtensions.ValidateProduction(builder.Configuration, builder.Environment, client: true);
-builder.WebHost.ConfigureKestrel(options => { options.AddServerHeader = false; options.Limits.MaxRequestBodySize = 64 * 1024; });
+builder.WebHost.ConfigureKestrel(options => { options.AddServerHeader = false; options.Limits.MaxRequestBodySize = 4L * 1024 * 1024 * 1024; });
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Services.AddSiteDataProtection(builder.Configuration, "WebXemPhim.Client");
@@ -42,32 +42,24 @@ builder.Services.AddRazorComponents()
 // các endpoint HTTP của web client vẫn giữ mức 64 KB.
 builder.Services.AddSignalR(options => options.MaximumReceiveMessageSize = 4 * 1024 * 1024);
 
-// Configure HttpClient Resilience & Fallback Defaults
-builder.Services.ConfigureHttpClientDefaults(http =>
+// Standard resilience handler for public consumer APIs
+Action<HttpStandardResilienceOptions> standardResilience = options =>
 {
-    http.AddStandardResilienceHandler(options =>
-    {
-        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(5);
-        // The API needs a moment to apply its migrations and seed the catalogue on the very
-        // first start, so the total budget has to cover that window.
-        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(60);
-        options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(10);
+    options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(15);
+    options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(60);
+    options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
 
-        options.Retry.MaxRetryAttempts = 6;
-        options.Retry.Delay = TimeSpan.FromSeconds(1);
-        options.Retry.MaxDelay = TimeSpan.FromSeconds(4);
-        options.Retry.BackoffType = DelayBackoffType.Exponential;
-        options.Retry.UseJitter = true;
-        // A refused connection is not a transient HTTP status, so the default handler never
-        // retries it. Right after the stack starts the API is not listening yet and every
-        // page would otherwise render an empty state until the visitor reloads the page.
-        options.Retry.ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
-            .Handle<HttpRequestException>(exception => exception.StatusCode is null)
-            .HandleResult(response => response.StatusCode is HttpStatusCode.RequestTimeout
-                || response.StatusCode == HttpStatusCode.TooManyRequests
-                || (int)response.StatusCode >= 500);
-    });
-});
+    options.Retry.MaxRetryAttempts = 6;
+    options.Retry.Delay = TimeSpan.FromSeconds(1);
+    options.Retry.MaxDelay = TimeSpan.FromSeconds(4);
+    options.Retry.BackoffType = DelayBackoffType.Exponential;
+    options.Retry.UseJitter = true;
+    options.Retry.ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
+        .Handle<HttpRequestException>(exception => exception.StatusCode is null)
+        .HandleResult(response => response.StatusCode is HttpStatusCode.RequestTimeout
+            || response.StatusCode == HttpStatusCode.TooManyRequests
+            || (int)response.StatusCode >= 500);
+};
 
 // Compress HTML/CSS/JS/JSON responses (Brotli first, Gzip fallback).
 // The Blazor client serves the whole design system, so this is the single
@@ -101,17 +93,21 @@ if (!apiBaseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
 builder.Services.AddHttpClient<IMovieApiClient, MovieApiClient>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
-    client.Timeout = TimeSpan.FromSeconds(10);
-}).AddHttpMessageHandler<ForwardedClientIpHandler>();
+    client.Timeout = TimeSpan.FromSeconds(15);
+}).AddHttpMessageHandler<ForwardedClientIpHandler>()
+  .AddStandardResilienceHandler(standardResilience);
+
 builder.Services.AddHttpClient("AccountApi", client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
-    client.Timeout = TimeSpan.FromSeconds(10);
-}).AddHttpMessageHandler<ForwardedClientIpHandler>();
+    client.Timeout = TimeSpan.FromSeconds(15);
+}).AddHttpMessageHandler<ForwardedClientIpHandler>()
+  .AddStandardResilienceHandler(standardResilience);
+
 builder.Services.AddHttpClient<IAdminApiClient, AdminApiClient>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
-    client.Timeout = TimeSpan.FromSeconds(15);
+    client.Timeout = TimeSpan.FromHours(2);
 }).AddHttpMessageHandler<ForwardedClientIpHandler>();
 
 // Configure YARP Reverse Proxy to transparently forward /api, /hubs, /openapi to Server REST API
@@ -146,6 +142,10 @@ builder.Services.AddReverseProxy()
                 Destinations = new Dictionary<string, DestinationConfig>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["server-destination"] = new DestinationConfig { Address = apiBaseUrl }
+                },
+                HttpRequest = new Yarp.ReverseProxy.Forwarder.ForwarderRequestConfig
+                {
+                    ActivityTimeout = TimeSpan.FromHours(2)
                 }
             }
         ]);

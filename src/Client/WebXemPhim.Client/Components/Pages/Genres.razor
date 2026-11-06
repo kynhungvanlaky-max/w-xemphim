@@ -112,7 +112,7 @@
                     var vibe = GetGenreVibe(genre.Name);
                     var previewMovies = GetPreviewMoviesForGenre(genre.Name, 3);
 
-                    <a class="genre-card @(isFeatured ? "featured" : "")"
+                    <a @key="genre.Name" class="genre-card @(isFeatured ? "featured" : "")"
                        href="@($"/explore?genre={Uri.EscapeDataString(genre.Name)}")"
                        title="Khám phá thể loại @genre.Name">
                         <!-- Dynamic Backdrop Image -->
@@ -194,6 +194,33 @@
         foreach (var m in trend) combined[m.Id] = m;
         foreach (var m in latest) combined[m.Id] = m;
         movies = combined.Values.ToList();
+        PrecomputeGenreCache();
+    }
+
+    private readonly Dictionary<string, (string Backdrop, List<MovieDto> Previews)> genreCache = new(StringComparer.OrdinalIgnoreCase);
+
+    private void PrecomputeGenreCache()
+    {
+        genreCache.Clear();
+        if (genres is null) return;
+        for (var i = 0; i < genres.Count; i++)
+        {
+            var gName = genres[i].Name;
+            var matched = movies.FirstOrDefault(m =>
+                m.Genres.Any(g => g.Equals(gName, StringComparison.OrdinalIgnoreCase))
+                && !string.IsNullOrWhiteSpace(m.BackdropUrl));
+
+            var backdrop = matched?.BackdropUrl
+                ?? (movies.Count > 0 ? movies[i % movies.Count].BackdropUrl : "/images/hero-default.webp");
+
+            var previews = movies
+                .Where(m => m.Genres.Any(g => g.Equals(gName, StringComparison.OrdinalIgnoreCase))
+                            && !string.IsNullOrWhiteSpace(m.PosterUrl))
+                .Take(3)
+                .ToList();
+
+            genreCache[gName] = (backdrop, previews);
+        }
     }
 
     private void OnSearchInput(ChangeEventArgs e)

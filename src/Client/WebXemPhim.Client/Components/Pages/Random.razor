@@ -332,13 +332,27 @@
         }
     }
 
+    private string? lastFilterKey;
+    private List<MovieDto>? cachedPool;
+
     private List<MovieDto> FilteredMoviePool
     {
         get
         {
-            if (allMovies.Count == 0) return [];
+            var key = $"{selectedGenre}|{selectedType}|{minRating}|{selectedMood}|{allMovies.Count}";
+            if (cachedPool is not null && lastFilterKey == key)
+            {
+                return cachedPool;
+            }
 
-            return allMovies.Where(m =>
+            lastFilterKey = key;
+            if (allMovies.Count == 0)
+            {
+                cachedPool = [];
+                return cachedPool;
+            }
+
+            cachedPool = allMovies.Where(m =>
             {
                 // Genre
                 if (selectedGenre != "all" &&
@@ -371,6 +385,8 @@
 
                 return true;
             }).ToList();
+
+            return cachedPool;
         }
     }
 

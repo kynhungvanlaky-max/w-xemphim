@@ -55,12 +55,7 @@ public static class DatabaseSeeder
                     DurationMinutes = 168,
                     ThumbnailUrl = "/images/movies/movie-1-backdrop.webp",
                     Overview = "Toàn bộ diễn biến hoành tráng của phần phim kết thúc bộ ba thiên anh hùng ca Xứ Cát.",
-                    Streams =
-                    [
-                        new() { ServerName = "VIP FastServer 1 (Hà Nội)", ServerType = StreamServerType.VipFastServer, Quality = "4K 60fps", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" },
-                        new() { ServerName = "Hydra CDN 2 (Sài Gòn)", ServerType = StreamServerType.HydraCdn, Quality = "1080p FHD", StreamUrl = "https://media.w3.org/2010/05/sintel/trailer.mp4" },
-                        new() { ServerName = "Backup Stream", ServerType = StreamServerType.BackupStream, Quality = "720p HD", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4" }
-                    ]
+                    Streams = GenerateMultiServerStreams(101)
                 }
             ]
         },
@@ -1159,11 +1154,14 @@ public static class DatabaseSeeder
             IsFeatured = false,
             Director = "Yuichiro Hayashi",
             Cast = ["Yuki Kaji", "Yui Ishikawa", "Marina Inoue", "Hiroshi Kamiya"],
-            TotalEpisodes = 2,
-            CurrentEpisode = 2,
+            TotalEpisodes = 4,
+            CurrentEpisode = 4,
             Episodes =
             [
-                new() { Id = 3201, MovieId = 32, EpisodeNumber = 1, Title = "Tập 1: Tiếng Gầm Của Tự Do", DurationMinutes = 61, ThumbnailUrl = "/images/movies/movie-32-backdrop.webp", Streams = [new() { ServerName = "VIP FastServer 1", Quality = "1080p 60fps", StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" }] }
+                new() { Id = 3201, MovieId = 32, EpisodeNumber = 1, Title = "Tập 1: Tiếng Gầm Của Tự Do", DurationMinutes = 61, ThumbnailUrl = "/media/episodes/ep-32-01.webp", Streams = GenerateMultiServerStreams(3201) },
+                new() { Id = 3202, MovieId = 32, EpisodeNumber = 2, Title = "Tập 2: Đại Chiến Titan: Hồi Kết Tuyệt Đối", DurationMinutes = 61, ThumbnailUrl = "/media/episodes/ep-32-02.webp", Streams = GenerateMultiServerStreams(3202) },
+                new() { Id = 3203, MovieId = 32, EpisodeNumber = 3, Title = "Tập 3: Đại Chiến Titan: Hồi Kết Tuyệt Đối", DurationMinutes = 61, ThumbnailUrl = "/media/episodes/ep-32-03.webp", Streams = GenerateMultiServerStreams(3203) },
+                new() { Id = 4502, MovieId = 32, EpisodeNumber = 4, Title = "Tập 4: Khát Vọng Tự Do", DurationMinutes = 45, ThumbnailUrl = "/media/episodes/ep-32-04.webp", Streams = GenerateMultiServerStreams(4502) }
             ]
         },
 

@@ -5,7 +5,7 @@
 [![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17%20Alpine-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Caddy](https://img.shields.io/badge/Caddy-2.8%20Auto%20HTTPS-1F88C0?logo=caddy&logoColor=white)](https://caddyserver.com/)
 [![Cloudflare Tunnel](https://img.shields.io/badge/Cloudflare-Tunnel%20Zero%20Trust-F38020?logo=cloudflare&logoColor=white)](https://www.cloudflare.com/)
-[![Tests](https://img.shields.io/badge/Tests-1%2C351%20PASS%20(100%25)-brightgreen?logo=xunit&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-637%20PASS%20%2B%201%20SKIP-brightgreen?logo=xunit&logoColor=white)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **CinemaFlow (WebXemPhim)** là nền tảng streaming phim trực tuyến thế hệ mới, được kiến trúc hóa theo mô hình phân tách độc lập giữa **Server (ASP.NET Core Web API)** và **Client (Blazor Web App)** hoàn toàn bằng ngôn ngữ C# (.NET 10). 
@@ -24,7 +24,7 @@ Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao c�
 3. [💻 Yêu Cầu Môi Trường (Prerequisites)](#-yêu-cầu-môi-trường-prerequisites)
 4. [🚀 Hướng Dẫn Cài Đặt & Chạy Cục Bộ (Local Development)](#-hướng-dẫn-cài-đặt--chạy-cục-bộ-local-development)
 5. [🐳 Triển Khai Docker VPS & CI/CD (Production Deployment)](#-triển-khai-docker-vps--cicd-production-deployment)
-6. [🧪 Kiểm Thử Tự Động (1,351 Tests 100% PASS)](#-kiểm-thử-tự-động-1351-tests-100-pass)
+6. [🧪 Kiểm Thử Tự Động (637 PASS, 0 Failed)](#-kiểm-thử-tự-động-637-pass-0-failed)
 7. [🔑 Danh Sách Tài Khoản Thử Nghiệm (Seed Accounts)](#-danh-sách-tài-khoản-thử-nghiệm-seed-accounts)
 8. [📐 Quy Chuẩn Lập Trình & Thiết Kế (Standards & Discipline)](#-quy-chuẩn-lập-trình--thiết-kế-standards--discipline)
 
@@ -133,7 +133,7 @@ WebXemPhim Solution
 ├── docs/                          # Tài liệu kiến trúc, bảo mật stream, deployment, audit di động
 ├── scripts/                       # Scripts hỗ trợ khởi chạy, seed dữ liệu và thiết lập tunnel phát triển
 ├── tests/
-│   └── WebXemPhim.Tests/          # 1,351 Unit & Integration Testcases (Testcontainers PostgreSQL)
+│   └── WebXemPhim.Tests/          # 638 Unit & Integration Testcases (Testcontainers PostgreSQL)
 └── WebXemPhim.slnx                # Solution định dạng mới của .NET 10
 ```
 
@@ -219,9 +219,9 @@ Xem hướng dẫn chi tiết từng bước thiết lập SSH, cấu hình tư�
 
 ---
 
-## 🧪 Kiểm Thử Tự Động (1,351 Tests 100% PASS)
+## 🧪 Kiểm Thử Tự Động (637 PASS, 0 Failed)
 
-Toàn bộ logic nghiệp vụ, bảo mật luồng phát, chữ ký URL, cơ chế chống tấn công giả mạo (tampering), thuật toán giới hạn tần suất (rate limiting) và tích hợp cơ sở dữ liệu thực tế đều được bảo vệ nghiêm ngặt bởi bộ kiểm thử tự động toàn diện:
+Toàn bộ logic nghiệp vụ, bảo mật luồng phát, chữ ký URL, cơ chế chống tấn công giả mạo (tampering), thuật toán giới hạn tần suất (rate limiting) và tích hợp cơ sở dữ liệu thực tế đều được bảo vệ nghiêm ngặt bởi bộ kiểm thử tự động lõi:
 
 ```bash
 dotnet test WebXemPhim.slnx
@@ -229,15 +229,15 @@ dotnet test WebXemPhim.slnx
 
 ### Kết quả chạy kiểm thử:
 ```text
-Passed!  - Failed: 0, Passed: 1351, Skipped: 0, Total: 1351, Duration: 3 m 36 s
+Passed!  - Failed: 0, Passed: 637, Skipped: 1, Total: 638, Duration: 2 m 30 s
 WebXemPhim.Tests.dll (.NETCoreApp,Version=v10.0)
 ```
 
 ### Các nhóm kiểm thử trọng yếu:
 1. **Relational Database & Full-Text Search**: Kiểm thử trên instance PostgreSQL thật qua Testcontainers, kiểm tra trigger tự động sinh vector tiếng Việt và chỉ mục GIN.
 2. **Stream Security & IP Binding**: Kiểm tra chữ ký HMAC, phát hiện token giả mạo, kiểm tra thời gian hết hạn (expiration) và cơ chế khóa IP.
-3. **Concurrency Control**: Mô phỏng hàng trăm request đồng thời kiểm tra hàm đếm view nguyên tử (`AtomicViewCounter`) không làm mất dữ liệu.
-4. **Session Eviction**: Kiểm tra đá phiên phát khi tài khoản phát video đồng thời trên 2 thiết bị khác nhau.
+3. **Concurrency Control**: Kiểm tra hàm đếm view nguyên tử (`AtomicViewCounter`) và tính nhất quán khi có request đồng thời.
+4. **Session & Lease Lifecycle**: Kiểm tra refresh/revoke phiên phát và ràng buộc token theo session/IP.
 5. **Rate Limiting**: Bắn burst traffic kiểm tra mã lỗi HTTP 429 Too Many Requests.
 
 ---

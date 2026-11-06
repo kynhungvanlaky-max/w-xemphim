@@ -25,3 +25,7 @@ scratch/
 publish-arm64/
 Caddyfile.local
 tools/
+
+# Transcoded and master videos (large files stored in cloud R2, not git)
+src/Server/WebXemPhim.Server/Data/videos/
+*.mp4

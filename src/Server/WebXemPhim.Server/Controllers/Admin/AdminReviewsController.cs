@@ -34,9 +34,31 @@ public sealed class AdminReviewsController(
         if (!string.IsNullOrWhiteSpace(q))
         {
             var s = q.Trim().ToLower();
+            List<Guid> matchedUserIds;
+            if (context.Database.IsRelational())
+            {
+                matchedUserIds = await context.Users.AsNoTracking()
+                    .Where(u => EF.Functions.Like(u.Email, $"%{s}%")
+                             || EF.Functions.Like(u.NormalizedEmail, $"%{s}%")
+                             || EF.Functions.Like(u.FullName, $"%{s}%"))
+                    .Select(u => u.Id)
+                    .ToListAsync();
+            }
+            else
+            {
+                var allUsers = await context.Users.AsNoTracking().ToListAsync();
+                matchedUserIds = allUsers
+                    .Where(u =>
+                        (!string.IsNullOrEmpty(u.Email) && u.Email.Contains(s, StringComparison.OrdinalIgnoreCase)) ||
+                        (!string.IsNullOrEmpty(u.NormalizedEmail) && u.NormalizedEmail.Contains(s, StringComparison.OrdinalIgnoreCase)) ||
+                        (!string.IsNullOrEmpty(u.FullName) && u.FullName.Contains(s, StringComparison.OrdinalIgnoreCase)))
+                    .Select(u => u.Id)
+                    .ToList();
+            }
+
             query = query.Where(r => r.Comment.ToLower().Contains(s)
                                   || (r.Movie != null && r.Movie.Title.ToLower().Contains(s))
-                                  || (r.User != null && (r.User.Email.ToLower().Contains(s) || r.User.FullName.ToLower().Contains(s))));
+                                  || matchedUserIds.Contains(r.UserId));
         }
 
         var statusFilter = status?.Trim().ToLower();

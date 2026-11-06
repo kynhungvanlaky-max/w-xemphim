@@ -1,6 +1,7 @@
 window.adminTools = {
     downloadCsv(fileName, content) {
-        this.downloadFile(fileName, "text/csv;charset=utf-8", "\uFEFF" + content);
+        const withBom = content && content.charCodeAt(0) === 0xFEFF ? content : "\uFEFF" + content;
+        this.downloadFile(fileName, "text/csv;charset=utf-8", withBom);
     },
     downloadFile(fileName, mimeType, content) {
         const blob = new Blob([content], { type: mimeType });
@@ -25,6 +26,28 @@ window.adminTools = {
             window.localStorage.setItem(key, value);
         } catch {
             // Storage can be blocked (private mode / quota); preferences are optional.
+        }
+    },
+    previewImageFromPicker(inputElement) {
+        try {
+            const file = inputElement && inputElement.files && inputElement.files[0];
+            if (!file) {
+                return { ok: false, error: "empty" };
+            }
+            if (!file.type || !file.type.startsWith("image/")) {
+                return { ok: false, error: "not_image" };
+            }
+            return { ok: true, url: URL.createObjectURL(file) };
+        } catch {
+            return { ok: false, error: "preview_failed" };
+        }
+    },
+    revokeObjectUrl(url) {
+        if (!url) return;
+        try {
+            URL.revokeObjectURL(url);
+        } catch {
+            // Ignore stale/duplicate revokes.
         }
     },
     registerCommandPalette(dotNetHelper) {

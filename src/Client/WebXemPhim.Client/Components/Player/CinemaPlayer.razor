@@ -12,7 +12,7 @@
         <video @ref="videoRef"
                class="player-video"
                autoplay="@AutoPlay"
-               src="@(IsHls(ActiveStreamUrl) ? null : ActiveStreamUrl)"
+               data-active-src="@ActiveStreamUrl"
                @onended="OnEnded"
                @onpause="HandleVideoPause"
                @onerror="() => mediaFailed = true"
@@ -20,7 +20,10 @@
                aria-label="@CurrentEpisodeTitle"
                poster="@PosterUrl"
                playsinline
-               preload="metadata">
+               preload="metadata"
+               controlsList="nodownload noplaybackrate"
+               disablePictureInPicture="false"
+               oncontextmenu="return false;">
             Trình duyệt của bạn không hỗ trợ phát video HTML5.
         </video>
 
@@ -230,7 +233,7 @@
 
                     <!-- Picture in Picture -->
                     <button type="button" class="cp-control-btn cp-pip-btn" title="Thu nhỏ hình trong hình (PiP)" aria-label="Thu nhỏ hình trong hình (PiP)" aria-pressed="false">
-                        <CinemaIcon Name="CinemaIconName.Eye" Size="18" />
+                        <CinemaIcon Name="CinemaIconName.PictureInPicture" Size="18" />
                     </button>
 
                     <!-- Toàn màn hình -->
@@ -346,14 +349,14 @@
     protected override void OnInitialized()
     {
         UpdateWatermarkTimestamp();
-        watermarkCts = new CancellationTokenSource();
-        watermarkTimer = new PeriodicTimer(TimeSpan.FromSeconds(30));
-        _ = RunWatermarkLoopAsync(watermarkCts.Token);
+        // Client-side canvas rotation in cinema-player.js handles continuous watermark rotation
+        // without waking up .NET StateHasChanged() during video playback.
     }
 
     private void UpdateWatermarkTimestamp()
     {
-        currentTimestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
+        var vnTime = DateTime.UtcNow.AddHours(7);
+        currentTimestamp = vnTime.ToString("yyyy-MM-dd HH:mm");
     }
 
     public void AdvanceWatermarkPositionForTesting()
@@ -436,10 +439,22 @@
             {
                 if (currentHlsLevel < 0 || currentHlsLevel >= hlsLevels.Count) return "Tự động (Auto ABR)";
                 var lvl = hlsLevels[currentHlsLevel];
-                return !string.IsNullOrWhiteSpace(lvl.Name) ? lvl.Name : $"{lvl.Height}p";
+                var name = !string.IsNullOrWhiteSpace(lvl.Name) ? lvl.Name : $"{lvl.Height}p";
+                return CleanDisplayLabel(name, DisplayQualityBadge);
             }
-            return !string.IsNullOrWhiteSpace(QualityLabel) ? QualityLabel : "Tự động";
+            return CleanDisplayLabel(!string.IsNullOrWhiteSpace(QualityLabel) ? QualityLabel : "Tự động", DisplayQualityBadge);
         }
+    }
+
+    private static string CleanDisplayLabel(string label, string badge)
+    {
+        if (string.IsNullOrWhiteSpace(label)) return "Tự động";
+        if (string.Equals(badge, "60FPS", StringComparison.OrdinalIgnoreCase))
+        {
+            var cleaned = System.Text.RegularExpressions.Regex.Replace(label, @"\s*60\s*fps", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+            return !string.IsNullOrWhiteSpace(cleaned) ? cleaned : label;
+        }
+        return label;
     }
 
     private string DisplayQualityBadge
@@ -507,6 +522,52 @@
         {
             await OnQualityChanged.InvokeAsync(q);
         }
+    }
+
+    [JSInvokable]
+    public async Task OnAutoUpscaleRequested(int maxRecommendedHeight)
+    {
+        if (AvailableQualities == null || AvailableQualities.Count <= 1 || !isAutoQuality) return;
+
+        var currentIndex = -1;
+        for (var i = 0; i < AvailableQualities.Count; i++)
+        {
+            if (string.Equals(AvailableQualities[i], QualityLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                currentIndex = i;
+                break;
+            }
+        }
+        if (currentIndex <= 0) return;
+
+        var candidateIndex = currentIndex - 1;
+        var nextHigherQuality = AvailableQualities[candidateIndex];
+
+        if (maxRecommendedHeight > 0)
+        {
+            var candidateHeight = ParseHeightFromQuality(nextHigherQuality);
+            if (candidateHeight > maxRecommendedHeight * 1.3)
+            {
+                return;
+            }
+        }
+
+        OnPlayerNotice($"✨ Khôi phục chất lượng ({nextHigherQuality}) do mạng & phần cứng đã ổn định.");
+        if (OnQualityChanged.HasDelegate)
+        {
+            await OnQualityChanged.InvokeAsync(nextHigherQuality);
+        }
+    }
+
+    private static int ParseHeightFromQuality(string q)
+    {
+        if (string.IsNullOrEmpty(q)) return 720;
+        if (q.Contains("4K", StringComparison.OrdinalIgnoreCase)) return 2160;
+        if (q.Contains("1080p", StringComparison.OrdinalIgnoreCase) || q.Contains("FHD", StringComparison.OrdinalIgnoreCase)) return 1080;
+        if (q.Contains("720p", StringComparison.OrdinalIgnoreCase) || q.Contains("HD", StringComparison.OrdinalIgnoreCase)) return 720;
+        if (q.Contains("480p", StringComparison.OrdinalIgnoreCase)) return 480;
+        if (q.Contains("360p", StringComparison.OrdinalIgnoreCase)) return 360;
+        return 720;
     }
 
     [JSInvokable]

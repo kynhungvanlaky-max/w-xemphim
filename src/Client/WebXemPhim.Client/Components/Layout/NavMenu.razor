@@ -406,12 +406,14 @@
             await notificationClose.FocusAsync(preventScroll: true);
         }
         if (!firstRender) return;
-        await Theme.InitializeAsync();
-        await Auth.InitializeAsync();
-        await Watchlist.InitializeAsync();
-        await CheckUnreadNotifications();
+        await Task.WhenAll(
+            Theme.InitializeAsync(),
+            Auth.InitializeAsync(),
+            Watchlist.InitializeAsync()
+        );
         if (Auth.IsAuthenticated)
         {
+            await CheckUnreadNotifications();
             _ = HubClient.StartAsync();
         }
         await InvokeAsync(StateHasChanged);

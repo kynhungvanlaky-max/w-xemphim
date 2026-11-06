@@ -361,7 +361,11 @@
                                 <div class="ep-table-thumb-frame" @onclick="() => OpenThumbnailModal(ep)" title="Bấm để đổi ảnh nền tập #@ep.EpisodeNumber">
                                     @if (!string.IsNullOrEmpty(ep.ThumbnailUrl))
                                     {
-                                        <img src="@ep.ThumbnailUrl" alt="Tập @ep.EpisodeNumber" loading="lazy" />
+                                        <img src="@ep.ThumbnailUrl" alt="Tập @ep.EpisodeNumber" loading="lazy" onerror="this.onerror=null; this.src='@FallbackBackdrop';" />
+                                    }
+                                    else if (!string.IsNullOrEmpty(SelectedMovie?.BackdropUrl) || !string.IsNullOrEmpty(SelectedMovie?.PosterUrl))
+                                    {
+                                        <img src="@(SelectedMovie?.BackdropUrl ?? SelectedMovie?.PosterUrl)" alt="Tập @ep.EpisodeNumber" loading="lazy" />
                                     }
                                     else
                                     {
@@ -400,7 +404,7 @@
                                     <button type="button" class="btn-action-icon" title="Cấu hình nguồn phát máy chủ &amp; chất lượng" @onclick="() => OpenStreamsManager(ep)">
                                         <CinemaIcon Name="CinemaIconName.Settings" Size="13" />
                                     </button>
-                                    <button type="button" class="btn-action-icon" style="color: #ef4444;" title="Xóa tập phim" @onclick="() => DeleteEpisode(ep.Id)">
+                                    <button type="button" class="btn-action-icon" style="color: #ef4444;" title="Xóa tập phim" @onclick="() => RequestDeleteEpisode(ep)">
                                         <CinemaIcon Name="CinemaIconName.Trash" Size="13" />
                                     </button>
                                 </div>
@@ -422,7 +426,7 @@
 @if (showEpisodeModal)
 {
     <div class="admin-modal-backdrop" @onclick="CloseEpisodeModal">
-        <div class="admin-modal-card" style="max-width: 600px;" role="dialog" aria-modal="true" @onclick:stopPropagation>
+        <div class="admin-modal-card" style="max-width: 600px;" role="dialog" aria-modal="true" tabindex="-1" @onkeydown="HandleEpisodeModalKeyDown" @onclick:stopPropagation>
             <div class="admin-modal-header">
                 <h3>@(editingEpisodeId.HasValue ? $"Chỉnh sửa tập #{episodeModel.EpisodeNumber}" : "Thêm tập phim mới")</h3>
                 <button type="button" class="btn-close-modal" @onclick="CloseEpisodeModal">&times;</button>
@@ -432,17 +436,23 @@
                 <div class="form-row-2">
                     <div class="admin-form-group">
                         <label>Số thứ tự tập *</label>
-                        <input type="number" @bind="episodeModel.EpisodeNumber" min="1" />
+                        <input type="number" @bind="episodeModel.EpisodeNumber" min="1" @onkeydown="HandleEpisodeInputKeyDown" />
+                        @if (IsDuplicateEpisodeNumber)
+                        {
+                            <span class="field-error-hint" style="color: #ef4444; font-size: 0.74rem; margin-top: 3px; display: block;">
+                                Tập số #@episodeModel.EpisodeNumber đã tồn tại trong tác phẩm này.
+                            </span>
+                        }
                     </div>
                     <div class="admin-form-group">
                         <label>Thời lượng (phút)</label>
-                        <input type="number" @bind="episodeModel.DurationMinutes" min="1" />
+                        <input type="number" @bind="episodeModel.DurationMinutes" min="1" @onkeydown="HandleEpisodeInputKeyDown" />
                     </div>
                 </div>
 
                 <div class="admin-form-group">
                     <label>Tiêu đề tập</label>
-                    <input type="text" @bind="episodeModel.Title" placeholder="Ví dụ: Tập 01: Khởi đầu mới" />
+                    <input type="text" @bind="episodeModel.Title" placeholder="Ví dụ: Tập 01: Khởi đầu mới" @onkeydown="HandleEpisodeInputKeyDown" />
                 </div>
 
                 <div class="admin-form-group">
@@ -452,28 +462,120 @@
 
                 @if (!editingEpisodeId.HasValue)
                 {
-                    <div class="admin-section-divider" style="margin: 1rem 0;"></div>
-                    <h4 style="font-size: 0.85rem; margin-bottom: 0.5rem; color: rgba(255,255,255,0.7);">Khởi tạo luồng phát ban đầu</h4>
-
-                    <div class="form-row-2">
-                        <div class="admin-form-group">
-                            <label>Tên máy chủ phát (Server)</label>
-                            <input type="text" @bind="episodeModel.ServerName" placeholder="VIP FastServer 1 (Hà Nội)" />
-                        </div>
-                        <div class="admin-form-group">
-                            <label>Chất lượng</label>
-                            <select @bind="episodeModel.Quality">
-                                <option value="1080p FHD">1080p FHD</option>
-                                <option value="4K UHD">4K UHD</option>
-                                <option value="720p HD">720p HD</option>
-                            </select>
+                    <div class="admin-section-divider" style="margin: 1rem 0 0.75rem 0;"></div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                        <h4 style="font-size: 0.85rem; margin: 0; color: var(--admin-text-body); font-weight: 600;">Khởi tạo luồng phát ban đầu</h4>
+                        <div class="stream-input-mode-toggle">
+                            <button type="button" class="mode-toggle-btn @(episodeStreamInputMode == StreamInputMode.DirectUrl ? "active" : "")" @onclick="() => SetEpisodeStreamInputMode(StreamInputMode.DirectUrl)">
+                                <CinemaIcon Name="CinemaIconName.Globe" Size="12" />
+                                <span>Nhập URL</span>
+                            </button>
+                            <button type="button" class="mode-toggle-btn @(episodeStreamInputMode == StreamInputMode.UploadR2 ? "active" : "")" @onclick="() => SetEpisodeStreamInputMode(StreamInputMode.UploadR2)">
+                                <CinemaIcon Name="CinemaIconName.Upload" Size="12" />
+                                <span>Tải lên R2</span>
+                            </button>
                         </div>
                     </div>
 
-                    <div class="admin-form-group">
-                        <label>URL luồng Stream (HLS .m3u8 hoặc file .mp4) *</label>
-                        <input type="text" @bind="episodeModel.StreamUrl" placeholder="https://domain.com/video/master.m3u8" />
-                    </div>
+                    @if (episodeStreamInputMode == StreamInputMode.DirectUrl)
+                    {
+                        <div class="form-row-2">
+                            <div class="admin-form-group">
+                                <label>Tên máy chủ phát (Server)</label>
+                                <input type="text" list="stream-server-presets" @bind="episodeModel.ServerName" placeholder="VIP FastServer 1 (R2 Edge)" />
+                            </div>
+                            <div class="admin-form-group">
+                                <label>Chất lượng</label>
+                                <select @bind="episodeModel.Quality">
+                                    <option value="1080p FHD">1080p FHD</option>
+                                    <option value="4K UHD">4K UHD</option>
+                                    <option value="720p HD">720p HD</option>
+                                    <option value="480p SD">480p SD</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="admin-form-group">
+                            <label>URL luồng Stream (HLS .m3u8 hoặc file .mp4) *</label>
+                            <input type="text" @bind="episodeModel.StreamUrl" placeholder="https://domain.com/video/master.m3u8 hoặc r2://webxemphim-movies/..." />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="r2-upload-card">
+                            <div class="r2-upload-picker-box">
+                                <label class="r2-upload-dropzone @(selectedEpisodeVideoFile != null ? "has-file" : "")">
+                                    <InputFile OnChange="HandleEpisodeVideoFileSelected" accept="video/mp4,video/webm,video/x-matroska,video/quicktime,.mp4,.webm,.mkv,.mov,.m4v" class="r2-file-input-hidden" />
+                                    <CinemaIcon Name="CinemaIconName.Upload" Size="20" />
+                                    <div class="r2-dropzone-text">
+                                        @if (selectedEpisodeVideoFile != null)
+                                        {
+                                            <strong class="r2-filename">@selectedEpisodeVideoFile.Name</strong>
+                                            <span class="r2-filesize">(@(Math.Round(selectedEpisodeVideoFile.Size / (1024.0 * 1024.0), 1)) MB)</span>
+                                            <span class="r2-change-file">Bấm để chọn tệp video khác</span>
+                                        }
+                                        else
+                                        {
+                                            <strong>Bấm chọn tệp video từ máy tính để tải trực tiếp lên Cloudflare R2</strong>
+                                            <span>Hỗ trợ MP4, MKV, WebM, MOV lên tới 4 GB</span>
+                                        }
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div class="form-row-2" style="margin-top: 0.75rem;">
+                                <div class="admin-form-group">
+                                    <label>Cụm máy chủ phát</label>
+                                    <select @bind="episodeModel.ServerName">
+                                        @foreach (var srv in InstalledServers)
+                                        {
+                                            <option value="@srv.Name">@srv.Name</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="admin-form-group">
+                                    <label>Chất lượng</label>
+                                    <select @bind="episodeModel.Quality">
+                                        <option value="1080p FHD">1080p FHD</option>
+                                        <option value="4K UHD">4K UHD</option>
+                                        <option value="720p HD">720p HD</option>
+                                        <option value="480p SD">480p SD</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            @if (isUploadingEpisodeVideo)
+                            {
+                                <div class="r2-upload-progress-wrap">
+                                    <div class="r2-progress-label">
+                                        <span>Đang truyền tải video lên Cloudflare R2...</span>
+                                        <strong class="font-mono-num">@episodeUploadProgress%</strong>
+                                    </div>
+                                    <div class="r2-progress-track">
+                                        <div class="r2-progress-bar" style="width: @episodeUploadProgress%;"></div>
+                                    </div>
+                                </div>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(episodeUploadSuccessMsg))
+                            {
+                                <div class="r2-upload-success-badge">
+                                    <CinemaIcon Name="CinemaIconName.Check" Size="14" />
+                                    <span>@episodeUploadSuccessMsg</span>
+                                    <span class="r2-url-code" title="@episodeModel.StreamUrl">@episodeModel.StreamUrl</span>
+                                </div>
+                            }
+                            else if (selectedEpisodeVideoFile != null && string.IsNullOrWhiteSpace(episodeModel.StreamUrl))
+                            {
+                                <div class="r2-upload-actions-row">
+                                    <button type="button" class="btn-primary-action btn-sm" @onclick="ExecuteEpisodeR2Upload" disabled="@isUploadingEpisodeVideo">
+                                        <CinemaIcon Name="CinemaIconName.Upload" Size="12" />
+                                        <span>Tải lên Cloudflare R2 ngay</span>
+                                    </button>
+                                    <span class="r2-auto-upload-hint">Hoặc bấm "Thêm tập phim", hệ thống sẽ tự động tải lên và lưu tập.</span>
+                                </div>
+                            }
+                        </div>
+                    }
                 }
             </div>
 
@@ -491,7 +593,7 @@
 @if (showThumbnailModal && thumbEpisode != null)
 {
     <div class="admin-modal-backdrop" @onclick="CloseThumbnailModal">
-        <div class="admin-modal-card" style="max-width: 580px;" role="dialog" aria-modal="true" @onclick:stopPropagation>
+        <div class="admin-modal-card" style="max-width: 580px;" role="dialog" aria-modal="true" tabindex="-1" @onkeydown="HandleThumbnailModalKeyDown" @onclick:stopPropagation>
             <div class="admin-modal-header">
                 <div>
                     <h3>Đổi ảnh nền: Tập @thumbEpisode.EpisodeNumber.ToString("00")</h3>
@@ -525,7 +627,7 @@
                         }
                         else if (!string.IsNullOrEmpty(thumbEpisode.ThumbnailUrl))
                         {
-                            <img src="@thumbEpisode.ThumbnailUrl" alt="Ảnh nền tập @thumbEpisode.EpisodeNumber" />
+                            <img src="@thumbEpisode.ThumbnailUrl" alt="Ảnh nền tập @thumbEpisode.EpisodeNumber" onerror="this.onerror=null; this.src='@FallbackBackdrop';" />
                         }
                         else
                         {
@@ -550,16 +652,43 @@
                     </div>
                 </div>
 
-                <div class="admin-form-group" style="margin-top: 1.25rem;">
-                    <label>Tải lên ảnh mới (JPG, PNG, WEBP, GIF, AVIF - Tối đa 5 MB):</label>
-                    <InputFile OnChange="OnThumbnailFileSelected" class="admin-file-picker" accept=".jpg,.jpeg,.png,.webp,.gif,.avif" />
+                <div class="thumb-input-mode-toggle">
+                    <button type="button" class="btn-thumb-mode @(thumbInputMode == "file" ? "active" : "")" @onclick='() => SetThumbInputMode("file")'>
+                        <CinemaIcon Name="CinemaIconName.Upload" Size="13" />
+                        <span>Tải tệp từ máy tính</span>
+                    </button>
+                    <button type="button" class="btn-thumb-mode @(thumbInputMode == "url" ? "active" : "")" @onclick='() => SetThumbInputMode("url")'>
+                        <CinemaIcon Name="CinemaIconName.Globe" Size="13" />
+                        <span>Dán link URL ảnh trực tiếp</span>
+                    </button>
                 </div>
+
+                @if (thumbInputMode == "file")
+                {
+                    <div class="admin-form-group" style="margin-top: 0.5rem;">
+                        <label>Chọn tệp ảnh từ máy tính (JPG, PNG, WEBP, GIF, AVIF - Tối đa 5 MB):</label>
+                        <InputFile @ref="thumbnailFileInput" OnChange="OnThumbnailFileSelected" class="admin-file-picker" accept=".jpg,.jpeg,.png,.webp,.gif,.avif" />
+                    </div>
+                }
+                else
+                {
+                    <div class="admin-form-group" style="margin-top: 0.5rem;">
+                        <label>Dán link hình ảnh trực tiếp (URL từ CDN hoặc Web):</label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="text" class="quick-prober-input" @bind="thumbUrlInput" @bind:event="oninput" placeholder="https://image-cdn.com/posters/ep01.jpg" @onkeydown="HandleThumbUrlKeyDown" />
+                            @if (!string.IsNullOrWhiteSpace(thumbUrlInput))
+                            {
+                                <button type="button" class="btn-secondary-ghost" style="font-size: 0.75rem; padding: 0 10px; white-space: nowrap;" @onclick="ApplyThumbUrlPreview">Xem thử</button>
+                            }
+                        </div>
+                    </div>
+                }
             </div>
 
             <div class="admin-modal-footer">
                 <button type="button" class="btn-secondary-ghost" @onclick="CloseThumbnailModal">Đóng</button>
-                <button type="button" class="btn-primary-action" @onclick="SubmitThumbnailUpload" disabled="@(selectedThumbnailFile == null || isUploadingThumbnail)">
-                    @(isUploadingThumbnail ? "Đang tải lên..." : "Lưu ảnh nền mới")
+                <button type="button" class="btn-primary-action" @onclick="SubmitThumbnail" disabled="@(!CanSubmitThumbnail || isUploadingThumbnail)">
+                    @(isUploadingThumbnail ? "Đang lưu..." : "Lưu ảnh nền mới")
                 </button>
             </div>
         </div>
@@ -569,8 +698,8 @@
 <!-- MODAL KIỂM TRA LUỒNG (STREAM PROBER) -->
 @if (showProbeModal)
 {
-    <div class="admin-modal-backdrop" @onclick="CloseProbeModal">
-        <div class="admin-modal-card" style="max-width: 580px;" role="dialog" aria-modal="true" @onclick:stopPropagation>
+    <div class="admin-modal-backdrop is-stacked" @onclick="CloseProbeModal">
+        <div class="admin-modal-card" style="max-width: 580px;" role="dialog" aria-modal="true" tabindex="-1" @onkeydown="HandleProbeModalKeyDown" @onclick:stopPropagation>
             <div class="admin-modal-header">
                 <h3>Kiểm tra kết nối luồng phát (Stream Probe)</h3>
                 <button type="button" class="btn-close-modal" @onclick="CloseProbeModal">&times;</button>
@@ -638,7 +767,7 @@
 @if (managingEpisode != null)
 {
     <div class="admin-modal-backdrop" @onclick="CloseStreamsManager">
-        <div class="admin-modal-card streams-modal-card" role="dialog" aria-modal="true" aria-labelledby="streams-modal-title" @onclick:stopPropagation>
+        <div class="admin-modal-card streams-modal-card" role="dialog" aria-modal="true" aria-labelledby="streams-modal-title" tabindex="-1" @onkeydown="HandleStreamsManagerKeyDown" @onclick:stopPropagation>
             <div class="admin-modal-header">
                 <div style="min-width: 0;">
                     <h3 id="streams-modal-title">Luồng phát · Tập @managingEpisode.EpisodeNumber</h3>
@@ -666,6 +795,18 @@
                         <strong>@currentStreamsList.Count</strong> luồng · <strong>@UniqueServerNames.Count</strong> máy chủ
                     </span>
                     <div class="streams-toolbar-actions">
+                        <button type="button" class="btn-stream-tool @(showServerControlPanel ? "active" : "")" @onclick="ToggleServerControlPanel" title="Điều khiển lưu lượng, trần băng thông &amp; chính sách VIP/Free của các cụm máy chủ">
+                            <CinemaIcon Name="CinemaIconName.Settings" Size="13" />
+                            <span>Điều khiển Server</span>
+                        </button>
+                        <button type="button" class="btn-stream-tool @(showR2StudioUpload ? "active" : "")" @onclick="ToggleStudioR2Upload" title="Tải tệp video từ máy tính trực tiếp lên Cloudflare R2 cho tập này">
+                            <CinemaIcon Name="CinemaIconName.Upload" Size="13" />
+                            <span>Tải lên R2</span>
+                        </button>
+                        <button type="button" class="btn-stream-tool @(showQuickTester ? "active" : "")" @onclick="ToggleQuickTester" title="Mở thanh kiểm tra ping nhanh URL bất kỳ">
+                            <CinemaIcon Name="CinemaIconName.Globe" Size="13" />
+                            <span>Test URL nhanh</span>
+                        </button>
                         @if (currentStreamsList.Count > 0)
                         {
                             <button type="button" class="btn-stream-tool" @onclick="ProbeAllStreams" disabled="@isBatchProbing" title="Đo độ trễ toàn bộ luồng phát">
@@ -680,12 +821,324 @@
                     </div>
                 </div>
 
+                @if (showR2StudioUpload)
+                {
+                    <div class="r2-upload-inline-panel">
+                        <div class="r2-panel-head">
+                            <div class="r2-panel-title">
+                                <CinemaIcon Name="CinemaIconName.Upload" Size="13" />
+                                <span>Tải video trực tiếp lên Cloudflare R2 · Tập @managingEpisode.EpisodeNumber</span>
+                            </div>
+                            <button type="button" class="btn-close-prober-mini" @onclick="() => showR2StudioUpload = false" title="Đóng">&times;</button>
+                        </div>
+                        <div class="r2-panel-body">
+                            <label class="r2-upload-dropzone @(studioR2SelectedFile != null ? "has-file" : "")">
+                                <InputFile OnChange="HandleStudioR2FileSelected" accept="video/mp4,video/webm,video/x-matroska,video/quicktime,.mp4,.webm,.mkv,.mov,.m4v" class="r2-file-input-hidden" />
+                                <CinemaIcon Name="CinemaIconName.Upload" Size="18" />
+                                <div class="r2-dropzone-text">
+                                    @if (studioR2SelectedFile != null)
+                                    {
+                                        <strong class="r2-filename">@studioR2SelectedFile.Name</strong>
+                                        <span class="r2-filesize">(@(Math.Round(studioR2SelectedFile.Size / (1024.0 * 1024.0), 1)) MB)</span>
+                                        <span class="r2-change-file">Bấm để chọn tệp video khác</span>
+                                    }
+                                    else
+                                    {
+                                        <strong>Bấm chọn tệp video từ máy tính để tải trực tiếp lên Cloudflare R2</strong>
+                                        <span>Hỗ trợ MP4, MKV, WebM, MOV lên tới 4 GB</span>
+                                    }
+                                </div>
+                            </label>
+
+                            <div class="r2-cluster-select-header">
+                                <span class="r2-cluster-select-label">
+                                    <CinemaIcon Name="CinemaIconName.HardDrive" Size="13" />
+                                    <span>Cụm máy chủ phân phối nguồn phát (@studioR2SelectedServers.Count/@InstalledServers.Count cụm):</span>
+                                </span>
+                                <button type="button" class="btn-select-all-servers @(studioR2SelectAllServers ? "is-selected" : "")" @onclick="ToggleSelectAllR2Servers">
+                                    @(studioR2SelectAllServers ? "✓ Đang chọn tất cả cụm" : "+ Chọn tất cả cụm máy chủ")
+                                </button>
+                            </div>
+
+                            <div class="r2-server-selection-grid">
+                                @foreach (var srv in InstalledServers)
+                                {
+                                    var isSelected = studioR2SelectedServers.Contains(srv.Name);
+                                    var ceiling = GetServerQualityCeiling(srv.ServerKey, srv.DefaultCeiling);
+                                    <div class="r2-server-card @(isSelected ? "selected" : "")" @onclick="() => ToggleR2ServerSelection(srv.Name)" title="@srv.Name - @(srv.ServerType == StreamServerType.VipFastServer ? "VIP FastServer" : srv.ServerType == StreamServerType.HydraCdn ? "Hydra CDN" : "Dự phòng")">
+                                        <div class="r2-server-card-check">
+                                            <input type="checkbox" checked="@isSelected" @onclick:stopPropagation @onchange="() => ToggleR2ServerSelection(srv.Name)" />
+                                        </div>
+                                        <div class="r2-server-card-info">
+                                            <div class="r2-server-card-top">
+                                                <span class="server-type-badge @(srv.ServerType == StreamServerType.VipFastServer ? "vip" : srv.ServerType == StreamServerType.HydraCdn ? "cdn" : "backup")">
+                                                    @(srv.ServerType == StreamServerType.VipFastServer ? "VIP" : srv.ServerType == StreamServerType.HydraCdn ? "CDN" : "Dự phòng")
+                                                </span>
+                                                <strong class="r2-server-card-name">@srv.Name</strong>
+                                            </div>
+                                            <div class="r2-server-card-ceiling">
+                                                <span class="r2-ceiling-lbl">Trần chất lượng:</span>
+                                                <strong class="r2-ceiling-val font-mono-num">@ceiling</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="r2-panel-controls-v2">
+                                <div class="admin-form-group" style="width: 170px; margin-bottom: 0;">
+                                    <label style="font-size: 0.72rem; margin-bottom: 2px;">Chất lượng Master gốc</label>
+                                    <select class="quick-prober-input" @bind="studioR2MasterQuality">
+                                        @foreach (var q in QualityPresets)
+                                        {
+                                            <option value="@q">@q</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="r2-options-toggle-group">
+                                    <label class="r2-checkbox-label" title="Ghi đè toàn bộ nguồn phát hiện có của tập bằng các luồng mới sinh">
+                                        <input type="checkbox" @bind="studioR2ReplaceExisting" />
+                                        <span>Thay thế các nguồn cũ</span>
+                                    </label>
+                                </div>
+                                <button type="button" class="btn-primary-action" style="align-self: flex-end; height: 34px; padding: 0 16px; font-size: 0.78rem;" @onclick="ExecuteStudioR2Upload" disabled="@(isStudioR2Uploading || studioR2SelectedFile == null || studioR2SelectedServers.Count == 0)">
+                                    <CinemaIcon Name="CinemaIconName.Upload" Size="13" />
+                                    <span>@(isStudioR2Uploading ? (studioR2UploadProgress >= 99 ? "Đang xử lý hạ cấp R2..." : $"Đang tải {studioR2UploadProgress}%...") : $"Tải lên R2 & Phân phối ({studioR2SelectedServers.Count} cụm)")</span>
+                                </button>
+                            </div>
+
+                            @if (isStudioR2Uploading)
+                            {
+                                <div class="r2-upload-progress-wrap" style="margin-top: 0.6rem;">
+                                    <div class="r2-progress-label">
+                                        <span>@(string.IsNullOrWhiteSpace(studioR2UploadStageText) ? "Đang truyền luồng dữ liệu tới Cloudflare R2..." : studioR2UploadStageText)</span>
+                                        <strong class="font-mono-num">@studioR2UploadProgress%</strong>
+                                    </div>
+                                    <div class="r2-progress-track">
+                                        <div class="r2-progress-bar" style="width: @studioR2UploadProgress%;"></div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (showQuickTester)
+                {
+                    <div class="quick-prober-inline-panel">
+                        <div class="quick-prober-head">
+                            <div class="quick-prober-title">
+                                <CinemaIcon Name="CinemaIconName.Globe" Size="13" />
+                                <span>Kiểm tra độ trễ &amp; Tính hợp lệ URL Stream</span>
+                            </div>
+                            <button type="button" class="btn-close-prober-mini" @onclick="() => showQuickTester = false" title="Đóng">&times;</button>
+                        </div>
+                        <div class="quick-prober-form">
+                            <div class="quick-prober-input-wrap">
+                                <input type="text" class="quick-prober-input" @bind="quickProbeUrl" @bind:event="oninput" placeholder="Dán URL video HLS (.m3u8) hoặc (.mp4) để kiểm tra kết nối ngay..." @onkeydown="HandleQuickProbeKeyDown" />
+                                @if (!string.IsNullOrWhiteSpace(quickProbeUrl))
+                                {
+                                    <button type="button" class="quick-prober-clear" @onclick="() => quickProbeUrl = string.Empty" title="Xóa">&times;</button>
+                                }
+                            </div>
+                            <button type="button" class="btn-primary-action quick-prober-btn" @onclick="ExecuteQuickProbe" disabled="@(isQuickProbing || string.IsNullOrWhiteSpace(quickProbeUrl))">
+                                @(isQuickProbing ? "Đang đo..." : "Đo Ping")
+                            </button>
+                        </div>
+                        @if (quickProbeResult != null)
+                        {
+                            <div class="quick-prober-result @(quickProbeResult.IsSuccess ? "is-ok" : "is-err")">
+                                <div class="quick-prober-result-info">
+                                    <span class="probe-pill @(quickProbeResult.IsSuccess ? "success" : "fail")">
+                                        @(quickProbeResult.IsSuccess ? $"HTTP {quickProbeResult.StatusCode} OK" : $"HTTP {quickProbeResult.StatusCode} LỖI")
+                                    </span>
+                                    <span class="quick-prober-metric">Độ trễ: <strong style="color: @(quickProbeResult.LatencyMs < 400 ? "#34d399" : "#fbbf24");">@quickProbeResult.LatencyMs ms</strong></span>
+                                    <span class="quick-prober-metric font-mono-num">Loại: <strong>@(string.IsNullOrWhiteSpace(quickProbeResult.ContentType) ? "N/A" : quickProbeResult.ContentType)</strong></span>
+                                    @if (!string.IsNullOrEmpty(quickProbeResult.ErrorMessage))
+                                    {
+                                        <span class="quick-prober-errmsg">@quickProbeResult.ErrorMessage</span>
+                                    }
+                                </div>
+                                @if (quickProbeResult.IsSuccess)
+                                {
+                                    <button type="button" class="btn-quick-add-stream" @onclick="UseQuickProbeUrlInForm" title="Điền URL này vào form thêm nguồn phát">
+                                        <CinemaIcon Name="CinemaIconName.Plus" Size="12" />
+                                        <span>Dùng URL này để thêm luồng</span>
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (showServerControlPanel)
+                {
+                    <div class="server-control-inline-panel">
+                        <div class="server-control-head">
+                            <div class="server-control-title-group">
+                                <div class="server-control-title">
+                                    <CinemaIcon Name="CinemaIconName.Settings" Size="14" />
+                                    <span>Điều khiển Băng thông &amp; Phân phối Luồng Server</span>
+                                </div>
+                                <p class="server-control-desc">Chủ động điều phối lưu lượng mạng: Giữ luồng VIP luôn mượt mà tối đa, giới hạn trần băng thông luồng thường để tối ưu hóa hạ tầng.</p>
+                            </div>
+                            <div class="server-control-actions">
+                                <a href="/admin/servers" class="btn-server-policy-reset" title="Mở trang Quản lý &amp; Điều khiển Máy chủ toàn diện">
+                                    <CinemaIcon Name="CinemaIconName.HardDrive" Size="12" />
+                                    <span>Trang chuyên sâu ↗</span>
+                                </a>
+                                <button type="button" class="btn-server-policy-reset" @onclick="ResetServerPolicies" disabled="@isSavingPolicy" title="Khôi phục toàn bộ thông số máy chủ về mặc định chuẩn">
+                                    <CinemaIcon Name="CinemaIconName.Refresh" Size="12" />
+                                    <span>Khôi phục mặc định</span>
+                                </button>
+                                <button type="button" class="btn-close-prober-mini" @onclick="() => showServerControlPanel = false" title="Đóng bảng điều khiển">&times;</button>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(policyActionAlert))
+                        {
+                            <div class="form-alert success" style="margin-bottom: 0.75rem;">@policyActionAlert</div>
+                        }
+                        @if (!string.IsNullOrEmpty(policyActionError))
+                        {
+                            <div class="form-alert error" style="margin-bottom: 0.75rem;">@policyActionError</div>
+                        }
+
+                        @if (isLoadingPolicies && serverPolicies.Count == 0)
+                        {
+                            <div class="server-control-loading">Đang tải cấu hình máy chủ từ hệ thống...</div>
+                        }
+                        else
+                        {
+                            <div class="server-policies-grid">
+                                @foreach (var policy in serverPolicies)
+                                {
+                                    var isSavingThis = isSavingPolicy && savingPolicyKey == policy.ServerKey;
+                                    var isVipCluster = policy.ServerKey == "vip";
+                                    <div class="server-policy-card @(policy.IsActive ? "" : "is-inactive") @(isVipCluster ? "is-vip" : "")">
+                                        <div class="server-policy-card-head">
+                                            <div class="server-policy-card-ident">
+                                                <span class="server-type-badge @(policy.ServerType == StreamServerType.VipFastServer ? "vip" : policy.ServerType == StreamServerType.HydraCdn ? "cdn" : "backup")">
+                                                    @(policy.ServerType == StreamServerType.VipFastServer ? "VIP" : policy.ServerType == StreamServerType.HydraCdn ? "CDN" : "Dự phòng")
+                                                </span>
+                                                <strong>@policy.DisplayName</strong>
+                                            </div>
+                                            <label class="server-policy-switch" title="@(policy.IsActive ? "Máy chủ đang hoạt động" : "Máy chủ đang tạm dừng bảo trì")">
+                                                <input type="checkbox" @bind="policy.IsActive" />
+                                                <span class="slider round"></span>
+                                                <span class="switch-label">@(policy.IsActive ? "Hoạt động" : "Bảo trì")</span>
+                                            </label>
+                                        </div>
+
+                                        <div class="server-policy-card-body">
+                                            <!-- Toggle VIP Exclusive -->
+                                            <div class="policy-field-row">
+                                                <div class="policy-field-info">
+                                                    <span class="policy-field-name">Đặc quyền hội viên VIP</span>
+                                                    <span class="policy-field-hint">Chỉ tài khoản VIP mới được kết nối vào cụm này</span>
+                                                </div>
+                                                <label class="policy-toggle">
+                                                    <input type="checkbox" @bind="policy.IsVipOnly" />
+                                                    <span class="policy-toggle-knob"></span>
+                                                </label>
+                                            </div>
+
+                                            <!-- Bandwidth Throttling -->
+                                            <div class="policy-field-col">
+                                                <div class="policy-field-header-split">
+                                                    <span class="policy-field-name">Trần băng thông phát (Bandwidth Cap)</span>
+                                                    <strong class="policy-bw-val font-mono-num">
+                                                        @(policy.MaxBandwidthKbps <= 0 ? "Không giới hạn (Gigabit)" : $"{Math.Round(policy.MaxBandwidthKbps / 1000.0, 1)} Mbps ({policy.MaxBandwidthKbps} Kbps)")
+                                                    </strong>
+                                                </div>
+                                                <div class="policy-bw-control">
+                                                    @if (isVipCluster)
+                                                    {
+                                                        <div class="policy-vip-unlimited-pill">
+                                                            <CinemaIcon Name="CinemaIconName.Sparkles" Size="12" />
+                                                            <span>Ưu tiên luồng VIP: Không bóp băng thông, truyền tải tốc độ tối đa</span>
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="policy-presets-row">
+                                                            <button type="button" class="btn-preset-bw @(policy.MaxBandwidthKbps == 1500 ? "active" : "")" @onclick="() => policy.MaxBandwidthKbps = 1500">1.5M (Tiết kiệm)</button>
+                                                            <button type="button" class="btn-preset-bw @(policy.MaxBandwidthKbps == 3500 ? "active" : "")" @onclick="() => policy.MaxBandwidthKbps = 3500">3.5M (Chuẩn 1080p)</button>
+                                                            <button type="button" class="btn-preset-bw @(policy.MaxBandwidthKbps == 5000 ? "active" : "")" @onclick="() => policy.MaxBandwidthKbps = 5000">5.0M (Nhanh)</button>
+                                                            <button type="button" class="btn-preset-bw @(policy.MaxBandwidthKbps == 0 ? "active" : "")" @onclick="() => policy.MaxBandwidthKbps = 0">Không giới hạn</button>
+                                                        </div>
+                                                    }
+                                                    <input type="range" min="0" max="15000" step="500" class="policy-bw-slider" @bind="policy.MaxBandwidthKbps" />
+                                                </div>
+                                            </div>
+
+                                            <div class="policy-grid-2">
+                                                <!-- Max Quality -->
+                                                <div class="policy-field-col">
+                                                    <span class="policy-field-name">Trần chất lượng phát</span>
+                                                    <select class="quick-prober-input" @bind="policy.MaxQuality">
+                                                        <option value="4K UHD">4K UHD</option>
+                                                        <option value="1080p FHD">1080p FHD</option>
+                                                        <option value="720p HD">720p HD</option>
+                                                        <option value="480p SD">480p SD</option>
+                                                    </select>
+                                                </div>
+
+                                                <!-- Pre-buffer -->
+                                                <div class="policy-field-col">
+                                                    <span class="policy-field-name">Bộ đệm mở đầu (Burst Buffer)</span>
+                                                    <select class="quick-prober-input" @bind="policy.BufferInitialBurstKb">
+                                                        <option value="1024">1 MB (Tiết kiệm)</option>
+                                                        <option value="2048">2 MB (Chuẩn)</option>
+                                                        <option value="4096">4 MB (Nhanh)</option>
+                                                        <option value="8192">8 MB (Siêu tốc VIP)</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="server-policy-card-foot">
+                                            <button type="button" class="btn-save-policy" @onclick="() => SaveServerPolicy(policy)" disabled="@isSavingThis">
+                                                <CinemaIcon Name="CinemaIconName.Check" Size="13" />
+                                                <span>@(isSavingThis ? "Đang lưu..." : "Lưu cụm máy chủ này")</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
                 @if (currentStreamsList.Count == 0)
                 {
-                    <p class="streams-empty">Chưa có nguồn phát nào. Bấm <strong>Nguồn phát</strong> để thêm luồng đầu tiên.</p>
+                    <p class="streams-empty">Chưa có nguồn phát nào. Bấm <strong>Tải lên R2</strong> hoặc <strong>Nguồn phát</strong> để thêm luồng đầu tiên.</p>
                 }
                 else
                 {
+                    @if (currentStreamsList.Count > 1)
+                    {
+                        <div class="streams-filter-bar">
+                            <div class="streams-filter-search">
+                                <CinemaIcon Name="CinemaIconName.Search" Size="12" />
+                                <input type="text" @bind="streamFilterText" @bind:event="oninput" placeholder="Lọc theo tên server hoặc URL..." />
+                                @if (!string.IsNullOrWhiteSpace(streamFilterText))
+                                {
+                                    <button type="button" class="filter-clear-btn" @onclick="() => streamFilterText = string.Empty">&times;</button>
+                                }
+                            </div>
+                            <div class="streams-filter-server">
+                                <select @bind="selectedServerFilter">
+                                    <option value="">Tất cả máy chủ (@UniqueServerNames.Count)</option>
+                                    @foreach (var srv in UniqueServerNames)
+                                    {
+                                        <option value="@srv">@srv</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                    }
+
                     <div class="streams-list">
                         <div class="streams-head-row">
                             <span>#</span>
@@ -695,7 +1148,7 @@
                             <span></span>
                         </div>
 
-                        @foreach (var serverGroup in currentStreamsList.GroupBy(s => s.ServerName))
+                        @foreach (var serverGroup in FilteredStreamsList.GroupBy(s => s.ServerName))
                         {
                             var sName = serverGroup.Key;
                             var sType = serverGroup.First().ServerType;
@@ -706,40 +1159,139 @@
                                     </span>
                                     <strong class="stream-server-name" title="@sName">@sName</strong>
                                     <span class="stream-server-count">@serverGroup.Count() luồng</span>
+                                    @{
+                                        var groupPolicy = GetPolicyForServer(sName, sType);
+                                        if (groupPolicy != null)
+                                        {
+                                            if (!groupPolicy.IsActive)
+                                            {
+                                                <span class="server-policy-chip inactive" title="Máy chủ đang bảo trì, tạm dừng phát cho người xem">Đang bảo trì</span>
+                                            }
+                                            else if (groupPolicy.IsVipOnly)
+                                            {
+                                                <span class="server-policy-chip vip" title="Đặc quyền VIP: Không giới hạn băng thông, mở sẵn buffer 8MB">VIP · Line-Rate</span>
+                                            }
+                                            else if (groupPolicy.MaxBandwidthKbps > 0)
+                                            {
+                                                <span class="server-policy-chip throttled" title="Băng thông luồng thường giới hạn @(Math.Round(groupPolicy.MaxBandwidthKbps / 1000.0, 1)) Mbps · Trần @groupPolicy.MaxQuality">Giới hạn @(Math.Round(groupPolicy.MaxBandwidthKbps / 1000.0, 1))M</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="server-policy-chip unmetered" title="Không giới hạn băng thông">Tốc độ cao</span>
+                                            }
+                                        }
+                                    }
+                                    @{
+                                        var probedInGroup = serverGroup
+                                            .Where(s => streamProbeResults.TryGetValue(s.Position, out var r) && r != null && r.IsSuccess)
+                                            .Select(s => streamProbeResults[s.Position]!.LatencyMs)
+                                            .ToList();
+                                        if (probedInGroup.Count > 0)
+                                        {
+                                            var avg = Math.Round(probedInGroup.Average());
+                                            <span class="server-latency-badge @(avg < 400 ? "fast" : "slow")" title="Độ trễ trung bình của máy chủ: @avg ms">
+                                                @avg ms
+                                            </span>
+                                        }
+                                    }
                                     <button type="button" class="btn-add-quality-pill" @onclick="() => QuickAddQualityForServer(sName, sType)" title="Thêm chất lượng khác cho @sName">
                                         + Chất lượng
+                                    </button>
+                                    <button type="button" class="btn-add-quality-pill" style="margin-left: 0.3rem;" @onclick="() => QuickUploadR2ForServer(sName)" title="Tải video lên R2 cho máy chủ @sName">
+                                        + Tải R2
                                     </button>
                                 </div>
 
                                 @foreach (var s in serverGroup)
                                 {
                                     var isEditingThis = editingStreamPosition == s.Position;
-                                    <div class="stream-row @(isEditingThis ? "is-editing" : "")">
+                                    var isProbingThis = probingPositions.Contains(s.Position);
+                                    var hasResult = streamProbeResults.TryGetValue(s.Position, out var pr);
+                                    var isDetailOpen = expandedProbeDetailPosition == s.Position && hasResult;
+
+                                    <div class="stream-row @(isEditingThis ? "is-editing" : "") @(isDetailOpen ? "has-detail-open" : "")">
                                         <span class="stream-pos font-mono-num">#@s.Position</span>
                                         <span class="stream-quality-chip">@s.Quality</span>
                                         <span class="stream-url font-mono-num" title="@s.StreamUrl">@s.StreamUrl</span>
                                         <span class="stream-status">
-                                            @if (streamProbeResults.TryGetValue(s.Position, out var pr))
+                                            @if (isProbingThis)
                                             {
-                                                <span class="probe-pill @(pr.IsSuccess ? "success" : "fail")">@(pr.IsSuccess ? $"{pr.LatencyMs}ms" : "Lỗi")</span>
+                                                <span class="probe-pill pinging" title="Đang gửi gói tin kiểm tra kết nối...">
+                                                    <span class="probe-spinner-dot"></span> Đo...
+                                                </span>
+                                            }
+                                            else if (hasResult && pr != null)
+                                            {
+                                                <button type="button" class="probe-pill @(pr.IsSuccess ? "success" : "fail") clickable" @onclick="() => ToggleProbeDetail(s.Position)" title="Bấm để xem/ẩn chi tiết kỹ thuật">
+                                                    @(pr.IsSuccess ? $"{pr.LatencyMs}ms" : "Lỗi")
+                                                </button>
                                             }
                                             else
                                             {
-                                                <span class="stream-status-idle">Chưa ping</span>
+                                                <button type="button" class="stream-status-idle clickable" @onclick="() => ProbeSingleStreamInline(s.Position, s.StreamUrl)" title="Bấm để đo ping ngay">
+                                                    Chưa ping
+                                                </button>
                                             }
                                         </span>
                                         <span class="stream-row-actions">
-                                            <button type="button" class="btn-action-icon" title="Kiểm tra ping luồng này" @onclick="() => ProbeThisStream(s.StreamUrl)">
+                                            <button type="button" class="btn-action-icon @(isProbingThis ? "is-loading" : "") @(isDetailOpen ? "active" : "")" title="Kiểm tra ping và xem telemetry luồng này" @onclick="() => ProbeSingleStreamInline(s.Position, s.StreamUrl)" disabled="@isProbingThis">
                                                 <CinemaIcon Name="CinemaIconName.TrendingUp" Size="13" />
                                             </button>
                                             <button type="button" class="btn-action-icon @(isEditingThis ? "active" : "")" title="Chỉnh sửa luồng này" @onclick="() => StartEditStream(s)">
                                                 <CinemaIcon Name="CinemaIconName.Edit" Size="13" />
                                             </button>
-                                            <button type="button" class="btn-action-icon action-danger" title="Xóa nguồn phát #@s.Position" @onclick="() => DeleteStreamSource(s.Position)">
+                                            <button type="button" class="btn-action-icon action-danger" title="Xóa nguồn phát #@s.Position" @onclick="() => RequestDeleteStreamSource(s.Position)">
                                                 <CinemaIcon Name="CinemaIconName.Trash" Size="13" />
                                             </button>
                                         </span>
                                     </div>
+
+                                    @if (isDetailOpen && pr != null)
+                                    {
+                                        <div class="stream-probe-inline-drawer">
+                                            <div class="probe-drawer-header">
+                                                <span class="probe-drawer-title">
+                                                    <CinemaIcon Name="CinemaIconName.TrendingUp" Size="12" />
+                                                    Chi tiết kết nối luồng #@s.Position (@s.Quality)
+                                                </span>
+                                                <button type="button" class="probe-drawer-close" @onclick="() => ToggleProbeDetail(s.Position)" title="Đóng chi tiết">&times;</button>
+                                            </div>
+                                            <div class="probe-drawer-grid">
+                                                <div class="probe-drawer-item">
+                                                    <span class="probe-drawer-lbl">Trạng thái HTTP</span>
+                                                    <span class="probe-drawer-val font-mono-num @(pr.IsSuccess ? "val-ok" : "val-err")">
+                                                        @(pr.IsSuccess ? $"HTTP {pr.StatusCode} OK" : $"HTTP {pr.StatusCode} (Thất bại)")
+                                                    </span>
+                                                </div>
+                                                <div class="probe-drawer-item">
+                                                    <span class="probe-drawer-lbl">Độ trễ phản hồi</span>
+                                                    <span class="probe-drawer-val font-mono-num" style="color: @(pr.LatencyMs < 400 ? "#34d399" : "#fbbf24");">
+                                                        @pr.LatencyMs ms
+                                                    </span>
+                                                </div>
+                                                <div class="probe-drawer-item">
+                                                    <span class="probe-drawer-lbl">Loại dữ liệu (Content-Type)</span>
+                                                    <span class="probe-drawer-val font-mono-num" title="@pr.ContentType">
+                                                        @(string.IsNullOrWhiteSpace(pr.ContentType) ? "Không xác định" : pr.ContentType)
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            @if (!string.IsNullOrWhiteSpace(pr.ErrorMessage))
+                                            {
+                                                <div class="probe-drawer-err">
+                                                    <strong>Lỗi kết nối:</strong> @pr.ErrorMessage
+                                                </div>
+                                            }
+                                            <div class="probe-drawer-footer">
+                                                <button type="button" class="btn-probe-mini-action" @onclick="() => ProbeSingleStreamInline(s.Position, s.StreamUrl)" disabled="@isProbingThis">
+                                                    ↻ Đo lại ping
+                                                </button>
+                                                <button type="button" class="btn-probe-mini-action ghost" @onclick="() => CopyStreamUrl(s.StreamUrl)">
+                                                    Sao chép URL
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
                                 }
                             </div>
                         }
@@ -774,7 +1326,7 @@
                     <div class="form-row-3">
                         <div class="admin-form-group">
                             <label>Tên máy chủ</label>
-                            <input type="text" list="existing-servers-datalist" @bind="streamFormModel.ServerName" placeholder="VIP FastServer 1" />
+                            <input type="text" list="existing-servers-datalist" @bind="streamFormModel.ServerName" placeholder="VIP FastServer 1" @onkeydown="HandleStreamFormInputKeyDown" />
                             <datalist id="existing-servers-datalist">
                                 @foreach (var sName in UniqueServerNames)
                                 {
@@ -792,7 +1344,7 @@
                         </div>
                         <div class="admin-form-group">
                             <label>Chất lượng phát</label>
-                            <input type="text" @bind="streamFormModel.Quality" placeholder="1080p FHD" />
+                            <input type="text" @bind="streamFormModel.Quality" placeholder="1080p FHD" @onkeydown="HandleStreamFormInputKeyDown" />
                         </div>
                     </div>
 
@@ -809,7 +1361,28 @@
 
                     <div class="admin-form-group">
                         <label>Đường dẫn luồng Stream (HLS .m3u8 hoặc file .mp4) *</label>
-                        <input type="text" @bind="streamFormModel.StreamUrl" placeholder="https://domain.com/video/stream.m3u8" />
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="text" @bind="streamFormModel.StreamUrl" placeholder="https://domain.com/video/stream.m3u8" style="flex: 1;" @onkeydown="HandleStreamFormInputKeyDown" />
+                            <button type="button" class="btn-secondary-ghost" style="white-space: nowrap; font-size: 0.75rem; padding: 0 12px;" @onclick="ProbeFormUrl" disabled="@(isFormProbing || string.IsNullOrWhiteSpace(streamFormModel.StreamUrl))">
+                                @(isFormProbing ? "Đang đo..." : "Kiểm tra Ping")
+                            </button>
+                        </div>
+                        @if (formProbeResult != null)
+                        {
+                            <div style="margin-top: 0.4rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem;">
+                                <span class="probe-pill @(formProbeResult.IsSuccess ? "success" : "fail")">
+                                    @(formProbeResult.IsSuccess ? $"HTTP {formProbeResult.StatusCode} ({formProbeResult.LatencyMs}ms)" : $"Lỗi HTTP {formProbeResult.StatusCode}")
+                                </span>
+                                @if (formProbeResult.IsSuccess)
+                                {
+                                    <span style="color: var(--admin-text-muted);">Định dạng: <strong style="color: var(--admin-text-body);">@formProbeResult.ContentType</strong></span>
+                                }
+                                else if (!string.IsNullOrEmpty(formProbeResult.ErrorMessage))
+                                {
+                                    <span style="color: #f87171;">@formProbeResult.ErrorMessage</span>
+                                }
+                            </div>
+                        }
                     </div>
 
                     <div style="display: flex; gap: 0.75rem; margin-top: 0.75rem;">
@@ -834,9 +1407,49 @@
     </div>
 }
 
+<!-- HỘP THOẠI XÁC NHẬN XÓA TẬP PHIM -->
+<AdminConfirmDialog IsOpen="@showDeleteEpisodeConfirm"
+                    Title="Xóa tập phim"
+                    Message="@($"Bạn có chắc chắn muốn xóa tập #{episodePendingDelete?.EpisodeNumber} ('{episodePendingDelete?.Title}')? Thao tác này sẽ xóa toàn bộ các nguồn phát liên quan và không thể khôi phục.")"
+                    ConfirmText="Xác nhận xóa"
+                    Variant="danger"
+                    OnConfirm="ConfirmDeleteEpisode"
+                    OnCancel="() => { showDeleteEpisodeConfirm = false; episodePendingDelete = null; }" />
+
+<!-- HỘP THOẠI XÁC NHẬN XÓA NGUỒN PHÁT -->
+<AdminConfirmDialog IsOpen="@showDeleteStreamConfirm"
+                    Title="Xóa nguồn phát"
+                    Message="@($"Bạn có chắc chắn muốn xóa nguồn phát #{streamPendingDeletePosition} ({currentStreamsList.FirstOrDefault(x => x.Position == streamPendingDeletePosition)?.ServerName} - {currentStreamsList.FirstOrDefault(x => x.Position == streamPendingDeletePosition)?.Quality})?")"
+                    ConfirmText="Xóa nguồn"
+                    Variant="danger"
+                    OnConfirm="ConfirmDeleteStream"
+                    OnCancel="() => { showDeleteStreamConfirm = false; streamPendingDeletePosition = null; }" />
+
+<!-- GỢI Ý CÁC CỤM MÁY CHỦ PHỔ BIẾN CHO FORM VÀ MODAL -->
+<datalist id="stream-server-presets">
+    <option value="VIP FastServer 1 (R2 Edge)">VIP FastServer 1 (R2 Edge)</option>
+    <option value="VIP FastServer 2 (R2 Edge)">VIP FastServer 2 (R2 Edge)</option>
+    <option value="Hydra CDN (Anycast R2)">Hydra CDN (Anycast R2)</option>
+    <option value="Server Dự Phòng (Backup)">Server Dự Phòng (Backup)</option>
+    @foreach (var sName in UniqueServerNames)
+    {
+        <option value="@sName">@sName</option>
+    }
+</datalist>
+
 @code {
     [Parameter]
     public int? MovieId { get; set; }
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "action")]
+    public string? Action { get; set; }
+
+    private bool showDeleteEpisodeConfirm = false;
+    private EpisodeDto? episodePendingDelete;
+    private bool showDeleteStreamConfirm = false;
+    private int? streamPendingDeletePosition;
+    private bool hasHandledActionQuery = false;
 
     private List<MovieDetailDto> allMoviesList = [];
     private int selectedMovieId = 0;
@@ -885,6 +1498,7 @@
         selectedEpSort != "ep_asc";
 
     private MovieDetailDto? SelectedMovie => allMoviesList.FirstOrDefault(m => m.Id == selectedMovieId);
+    private string FallbackBackdrop => SelectedMovie?.BackdropUrl ?? SelectedMovie?.PosterUrl ?? "/images/movies/movie-1-backdrop.webp";
 
     private List<MovieDetailDto> PickerResults
     {
@@ -915,6 +1529,10 @@
     private UpsertEpisodeRequest episodeModel = new();
     private bool isSavingEpisode = false;
 
+    private bool IsDuplicateEpisodeNumber =>
+        showEpisodeModal &&
+        episodesList.Any(e => (!editingEpisodeId.HasValue || e.Id != editingEpisodeId.Value) && e.EpisodeNumber == episodeModel.EpisodeNumber);
+
     // Stream probe modal
     private bool showProbeModal = false;
     private string probeUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4";
@@ -930,6 +1548,112 @@
     private bool isSavingStream = false;
     private string? streamActionAlert;
     private string? streamActionError;
+
+    // Episode modal upload state
+    private enum StreamInputMode
+    {
+        DirectUrl,
+        UploadR2
+    }
+    private StreamInputMode episodeStreamInputMode = StreamInputMode.DirectUrl;
+    private IBrowserFile? selectedEpisodeVideoFile;
+    private bool isUploadingEpisodeVideo;
+    private double episodeUploadProgress;
+    private string? episodeUploadSuccessMsg;
+
+    // Streams Studio R2 Direct Upload & Cluster Distribution Panel
+    private sealed record InstalledServerCluster(string Name, string ServerKey, StreamServerType ServerType, string DefaultCeiling);
+
+    private static readonly List<InstalledServerCluster> InstalledServers = new()
+    {
+        new("VIP 1 (Hà Nội)", "vip", StreamServerType.VipFastServer, "4K UHD"),
+        new("VIP 2 (Sài Gòn)", "vip", StreamServerType.VipFastServer, "1080p FHD"),
+        new("Hydra CDN", "cdn", StreamServerType.HydraCdn, "1080p FHD"),
+        new("Direct Backup", "backup", StreamServerType.BackupStream, "720p HD")
+    };
+
+    private bool showR2StudioUpload;
+    private IBrowserFile? studioR2SelectedFile;
+    private string studioR2MasterQuality = "1080p FHD";
+    private bool studioR2SelectAllServers = true;
+    private HashSet<string> studioR2SelectedServers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "VIP 1 (Hà Nội)",
+        "VIP 2 (Sài Gòn)",
+        "Hydra CDN",
+        "Direct Backup"
+    };
+    private bool studioR2ReplaceExisting = true;
+    private bool isStudioR2Uploading;
+    private double studioR2UploadProgress;
+    private string studioR2UploadStageText = "";
+
+    private string GetServerQualityCeiling(string serverKey, string defaultCeiling)
+    {
+        var pol = serverPolicies.FirstOrDefault(p => p.ServerKey == serverKey);
+        return !string.IsNullOrWhiteSpace(pol?.MaxQuality) ? pol.MaxQuality : defaultCeiling;
+    }
+
+    private void ToggleSelectAllR2Servers()
+    {
+        studioR2SelectAllServers = !studioR2SelectAllServers;
+        if (studioR2SelectAllServers)
+        {
+            studioR2SelectedServers = InstalledServers.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+        else
+        {
+            studioR2SelectedServers.Clear();
+        }
+    }
+
+    private void ToggleR2ServerSelection(string serverName)
+    {
+        if (studioR2SelectedServers.Contains(serverName))
+        {
+            studioR2SelectedServers.Remove(serverName);
+        }
+        else
+        {
+            studioR2SelectedServers.Add(serverName);
+        }
+        studioR2SelectAllServers = studioR2SelectedServers.Count == InstalledServers.Count;
+    }
+
+    // Stream list filtering state
+    private string streamFilterText = string.Empty;
+    private string selectedServerFilter = string.Empty;
+
+    private IEnumerable<StreamSourceDto> FilteredStreamsList
+    {
+        get
+        {
+            var list = currentStreamsList.AsEnumerable();
+            if (!string.IsNullOrWhiteSpace(selectedServerFilter))
+            {
+                list = list.Where(s => string.Equals(s.ServerName, selectedServerFilter, StringComparison.OrdinalIgnoreCase));
+            }
+            if (!string.IsNullOrWhiteSpace(streamFilterText))
+            {
+                var term = streamFilterText.Trim();
+                list = list.Where(s =>
+                    s.ServerName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    s.StreamUrl.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    s.Quality.Contains(term, StringComparison.OrdinalIgnoreCase));
+            }
+            return list;
+        }
+    }
+
+    // Inline Stream Prober & Telemetry (Unified into Streams Studio)
+    private readonly HashSet<int> probingPositions = [];
+    private int? expandedProbeDetailPosition;
+    private bool showQuickTester = false;
+    private string quickProbeUrl = "";
+    private bool isQuickProbing = false;
+    private ProbeStreamResultDto? quickProbeResult;
+    private bool isFormProbing = false;
+    private ProbeStreamResultDto? formProbeResult;
 
     private readonly List<string> QualityPresets = ["4K UHD", "1080p 60fps", "1080p FHD", "720p HD", "480p SD", "Auto HLS"];
     private List<string> UniqueServerNames => currentStreamsList.Select(s => s.ServerName).Distinct().ToList();
@@ -971,6 +1695,12 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        if (!hasHandledActionQuery && string.Equals(Action, "probe", StringComparison.OrdinalIgnoreCase))
+        {
+            hasHandledActionQuery = true;
+            OpenProbeModal();
+        }
+
         if (MovieId.HasValue && MovieId.Value > 0 && MovieId.Value != selectedMovieId)
         {
             selectedMovieId = MovieId.Value;
@@ -1309,22 +2039,121 @@
 
     private void OpenAddEpisodeModal()
     {
+        showMoviePicker = false;
+        showFilterSettings = false;
         editingEpisodeId = null;
+        episodeStreamInputMode = StreamInputMode.DirectUrl;
+        selectedEpisodeVideoFile = null;
+        episodeUploadSuccessMsg = null;
+        isUploadingEpisodeVideo = false;
+        episodeUploadProgress = 0;
+        int nextEp = episodesList.Count > 0 ? episodesList.Max(e => e.EpisodeNumber) + 1 : 1;
+        int defaultDuration = episodesList.LastOrDefault()?.DurationMinutes is int d && d > 0 ? d : (SelectedMovie?.DurationMinutes > 0 ? SelectedMovie.DurationMinutes : 45);
         episodeModel = new UpsertEpisodeRequest
         {
-            EpisodeNumber = episodesList.Count + 1,
-            Title = $"Tập {(episodesList.Count + 1):00}",
-            DurationMinutes = 45,
-            StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4",
-            ServerName = "VIP FastServer 1 (Hà Nội)",
+            EpisodeNumber = nextEp,
+            Title = $"Tập {nextEp:00}",
+            DurationMinutes = defaultDuration,
+            StreamUrl = "",
+            ServerName = "VIP 1 (Hà Nội)",
             Quality = "1080p FHD"
         };
         showEpisodeModal = true;
     }
 
+    private void SetEpisodeStreamInputMode(StreamInputMode mode)
+    {
+        episodeStreamInputMode = mode;
+        actionError = null;
+        if (mode == StreamInputMode.UploadR2 && string.IsNullOrWhiteSpace(episodeModel.ServerName))
+        {
+            episodeModel.ServerName = "VIP 1 (Hà Nội)";
+        }
+    }
+
+    private void HandleEpisodeVideoFileSelected(InputFileChangeEventArgs e)
+    {
+        actionError = null;
+        episodeUploadSuccessMsg = null;
+        var file = e.File;
+        if (file == null) return;
+
+        const long maxBytes = 4L * 1024 * 1024 * 1024; // 4 GB
+        if (file.Size > maxBytes)
+        {
+            actionError = $"Dung lượng video ({Math.Round(file.Size / (1024.0 * 1024.0), 1)} MB) vượt quá giới hạn cho phép (4096 MB).";
+            return;
+        }
+
+        selectedEpisodeVideoFile = file;
+
+        // Auto-detect quality from filename if present
+        var lower = file.Name.ToLowerInvariant();
+        if (lower.Contains("4k") || lower.Contains("2160p")) episodeModel.Quality = "4K UHD";
+        else if (lower.Contains("1080p") || lower.Contains("fhd")) episodeModel.Quality = "1080p FHD";
+        else if (lower.Contains("720p") || lower.Contains("hd")) episodeModel.Quality = "720p HD";
+        else if (lower.Contains("480p") || lower.Contains("sd")) episodeModel.Quality = "480p SD";
+
+        if (string.IsNullOrWhiteSpace(episodeModel.ServerName))
+        {
+            episodeModel.ServerName = "VIP 1 (Hà Nội)";
+        }
+    }
+
+    private async Task<bool> ExecuteEpisodeR2Upload()
+    {
+        if (selectedEpisodeVideoFile == null) return false;
+
+        isUploadingEpisodeVideo = true;
+        episodeUploadProgress = 0;
+        actionError = null;
+        episodeUploadSuccessMsg = null;
+        StateHasChanged();
+
+        try
+        {
+            await using var stream = selectedEpisodeVideoFile.OpenReadStream(maxAllowedSize: 4L * 1024 * 1024 * 1024);
+            var progress = new Progress<double>(p =>
+            {
+                episodeUploadProgress = Math.Round(p, 0);
+                InvokeAsync(StateHasChanged);
+            });
+
+            var res = await AdminApi.UploadToR2Async(stream, selectedEpisodeVideoFile.Name, "episodes", selectedEpisodeVideoFile.Size, progress);
+            if (res?.Success == true && !string.IsNullOrWhiteSpace(res.Data?.Url))
+            {
+                episodeModel.StreamUrl = res.Data.Url;
+                episodeUploadSuccessMsg = $"Đã tải lên R2 thành công ({Math.Round(selectedEpisodeVideoFile.Size / (1024.0 * 1024.0), 1)} MB)!";
+                return true;
+            }
+            else
+            {
+                actionError = res?.Message ?? "Không thể tải video lên Cloudflare R2.";
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            actionError = "Lỗi khi tải video: " + ex.Message;
+            return false;
+        }
+        finally
+        {
+            isUploadingEpisodeVideo = false;
+            StateHasChanged();
+        }
+    }
+
     private void OpenEditEpisodeModal(EpisodeDto ep)
     {
+        showMoviePicker = false;
+        showFilterSettings = false;
         editingEpisodeId = ep.Id;
+        episodeStreamInputMode = StreamInputMode.DirectUrl;
+        selectedEpisodeVideoFile = null;
+        episodeUploadSuccessMsg = null;
+        isUploadingEpisodeVideo = false;
+        episodeUploadProgress = 0;
         episodeModel = new UpsertEpisodeRequest
         {
             EpisodeNumber = ep.EpisodeNumber,
@@ -1332,7 +2161,7 @@
             DurationMinutes = ep.DurationMinutes,
             Overview = ep.Overview,
             ThumbnailUrl = ep.ThumbnailUrl,
-            ServerName = ep.StreamSources?.FirstOrDefault()?.ServerName ?? "VIP FastServer 1",
+            ServerName = ep.StreamSources?.FirstOrDefault()?.ServerName ?? "VIP 1 (Hà Nội)",
             Quality = ep.StreamSources?.FirstOrDefault()?.Quality ?? "1080p FHD",
             StreamUrl = ep.StreamSources?.FirstOrDefault()?.StreamUrl ?? ""
         };
@@ -1343,10 +2172,26 @@
     {
         showEpisodeModal = false;
         editingEpisodeId = null;
+        selectedEpisodeVideoFile = null;
+        episodeUploadSuccessMsg = null;
+        isUploadingEpisodeVideo = false;
+        episodeUploadProgress = 0;
     }
 
     private async Task SaveEpisode()
     {
+        if (episodeModel.EpisodeNumber < 1)
+        {
+            actionError = "Số thứ tự tập phim phải lớn hơn hoặc bằng 1.";
+            return;
+        }
+
+        if (IsDuplicateEpisodeNumber)
+        {
+            actionError = $"Tập phim số #{episodeModel.EpisodeNumber} đã tồn tại trong tác phẩm này. Vui lòng chọn số tập khác.";
+            return;
+        }
+
         isSavingEpisode = true;
         actionAlert = null;
         actionError = null;
@@ -1377,9 +2222,17 @@
             }
             else
             {
+                if (episodeStreamInputMode == StreamInputMode.UploadR2 && selectedEpisodeVideoFile != null && string.IsNullOrWhiteSpace(episodeModel.StreamUrl))
+                {
+                    var uploaded = await ExecuteEpisodeR2Upload();
+                    if (!uploaded) return;
+                }
+
                 if (string.IsNullOrWhiteSpace(episodeModel.StreamUrl))
                 {
-                    actionError = "Vui lòng nhập URL Stream khởi tạo cho tập mới.";
+                    actionError = episodeStreamInputMode == StreamInputMode.UploadR2
+                        ? "Vui lòng chọn tệp video từ máy tính để tải lên Cloudflare R2."
+                        : "Vui lòng nhập URL Stream khởi tạo cho tập mới.";
                     return;
                 }
 
@@ -1388,6 +2241,8 @@
                 {
                     actionAlert = $"Đã thêm tập {episodeModel.EpisodeNumber} thành công!";
                     showEpisodeModal = false;
+                    selectedEpisodeVideoFile = null;
+                    episodeUploadSuccessMsg = null;
                     await LoadEpisodesForMovie(selectedMovieId);
                 }
                 else
@@ -1408,11 +2263,54 @@
     }
 
     // Thumbnail modal handlers
+    private InputFile? thumbnailFileInput;
+    private string? thumbPreviewObjectUrl;
+    private string thumbInputMode = "file";
+    private string thumbUrlInput = "";
+    private bool CanSubmitThumbnail =>
+        thumbInputMode == "file" ? selectedThumbnailFile != null : !string.IsNullOrWhiteSpace(thumbUrlInput);
+
+    private void SetThumbInputMode(string mode)
+    {
+        thumbInputMode = mode;
+        thumbModalAlert = null;
+        thumbModalError = null;
+        if (mode == "url" && !string.IsNullOrWhiteSpace(thumbUrlInput))
+        {
+            thumbPreviewUrl = thumbUrlInput.Trim();
+        }
+        else if (mode == "file")
+        {
+            thumbPreviewUrl = thumbPreviewObjectUrl;
+        }
+    }
+
+    private void ApplyThumbUrlPreview()
+    {
+        if (!string.IsNullOrWhiteSpace(thumbUrlInput))
+        {
+            thumbPreviewUrl = thumbUrlInput.Trim();
+        }
+    }
+
+    private void HandleThumbUrlKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            ApplyThumbUrlPreview();
+            _ = SubmitThumbnail();
+        }
+    }
+
     private void OpenThumbnailModal(EpisodeDto ep)
     {
+        showMoviePicker = false;
+        showFilterSettings = false;
         thumbEpisode = ep;
         selectedThumbnailFile = null;
-        thumbPreviewUrl = null;
+        thumbInputMode = "file";
+        thumbUrlInput = ep.ThumbnailUrl ?? "";
+        ResetThumbPreview();
         thumbModalAlert = null;
         thumbModalError = null;
         showThumbnailModal = true;
@@ -1423,6 +2321,18 @@
         showThumbnailModal = false;
         thumbEpisode = null;
         selectedThumbnailFile = null;
+        ResetThumbPreview();
+    }
+
+    /// <summary>Thu hồi object URL xem trước để không giữ file trong bộ nhớ trình duyệt.</summary>
+    private void ResetThumbPreview()
+    {
+        if (!string.IsNullOrEmpty(thumbPreviewObjectUrl))
+        {
+            try { _ = JS.InvokeVoidAsync("adminTools.revokeObjectUrl", thumbPreviewObjectUrl); }
+            catch { /* best-effort */ }
+            thumbPreviewObjectUrl = null;
+        }
         thumbPreviewUrl = null;
     }
 
@@ -1438,28 +2348,35 @@
             {
                 thumbModalError = "Dung lượng tệp vượt quá giới hạn 5 MB.";
                 selectedThumbnailFile = null;
-                thumbPreviewUrl = null;
+                ResetThumbPreview();
                 return;
             }
 
             try
             {
-                var buffer = new byte[selectedThumbnailFile.Size];
-                await using var stream = selectedThumbnailFile.OpenReadStream(5 * 1024 * 1024);
-                var read = 0;
-                while (read < buffer.Length)
+                // Dùng object URL thay vì đọc toàn bộ file vào base64 (tránh đơ UI với ảnh 5 MB).
+                var preview = thumbnailFileInput is null
+                    ? null
+                    : await JS.InvokeAsync<ThumbPreviewResult>("adminTools.previewImageFromPicker", thumbnailFileInput.Element);
+                if (preview?.Ok == true && !string.IsNullOrEmpty(preview.Url))
                 {
-                    var chunk = await stream.ReadAsync(buffer.AsMemory(read, buffer.Length - read));
-                    if (chunk <= 0) break;
-                    read += chunk;
+                    ResetThumbPreview();
+                    thumbPreviewObjectUrl = preview.Url;
+                    thumbPreviewUrl = preview.Url;
                 }
-                thumbPreviewUrl = $"data:{selectedThumbnailFile.ContentType};base64,{Convert.ToBase64String(buffer)}";
             }
             catch
             {
                 // Non-critical preview failure
             }
         }
+    }
+
+    private sealed class ThumbPreviewResult
+    {
+        public bool Ok { get; set; }
+        public string? Url { get; set; }
+        public string? Error { get; set; }
     }
 
     private async Task SubmitThumbnailUpload()
@@ -1477,7 +2394,7 @@
             {
                 thumbModalAlert = "Đã cập nhật ảnh nền tập thành công!";
                 thumbEpisode.ThumbnailUrl = res.Data?.ThumbnailUrl ?? thumbEpisode.ThumbnailUrl;
-                thumbPreviewUrl = null;
+                ResetThumbPreview();
                 selectedThumbnailFile = null;
                 await LoadEpisodesForMovie(selectedMovieId);
             }
@@ -1489,6 +2406,60 @@
         catch (Exception ex)
         {
             thumbModalError = "Lỗi khi tải ảnh: " + ex.Message;
+        }
+        finally
+        {
+            isUploadingThumbnail = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SubmitThumbnail()
+    {
+        if (thumbInputMode == "file")
+        {
+            await SubmitThumbnailUpload();
+        }
+        else
+        {
+            await SubmitThumbnailUrl();
+        }
+    }
+
+    private async Task SubmitThumbnailUrl()
+    {
+        if (thumbEpisode == null || string.IsNullOrWhiteSpace(thumbUrlInput)) return;
+        isUploadingThumbnail = true;
+        thumbModalAlert = null;
+        thumbModalError = null;
+
+        try
+        {
+            var cleanUrl = thumbUrlInput.Trim();
+            var updateReq = new UpdateEpisodeRequest
+            {
+                EpisodeNumber = thumbEpisode.EpisodeNumber,
+                Title = thumbEpisode.Title,
+                DurationMinutes = thumbEpisode.DurationMinutes,
+                Overview = thumbEpisode.Overview ?? "",
+                ThumbnailUrl = cleanUrl
+            };
+            var res = await AdminApi.UpdateEpisodeAsync(thumbEpisode.Id, updateReq);
+            if (res?.Success == true)
+            {
+                thumbModalAlert = "Đã cập nhật liên kết ảnh nền tập thành công!";
+                thumbEpisode.ThumbnailUrl = cleanUrl;
+                thumbPreviewUrl = cleanUrl;
+                await LoadEpisodesForMovie(selectedMovieId);
+            }
+            else
+            {
+                thumbModalError = res?.Message ?? "Không thể cập nhật liên kết ảnh nền.";
+            }
+        }
+        catch (Exception ex)
+        {
+            thumbModalError = "Lỗi khi cập nhật ảnh: " + ex.Message;
         }
         finally
         {
@@ -1510,7 +2481,7 @@
             if (res?.Success == true)
             {
                 thumbModalAlert = "Đã khôi phục ảnh nền mặc định thành công!";
-                thumbPreviewUrl = null;
+                ResetThumbPreview();
                 selectedThumbnailFile = null;
                 await LoadEpisodesForMovie(selectedMovieId);
                 thumbEpisode = episodesList.FirstOrDefault(e => e.Id == thumbEpisode.Id) ?? thumbEpisode;
@@ -1534,6 +2505,8 @@
     // Prober modal handlers
     private void OpenProbeModal()
     {
+        showMoviePicker = false;
+        showFilterSettings = false;
         probeResult = null;
         showProbeModal = true;
     }
@@ -1567,17 +2540,189 @@
 
     private void ProbeThisStream(string url)
     {
+        if (managingEpisode != null)
+        {
+            var match = currentStreamsList.FirstOrDefault(s => s.StreamUrl == url);
+            if (match != null)
+            {
+                _ = ProbeSingleStreamInline(match.Position, url);
+                return;
+            }
+        }
         probeUrl = url;
         OpenProbeModal();
         _ = ExecuteProbe();
     }
 
+    private async Task ProbeSingleStreamInline(int position, string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return;
+        probingPositions.Add(position);
+        StateHasChanged();
+        try
+        {
+            var res = await AdminApi.ProbeStreamAsync(new ProbeStreamRequest { StreamUrl = url.Trim() });
+            if (res?.Data != null)
+            {
+                streamProbeResults[position] = res.Data;
+            }
+            else
+            {
+                streamProbeResults[position] = new ProbeStreamResultDto
+                {
+                    IsSuccess = false,
+                    ErrorMessage = res?.Message ?? "Không thể kết nối tới luồng stream."
+                };
+            }
+            expandedProbeDetailPosition = position;
+        }
+        catch (Exception ex)
+        {
+            streamProbeResults[position] = new ProbeStreamResultDto
+            {
+                IsSuccess = false,
+                ErrorMessage = ex.Message
+            };
+            expandedProbeDetailPosition = position;
+        }
+        finally
+        {
+            probingPositions.Remove(position);
+            StateHasChanged();
+        }
+    }
+
+    private void ToggleProbeDetail(int position)
+    {
+        if (expandedProbeDetailPosition == position)
+        {
+            expandedProbeDetailPosition = null;
+        }
+        else
+        {
+            expandedProbeDetailPosition = position;
+        }
+    }
+
+    private async Task CopyStreamUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
+            streamActionAlert = "Đã sao chép URL luồng vào bộ nhớ tạm!";
+        }
+        catch
+        {
+            // Ignore clipboard errors
+        }
+    }
+
+    private void ToggleQuickTester()
+    {
+        showQuickTester = !showQuickTester;
+        if (showQuickTester)
+        {
+            showR2StudioUpload = false;
+            showStreamForm = false;
+            showServerControlPanel = false;
+            expandedProbeDetailPosition = null;
+            if (string.IsNullOrWhiteSpace(quickProbeUrl) && !string.IsNullOrWhiteSpace(streamFormModel.StreamUrl))
+            {
+                quickProbeUrl = streamFormModel.StreamUrl;
+            }
+        }
+    }
+
+    private async Task ExecuteQuickProbe()
+    {
+        if (string.IsNullOrWhiteSpace(quickProbeUrl)) return;
+        isQuickProbing = true;
+        quickProbeResult = null;
+        StateHasChanged();
+        try
+        {
+            var res = await AdminApi.ProbeStreamAsync(new ProbeStreamRequest { StreamUrl = quickProbeUrl.Trim() });
+            quickProbeResult = res?.Data ?? new ProbeStreamResultDto { IsSuccess = false, ErrorMessage = "Không có dữ liệu phản hồi." };
+        }
+        catch (Exception ex)
+        {
+            quickProbeResult = new ProbeStreamResultDto
+            {
+                IsSuccess = false,
+                ErrorMessage = ex.Message
+            };
+        }
+        finally
+        {
+            isQuickProbing = false;
+            StateHasChanged();
+        }
+    }
+
+    private void HandleQuickProbeKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            _ = ExecuteQuickProbe();
+        }
+    }
+
+    private void UseQuickProbeUrlInForm()
+    {
+        if (string.IsNullOrWhiteSpace(quickProbeUrl)) return;
+        showStreamForm = true;
+        streamFormModel.StreamUrl = quickProbeUrl.Trim();
+        formProbeResult = quickProbeResult;
+        var lower = quickProbeUrl.ToLowerInvariant();
+        if (lower.Contains("2160p") || lower.Contains("4k")) streamFormModel.Quality = "4K UHD";
+        else if (lower.Contains("1080p") || lower.Contains("fhd")) streamFormModel.Quality = "1080p FHD";
+        else if (lower.Contains("720p") || lower.Contains("hd")) streamFormModel.Quality = "720p HD";
+        else if (lower.Contains("480p") || lower.Contains("sd")) streamFormModel.Quality = "480p SD";
+        else if (lower.Contains("360p")) streamFormModel.Quality = "360p";
+    }
+
+    private async Task ProbeFormUrl()
+    {
+        if (string.IsNullOrWhiteSpace(streamFormModel.StreamUrl)) return;
+        isFormProbing = true;
+        formProbeResult = null;
+        StateHasChanged();
+        try
+        {
+            var res = await AdminApi.ProbeStreamAsync(new ProbeStreamRequest { StreamUrl = streamFormModel.StreamUrl.Trim() });
+            formProbeResult = res?.Data ?? new ProbeStreamResultDto { IsSuccess = false, ErrorMessage = "Không có dữ liệu phản hồi." };
+        }
+        catch (Exception ex)
+        {
+            formProbeResult = new ProbeStreamResultDto
+            {
+                IsSuccess = false,
+                ErrorMessage = ex.Message
+            };
+        }
+        finally
+        {
+            isFormProbing = false;
+            StateHasChanged();
+        }
+    }
+
     // Stream Manager Studio handlers
     private async Task OpenStreamsManager(EpisodeDto ep)
     {
+        showMoviePicker = false;
+        showFilterSettings = false;
         managingEpisode = ep;
         editingStreamPosition = null;
         showStreamForm = false;
+        showQuickTester = false;
+        showServerControlPanel = false;
+        policyActionAlert = null;
+        policyActionError = null;
+        quickProbeResult = null;        formProbeResult = null;
+        expandedProbeDetailPosition = null;
+        probingPositions.Clear();
         streamActionAlert = null;
         streamActionError = null;
         streamFormModel = new UpsertStreamSourceRequest
@@ -1588,7 +2733,9 @@
             ServerType = StreamServerType.VipFastServer,
             StreamUrl = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4"
         };
-        await LoadStreamsForEpisode(ep.Id);
+        await Task.WhenAll(
+            LoadServerPolicies(),
+            LoadStreamsForEpisode(ep.Id));
     }
 
     private Dictionary<int, ProbeStreamResultDto> streamProbeResults = new();
@@ -1603,7 +2750,8 @@
 
         try
         {
-            foreach (var s in currentStreamsList)
+            // Đo song song toàn bộ luồng thay vì tuần tự để giảm thời gian chờ.
+            var probeTasks = currentStreamsList.Select(async s =>
             {
                 try
                 {
@@ -1611,14 +2759,15 @@
                     if (res?.Data != null)
                     {
                         streamProbeResults[s.Position] = res.Data;
-                        StateHasChanged();
                     }
                 }
                 catch
                 {
                     streamProbeResults[s.Position] = new ProbeStreamResultDto { IsSuccess = false, ErrorMessage = "Connection failed" };
                 }
-            }
+            }).ToList();
+
+            await Task.WhenAll(probeTasks);
         }
         finally
         {
@@ -1632,8 +2781,144 @@
         managingEpisode = null;
         editingStreamPosition = null;
         showStreamForm = false;
+        showQuickTester = false;
+        showR2StudioUpload = false;
+        studioR2SelectedFile = null;
+        isStudioR2Uploading = false;
+        streamFilterText = "";
+        selectedServerFilter = "";
+        quickProbeUrl = "";
+        quickProbeResult = null;
+        formProbeResult = null;
+        expandedProbeDetailPosition = null;
+        probingPositions.Clear();
         currentStreamsList.Clear();
         streamProbeResults.Clear();
+    }
+
+    private void ToggleStudioR2Upload()
+    {
+        showR2StudioUpload = !showR2StudioUpload;
+        if (showR2StudioUpload)
+        {
+            showQuickTester = false;
+            showStreamForm = false;
+            showServerControlPanel = false;
+            expandedProbeDetailPosition = null;
+            studioR2SelectedFile = null;
+            studioR2UploadProgress = 0;
+            studioR2UploadStageText = "";
+            studioR2SelectAllServers = true;
+            studioR2SelectedServers = InstalledServers.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private void QuickUploadR2ForServer(string serverName)
+    {
+        studioR2SelectedServers = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { serverName };
+        studioR2SelectAllServers = false;
+        showR2StudioUpload = true;
+        showQuickTester = false;
+        showStreamForm = false;
+        showServerControlPanel = false;
+        expandedProbeDetailPosition = null;
+        studioR2SelectedFile = null;
+        studioR2UploadProgress = 0;
+        studioR2UploadStageText = "";
+    }
+
+    private void HandleStudioR2FileSelected(InputFileChangeEventArgs e)
+    {
+        streamActionError = null;
+        var file = e.File;
+        if (file == null) return;
+
+        const long maxBytes = 4L * 1024 * 1024 * 1024;
+        if (file.Size > maxBytes)
+        {
+            streamActionError = $"Dung lượng video ({Math.Round(file.Size / (1024.0 * 1024.0), 1)} MB) vượt quá giới hạn cho phép (4096 MB).";
+            return;
+        }
+
+        studioR2SelectedFile = file;
+
+        // Tự động nhận diện chất lượng Master từ tên tệp video
+        var lower = file.Name.ToLowerInvariant();
+        if (lower.Contains("4k") || lower.Contains("2160p")) studioR2MasterQuality = "4K UHD";
+        else if (lower.Contains("1080p") || lower.Contains("fhd")) studioR2MasterQuality = "1080p FHD";
+        else if (lower.Contains("720p") || lower.Contains("hd")) studioR2MasterQuality = "720p HD";
+        else if (lower.Contains("480p") || lower.Contains("sd")) studioR2MasterQuality = "480p SD";
+    }
+
+    private async Task ExecuteStudioR2Upload()
+    {
+        if (managingEpisode == null || studioR2SelectedFile == null) return;
+        if (studioR2SelectedServers.Count == 0)
+        {
+            streamActionError = "Vui lòng chọn ít nhất một cụm máy chủ để phân phối nguồn phát.";
+            return;
+        }
+
+        isStudioR2Uploading = true;
+        studioR2UploadProgress = 0;
+        studioR2UploadStageText = "Đang truyền tải video Master lên Cloudflare R2...";
+        streamActionAlert = null;
+        streamActionError = null;
+        StateHasChanged();
+
+        try
+        {
+            await using var stream = studioR2SelectedFile.OpenReadStream(maxAllowedSize: 4L * 1024 * 1024 * 1024);
+            var progress = new Progress<double>(p =>
+            {
+                studioR2UploadProgress = Math.Round(p, 0);
+                if (studioR2UploadProgress >= 99)
+                {
+                    studioR2UploadStageText = "Đang xử lý hạ cấp trần chất lượng & tải các bản luồng lên Cloudflare R2...";
+                }
+                InvokeAsync(StateHasChanged);
+            });
+
+            var targetServersParam = studioR2SelectAllServers ? "all" : string.Join(",", studioR2SelectedServers);
+            var res = await AdminApi.UploadEpisodeVideoAsync(
+                managingEpisode.Id,
+                stream,
+                studioR2SelectedFile.Name,
+                studioR2MasterQuality,
+                studioR2ReplaceExisting,
+                targetServersParam,
+                progress,
+                studioR2SelectedFile.Size);
+
+            if (res?.Success == true && res.Data != null)
+            {
+                var streamsCount = res.Data.Streams.Count;
+                var serversCount = res.Data.DistributedServersCount;
+                streamActionAlert = $"Đã tải video '{studioR2SelectedFile.Name}' ({Math.Round(studioR2SelectedFile.Size / (1024.0 * 1024.0), 1)} MB) lên Cloudflare R2 & tự động phân phối {streamsCount} luồng phát cho {serversCount} cụm máy chủ theo trần chất lượng thành công!";
+                showR2StudioUpload = false;
+                studioR2SelectedFile = null;
+
+                await Task.WhenAll(
+                    LoadStreamsForEpisode(managingEpisode.Id),
+                    LoadEpisodesForMovie(selectedMovieId));
+
+                // Tự động đo ping kiểm tra các luồng mới sinh
+                _ = ProbeAllStreams();
+            }
+            else
+            {
+                streamActionError = res?.Message ?? "Không thể hoàn tất quá trình tải lên và phân phối luồng R2.";
+            }
+        }
+        catch (Exception ex)
+        {
+            streamActionError = "Lỗi khi tải lên R2: " + ex.Message;
+        }
+        finally
+        {
+            isStudioR2Uploading = false;
+            StateHasChanged();
+        }
     }
 
     /// <summary>Mở/đóng form thêm nguồn phát. Nếu đang sửa thì đóng form sẽ hủy trạng thái sửa.</summary>
@@ -1646,6 +2931,10 @@
             return;
         }
         showStreamForm = true;
+        showQuickTester = false;
+        showR2StudioUpload = false;
+        showServerControlPanel = false;
+        expandedProbeDetailPosition = null;
     }
 
     private async Task LoadStreamsForEpisode(int epId)
@@ -1670,6 +2959,11 @@
     {
         editingStreamPosition = s.Position;
         showStreamForm = true;
+        showQuickTester = false;
+        showR2StudioUpload = false;
+        showServerControlPanel = false;
+        expandedProbeDetailPosition = null;
+        formProbeResult = null;
         streamFormModel = new UpsertStreamSourceRequest
         {
             EpisodeId = managingEpisode?.Id ?? 0,
@@ -1685,6 +2979,7 @@
     private void CancelEditStream()
     {
         editingStreamPosition = null;
+        formProbeResult = null;
         streamFormModel = new UpsertStreamSourceRequest
         {
             EpisodeId = managingEpisode?.Id ?? 0,
@@ -1701,6 +2996,11 @@
     {
         editingStreamPosition = null;
         showStreamForm = true;
+        showQuickTester = false;
+        showR2StudioUpload = false;
+        showServerControlPanel = false;
+        expandedProbeDetailPosition = null;
+        formProbeResult = null;
         var existingQualities = currentStreamsList.Where(s => s.ServerName == serverName).Select(s => s.Quality).ToHashSet();
         var nextQuality = QualityPresets.FirstOrDefault(q => !existingQualities.Contains(q)) ?? "720p HD";
 
@@ -1725,12 +3025,35 @@
             return;
         }
 
+        var srvName = (streamFormModel.ServerName ?? "").Trim();
+        var quality = (streamFormModel.Quality ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(srvName))
+        {
+            streamActionError = "Vui lòng nhập hoặc chọn tên máy chủ.";
+            return;
+        }
+
+        var isDuplicate = currentStreamsList.Any(s =>
+            (!editingStreamPosition.HasValue || s.Position != editingStreamPosition.Value) &&
+            string.Equals(s.ServerName?.Trim(), srvName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(s.Quality?.Trim(), quality, StringComparison.OrdinalIgnoreCase));
+
+        if (isDuplicate)
+        {
+            streamActionError = $"Máy chủ '{srvName}' đã có luồng chất lượng '{quality}'. Vui lòng chọn chất lượng hoặc máy chủ khác.";
+            return;
+        }
+
         isSavingStream = true;
         streamActionAlert = null;
         streamActionError = null;
 
         try
         {
+            streamFormModel.StreamUrl = streamFormModel.StreamUrl.Trim();
+            streamFormModel.ServerName = srvName;
+            streamFormModel.Quality = quality;
+
             if (editingStreamPosition.HasValue)
             {
                 var res = await AdminApi.UpdateStreamSourceAsync(managingEpisode.Id, editingStreamPosition.Value, streamFormModel);
@@ -1739,9 +3062,12 @@
                     streamActionAlert = $"Đã cập nhật nguồn stream #{editingStreamPosition.Value} ({streamFormModel.Quality}) thành công!";
                     editingStreamPosition = null;
                     showStreamForm = false;
+                    formProbeResult = null;
                     streamFormModel.StreamUrl = "";
-                    await LoadStreamsForEpisode(managingEpisode.Id);
-                    await LoadEpisodesForMovie(selectedMovieId);
+                    await Task.WhenAll(
+                        LoadStreamsForEpisode(managingEpisode.Id),
+                        LoadEpisodesForMovie(selectedMovieId)
+                    );
                 }
                 else
                 {
@@ -1755,8 +3081,11 @@
                 {
                     streamActionAlert = $"Đã thêm nguồn stream '{streamFormModel.ServerName}' ({streamFormModel.Quality}) thành công!";
                     streamFormModel.StreamUrl = "";
-                    await LoadStreamsForEpisode(managingEpisode.Id);
-                    await LoadEpisodesForMovie(selectedMovieId);
+                    formProbeResult = null;
+                    await Task.WhenAll(
+                        LoadStreamsForEpisode(managingEpisode.Id),
+                        LoadEpisodesForMovie(selectedMovieId)
+                    );
                 }
                 else
                 {
@@ -1813,6 +3142,272 @@
             actionError = "Không thể xóa tập phim.";
         }
         StateHasChanged();
+    }
+
+    private void RequestDeleteEpisode(EpisodeDto ep)
+    {
+        episodePendingDelete = ep;
+        showDeleteEpisodeConfirm = true;
+    }
+
+    private async Task ConfirmDeleteEpisode()
+    {
+        if (episodePendingDelete != null)
+        {
+            var epId = episodePendingDelete.Id;
+            showDeleteEpisodeConfirm = false;
+            episodePendingDelete = null;
+            await DeleteEpisode(epId);
+        }
+    }
+
+    private void RequestDeleteStreamSource(int position)
+    {
+        streamPendingDeletePosition = position;
+        showDeleteStreamConfirm = true;
+    }
+
+    private async Task ConfirmDeleteStream()
+    {
+        if (streamPendingDeletePosition.HasValue)
+        {
+            var pos = streamPendingDeletePosition.Value;
+            showDeleteStreamConfirm = false;
+            streamPendingDeletePosition = null;
+            await DeleteStreamSource(pos);
+        }
+    }
+
+    private void HandleEpisodeModalKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            CloseEpisodeModal();
+        }
+    }
+
+    private void HandleEpisodeInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !isSavingEpisode && !IsDuplicateEpisodeNumber)
+        {
+            _ = SaveEpisode();
+        }
+    }
+
+    private void HandleThumbnailModalKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            CloseThumbnailModal();
+        }
+        else if (e.Key == "Enter" && CanSubmitThumbnail && !isUploadingThumbnail)
+        {
+            _ = SubmitThumbnail();
+        }
+    }
+
+    private void HandleProbeModalKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            CloseProbeModal();
+        }
+    }
+
+    private void HandleStreamsManagerKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            if (showDeleteStreamConfirm) return;
+
+            // 1. Phân tầng: nếu đang mở Drawer chi tiết ping inline, đóng drawer trước
+            if (expandedProbeDetailPosition.HasValue)
+            {
+                expandedProbeDetailPosition = null;
+                return;
+            }
+            // 2. Nếu đang mở công cụ test nhanh, đóng test nhanh
+            if (showQuickTester)
+            {
+                showQuickTester = false;
+                return;
+            }
+            // 3. Nếu đang mở công cụ tải R2, đóng R2
+            if (showR2StudioUpload)
+            {
+                showR2StudioUpload = false;
+                return;
+            }
+            // 4. Nếu đang mở bảng điều khiển Server, đóng Server control
+            if (showServerControlPanel)
+            {
+                showServerControlPanel = false;
+                return;
+            }
+            // 5. Nếu đang ở form sửa nguồn, hủy trạng thái sửa form
+            if (showStreamForm && editingStreamPosition.HasValue)
+            {
+                CancelEditStream();
+                showStreamForm = false;
+                return;
+            }
+            // 6. Nếu đang mở form thêm luồng trống, đóng form
+            if (showStreamForm)
+            {
+                showStreamForm = false;
+                return;
+            }
+            // 7. Cuối cùng đóng toàn bộ popup Quản lý nguồn Stream
+            CloseStreamsManager();
+        }
+    }
+
+    private void HandleStreamFormInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !isSavingStream)
+        {
+            _ = SaveStreamSource();
+        }
+    }
+
+    private List<StreamServerPolicyDto> serverPolicies = [];
+    private bool showServerControlPanel = false;
+    private bool isLoadingPolicies = false;
+    private bool isSavingPolicy = false;
+    private string? savingPolicyKey = null;
+    private string? policyActionAlert = null;
+    private string? policyActionError = null;
+
+    private async Task ToggleServerControlPanel()
+    {
+        showServerControlPanel = !showServerControlPanel;
+        if (showServerControlPanel)
+        {
+            showQuickTester = false;
+            showR2StudioUpload = false;
+            showStreamForm = false;
+            expandedProbeDetailPosition = null;
+            if (serverPolicies.Count == 0)
+            {
+                await LoadServerPolicies();
+            }
+        }
+    }
+
+    private async Task LoadServerPolicies()
+    {
+        isLoadingPolicies = true;
+        try
+        {
+            var res = await AdminApi.GetStreamServerPoliciesAsync();
+            if (res?.Success == true && res.Data != null)
+            {
+                serverPolicies = res.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            policyActionError = "Không thể tải chính sách máy chủ: " + ex.Message;
+        }
+        finally
+        {
+            isLoadingPolicies = false;
+            StateHasChanged();
+        }
+    }
+
+    private StreamServerPolicyDto? GetPolicyForServer(string serverName, StreamServerType serverType)
+    {
+        if (serverPolicies.Count == 0) return null;
+        if (serverType == StreamServerType.VipFastServer || serverName.Contains("VIP", StringComparison.OrdinalIgnoreCase))
+        {
+            return serverPolicies.FirstOrDefault(p => p.ServerKey == "vip");
+        }
+        if (serverType == StreamServerType.HydraCdn || serverName.Contains("Hydra", StringComparison.OrdinalIgnoreCase) || serverName.Contains("CDN", StringComparison.OrdinalIgnoreCase))
+        {
+            return serverPolicies.FirstOrDefault(p => p.ServerKey == "cdn");
+        }
+        if (serverType == StreamServerType.BackupStream || serverName.Contains("Backup", StringComparison.OrdinalIgnoreCase) || serverName.Contains("Dự phòng", StringComparison.OrdinalIgnoreCase))
+        {
+            return serverPolicies.FirstOrDefault(p => p.ServerKey == "backup");
+        }
+        return serverPolicies.FirstOrDefault();
+    }
+
+    private async Task SaveServerPolicy(StreamServerPolicyDto policy)
+    {
+        isSavingPolicy = true;
+        savingPolicyKey = policy.ServerKey;
+        policyActionAlert = null;
+        policyActionError = null;
+        StateHasChanged();
+
+        try
+        {
+            var req = new UpdateStreamServerPolicyRequest
+            {
+                IsActive = policy.IsActive,
+                IsVipOnly = policy.IsVipOnly,
+                MaxBandwidthKbps = policy.MaxBandwidthKbps,
+                MaxQuality = policy.MaxQuality,
+                BufferInitialBurstKb = policy.BufferInitialBurstKb,
+                Priority = policy.Priority,
+                Description = policy.Description
+            };
+
+            var res = await AdminApi.UpdateStreamServerPolicyAsync(policy.ServerKey, req);
+            if (res?.Success == true && res.Data != null)
+            {
+                policyActionAlert = $"Đã lưu chính sách cho {policy.DisplayName}!";
+                var idx = serverPolicies.FindIndex(p => p.ServerKey == policy.ServerKey);
+                if (idx >= 0) serverPolicies[idx] = res.Data;
+            }
+            else
+            {
+                policyActionError = res?.Message ?? "Không thể lưu chính sách máy chủ.";
+            }
+        }
+        catch (Exception ex)
+        {
+            policyActionError = "Lỗi khi lưu chính sách: " + ex.Message;
+        }
+        finally
+        {
+            isSavingPolicy = false;
+            savingPolicyKey = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ResetServerPolicies()
+    {
+        isSavingPolicy = true;
+        policyActionAlert = null;
+        policyActionError = null;
+        StateHasChanged();
+
+        try
+        {
+            var res = await AdminApi.ResetStreamServerPoliciesAsync();
+            if (res?.Success == true && res.Data != null)
+            {
+                serverPolicies = res.Data;
+                policyActionAlert = "Đã khôi phục toàn bộ chính sách máy chủ về mặc định chuẩn!";
+            }
+            else
+            {
+                policyActionError = res?.Message ?? "Không thể khôi phục mặc định.";
+            }
+        }
+        catch (Exception ex)
+        {
+            policyActionError = "Lỗi khi khôi phục mặc định: " + ex.Message;
+        }
+        finally
+        {
+            isSavingPolicy = false;
+            StateHasChanged();
+        }
     }
 
     public void Dispose()

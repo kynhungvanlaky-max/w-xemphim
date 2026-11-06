@@ -21,7 +21,7 @@
     opacity: 0;
     transition: opacity 1s cubic-bezier(0.16, 1, 0.3, 1);
     pointer-events: none;
-    will-change: opacity;
+    will-change: auto;
 }
 
 .hero-backdrop-slide.active {
@@ -410,10 +410,13 @@
     bottom: 0;
     left: 0;
     height: 3px;
-    width: 0%;
+    width: 100%;
+    transform-origin: left center;
+    transform: scaleX(0);
     background: #e50914;
     box-shadow: 0 0 8px rgba(229, 9, 20, 0.8);
     animation: thumbProgress linear forwards;
+    will-change: transform;
     z-index: 3;
 }
 
@@ -422,8 +425,8 @@
 }
 
 @keyframes thumbProgress {
-    0% { width: 0%; }
-    100% { width: 100%; }
+    0% { transform: scaleX(0); }
+    100% { transform: scaleX(1); }
 }
 
 @media (max-width: 900px) {

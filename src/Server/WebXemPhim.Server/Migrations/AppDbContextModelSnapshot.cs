@@ -450,8 +450,14 @@ namespace WebXemPhim.Server.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Country");
+
+                    b.HasIndex("Rating");
+
                     b.HasIndex("Slug")
                         .IsUnique();
+
+                    b.HasIndex("ViewCount");
 
                     b.HasIndex("IsTrending", "Rating");
 
@@ -592,12 +598,16 @@ namespace WebXemPhim.Server.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatedAtUtc");
+
                     b.HasIndex("OrderCode")
                         .IsUnique();
 
                     b.HasIndex("TransactionReference");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("Status", "CreatedAtUtc");
 
                     b.ToTable("payments", (string)null);
                 });
@@ -689,6 +699,8 @@ namespace WebXemPhim.Server.Migrations
 
                     b.HasIndex("EpisodeId");
 
+                    b.HasIndex("SessionId");
+
                     b.HasIndex("EventType", "CreatedAtUtc");
 
                     b.ToTable("playback_telemetry", (string)null);
@@ -730,6 +742,8 @@ namespace WebXemPhim.Server.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedAtUtc");
 
                     b.HasIndex("UserId");
 
@@ -845,6 +859,11 @@ namespace WebXemPhim.Server.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("bytea");
 
+                    b.Property<string>("SearchNameLower")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<DateTime?>("VipExpiresAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -854,6 +873,8 @@ namespace WebXemPhim.Server.Migrations
 
                     b.HasIndex("NormalizedEmail")
                         .IsUnique();
+
+                    b.HasIndex("SearchNameLower", "CreatedAtUtc");
 
                     b.ToTable("users", (string)null);
                 });

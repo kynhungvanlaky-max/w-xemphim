@@ -8,7 +8,7 @@
 
 @if (IsOpen)
 {
-    <div class="admin-modal-backdrop" @onclick="HandleCancel">
+    <div class="admin-modal-backdrop admin-confirm-backdrop" @onclick="HandleCancel">
         <div class="admin-modal-card admin-confirm-dialog @VariantClass"
              role="alertdialog"
              aria-modal="true"
@@ -71,6 +71,13 @@
     /// <summary>"danger", "warning" or "info".</summary>
     [Parameter] public string Variant { get; set; } = "danger";
 
+    /// <summary>Alias/convenience flag for destructive actions (sets danger variant).</summary>
+    [Parameter] public bool IsDestructive { get; set; }
+
+    /// <summary>Captures any additional unmatched attributes to prevent runtime circuit crashes.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
     /// <summary>When set, the operator has to type this exact phrase before the action unlocks.</summary>
     [Parameter] public string? ConfirmPhrase { get; set; }
 
@@ -80,18 +87,22 @@
     private string typedPhrase = string.Empty;
     private ElementReference confirmInput;
     private ElementReference dialogElement;
+    private bool wasOpen;
+    private bool shouldFocus;
 
-    private string VariantClass => Variant switch
+    private string VariantClass => (IsDestructive || Variant == "danger") switch
     {
-        "warning" => "is-warning",
-        "info" => "is-info",
+        true => "is-danger",
+        false when Variant == "warning" => "is-warning",
+        false when Variant == "info" => "is-info",
         _ => "is-danger"
     };
 
-    private string ConfirmButtonClass => Variant switch
+    private string ConfirmButtonClass => (IsDestructive || Variant == "danger") switch
     {
-        "warning" => "btn-primary-action is-warning",
-        "info" => "btn-primary-action",
+        true => "btn-primary-action is-danger",
+        false when Variant == "warning" => "btn-primary-action is-warning",
+        false when Variant == "info" => "btn-primary-action",
         _ => "btn-primary-action is-danger"
     };
 
@@ -100,20 +111,33 @@
 
     protected override void OnParametersSet()
     {
-        if (IsOpen) typedPhrase = string.Empty;
+        if (IsOpen && !wasOpen)
+        {
+            typedPhrase = string.Empty;
+            shouldFocus = true;
+        }
+        wasOpen = IsOpen;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!IsOpen) return;
-        if (!string.IsNullOrWhiteSpace(ConfirmPhrase))
+        if (!IsOpen || !shouldFocus) return;
+        shouldFocus = false;
+        try
         {
-            await confirmInput.FocusAsync();
+            if (!string.IsNullOrWhiteSpace(ConfirmPhrase))
+            {
+                await confirmInput.FocusAsync();
+            }
+            else
+            {
+                // Đưa focus vào hộp thoại để Escape/Enter luôn hoạt động dù không có ô nhập xác nhận.
+                await dialogElement.FocusAsync();
+            }
         }
-        else
+        catch
         {
-            // Đưa focus vào hộp thoại để Escape/Enter luôn hoạt động dù không có ô nhập xác nhận.
-            await dialogElement.FocusAsync();
+            // Bỏ qua lỗi nếu DOM chưa sẵn sàng
         }
     }
 

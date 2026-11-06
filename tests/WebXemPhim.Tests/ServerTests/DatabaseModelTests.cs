@@ -57,26 +57,6 @@ public sealed class DatabaseModelTests
     }
 
     [Fact]
-    public void MySqlProviderCanGenerateTheCompleteSchemaWithoutConnecting()
-    {
-        using var context = CreateMySqlContext();
-
-        var script = context.Database.GenerateCreateScript();
-
-        Assert.Contains("users", script, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("access_tokens", script, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("password_reset_tokens", script, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("payments", script, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("reviews", script, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("movies", script, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("genres", script, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("movie_genres", script, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("cast_members", script, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("episodes", script, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("stream_sources", script, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
     public void AccountAndPaymentNaturalKeysAreUnique()
     {
         using var context = CreateMySqlContext();

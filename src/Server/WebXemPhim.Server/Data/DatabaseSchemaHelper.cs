@@ -451,6 +451,7 @@ $$;", cancellationToken);
             cancellationToken);
 
         await SyncMovieSearchIndexAsync(db, cancellationToken);
+        await EnsureTrgmSearchIndexesAsync(db, cancellationToken);
     }
 
     /// <summary>
@@ -800,5 +801,69 @@ $$;", cancellationToken);
             "UPDATE movies m SET \"search_vector\" = webxemphim_movie_search_vector(m.\"Id\") WHERE m.\"Id\" = {0};",
             new object[] { movieId },
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Backfills the new <c>SearchNameLower</c> column on <c>users</c> from <c>FullName</c> so the
+    /// admin user search index is populated on existing rows. Only runs on PostgreSQL.
+    /// </summary>
+    /// <remarks>
+    /// <c>FullName</c> is encrypted at rest (value converter), so the lower-casing must happen in
+    /// .NET after decryption — a raw SQL <c>lower("FullName")</c> would hash the ciphertext.
+    /// </remarks>
+    public static async Task BackfillUserSearchNamesAsync(AppDbContext db, CancellationToken cancellationToken = default)
+    {
+        if (!db.Database.IsNpgsql()) return;
+        const int batchSize = 500;
+        try
+        {
+            while (true)
+            {
+                var batch = await db.Users
+                    .Where(u => u.SearchNameLower == string.Empty)
+                    .OrderBy(u => u.CreatedAtUtc)
+                    .Take(batchSize)
+                    .ToListAsync(cancellationToken);
+
+                if (batch.Count == 0) break;
+
+                foreach (var user in batch)
+                {
+                    user.SearchNameLower = (user.FullName ?? string.Empty).Trim().ToLowerInvariant();
+                }
+
+                await db.SaveChangesAsync(cancellationToken);
+                db.ChangeTracker.Clear();
+
+                if (batch.Count < batchSize) break;
+            }
+        }
+        catch
+        {
+            // Non-critical startup backfill; new registrations set SearchNameLower directly.
+        }
+    }
+
+    /// <summary>
+    /// Installs optional pg_trgm GIN indexes for admin text search (normalized email, search name,
+    /// audit summary). Degraded gracefully when the extension is unavailable on a managed instance.
+    /// </summary>
+    public static async Task EnsureTrgmSearchIndexesAsync(AppDbContext db, CancellationToken cancellationToken = default)
+    {
+        if (!db.Database.IsNpgsql()) return;
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("CREATE EXTENSION IF NOT EXISTS pg_trgm;", cancellationToken);
+            await db.Database.ExecuteSqlRawAsync(
+                "CREATE INDEX IF NOT EXISTS \"IX_users_NormalizedEmail_trgm\" ON users USING GIN (\"NormalizedEmail\" gin_trgm_ops);", cancellationToken);
+            await db.Database.ExecuteSqlRawAsync(
+                "CREATE INDEX IF NOT EXISTS \"IX_users_SearchNameLower_trgm\" ON users USING GIN (\"SearchNameLower\" gin_trgm_ops);", cancellationToken);
+            await db.Database.ExecuteSqlRawAsync(
+                "CREATE INDEX IF NOT EXISTS \"IX_audit_logs_Summary_trgm\" ON audit_logs USING GIN (\"Summary\" gin_trgm_ops);", cancellationToken);
+        }
+        catch
+        {
+            // pg_trgm may not be installed on managed instances; search falls back to btree/ILIKE.
+        }
     }
 }

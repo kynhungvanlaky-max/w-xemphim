@@ -221,16 +221,33 @@ public sealed class CinemaHubNotificationTests
 
         Assert.IsType<OkObjectResult>(result.Result);
 
+        // Thông báo được tạo ở nền (fire-and-forget) nên chờ tối đa vài giây thay vì assert ngay.
+        NotificationEntity? notif = null;
+        for (var attempt = 0; attempt < 50 && notif is null; attempt++)
+        {
+            await using var verifyContext = new AppDbContext(options);
+            notif = await verifyContext.Notifications.FirstOrDefaultAsync(n => n.UserId == interestedUserId);
+            if (notif is null)
+            {
+                await Task.Delay(100);
+            }
+        }
+
+        Assert.NotNull(notif);
+        Assert.Contains("Hành Tinh Cát", notif!.Title);
+        Assert.Contains("Tập 2", notif.Copy);
+
+        // User 2 should NOT have received a notification
         await using (var verifyContext = new AppDbContext(options))
         {
-            var notif = await verifyContext.Notifications.FirstOrDefaultAsync(n => n.UserId == interestedUserId);
-            Assert.NotNull(notif);
-            Assert.Contains("Hành Tinh Cát", notif.Title);
-            Assert.Contains("Tập 2", notif.Copy);
-
-            // User 2 should NOT have received a notification
             var notif2 = await verifyContext.Notifications.FirstOrDefaultAsync(n => n.UserId == otherUserId);
             Assert.Null(notif2);
+        }
+
+        // Chờ broadcast SignalR (cũng chạy nền) hoàn tất.
+        for (var attempt = 0; attempt < 20 && clientProxyMock.Invocations.Count == 0; attempt++)
+        {
+            await Task.Delay(100);
         }
 
         clientProxyMock.Verify(c => c.SendCoreAsync(

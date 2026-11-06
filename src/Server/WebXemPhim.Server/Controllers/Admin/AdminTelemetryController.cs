@@ -25,95 +25,39 @@ public sealed class AdminTelemetryController(
         var toUtc = UtcNow;
         var fromUtc = toUtc.AddHours(-hours);
 
-        await using var context = await ContextFactory.CreateDbContextAsync();
-        var query = context.PlaybackTelemetry
-            .AsNoTracking()
-            .Where(item => item.CreatedAtUtc >= fromUtc && item.CreatedAtUtc <= toUtc);
+        // Mỗi nhóm truy vấn dùng DbContext riêng và chạy song song (DbContext không thread-safe).
+        var countsTask = LoadCountsAsync();
+        var startupTask = LoadStartupStatsAsync();
+        var timelineTask = LoadTimelineAsync();
+        var eventTypesTask = LoadEventTypesAsync();
+        var topSourcesTask = LoadTopSourcesAsync();
+        var recentErrorsTask = LoadRecentErrorsAsync();
 
-        var totalEvents = await query.CountAsync();
-        var sessions = await query
-            .Where(item => item.SessionId != null && item.SessionId != string.Empty)
-            .Select(item => item.SessionId)
-            .Distinct()
-            .CountAsync();
+        await Task.WhenAll(countsTask, startupTask, timelineTask, eventTypesTask, topSourcesTask, recentErrorsTask);
 
-        var startupValues = await query
-            .Where(item => item.EventType == PlaybackTelemetryEventTypes.Startup)
-            .OrderByDescending(item => item.CreatedAtUtc)
-            .Select(item => item.Value)
-            .Take(MaxStartupSamplesForPercentile)
-            .ToListAsync();
-
-        var rebufferEvents = await query.CountAsync(item => item.EventType == PlaybackTelemetryEventTypes.Rebuffer);
-        var errorEvents = await query.CountAsync(item => item.EventType == PlaybackTelemetryEventTypes.Error);
-        var avgRebufferMs = await query
-            .Where(item => item.EventType == PlaybackTelemetryEventTypes.Rebuffer)
-            .AverageAsync(item => (double?)item.Value) ?? 0;
-        var avgBitrateBps = await query
-            .Where(item => item.EventType == PlaybackTelemetryEventTypes.Bitrate && item.Value > 0)
-            .AverageAsync(item => (double?)item.Value) ?? 0;
-
-        var timeline = await query
-            .GroupBy(item => new { item.CreatedAtUtc.Date, item.CreatedAtUtc.Hour })
-            .Select(group => new
-            {
-                group.Key.Date,
-                group.Key.Hour,
-                Events = group.Count(),
-                Errors = group.Sum(item => item.EventType == PlaybackTelemetryEventTypes.Error ? 1 : 0),
-                Rebuffers = group.Sum(item => item.EventType == PlaybackTelemetryEventTypes.Rebuffer ? 1 : 0),
-                StartupSum = group.Sum(item => item.EventType == PlaybackTelemetryEventTypes.Startup ? item.Value : 0),
-                StartupCount = group.Sum(item => item.EventType == PlaybackTelemetryEventTypes.Startup ? 1 : 0)
-            })
-            .OrderBy(bucket => bucket.Date)
-            .ThenBy(bucket => bucket.Hour)
-            .ToListAsync();
-
-        var eventTypes = await query
-            .GroupBy(item => item.EventType)
-            .Select(group => new AdminTelemetryEventTypeCountDto
-            {
-                EventType = group.Key,
-                Count = group.Count()
-            })
-            .OrderByDescending(item => item.Count)
-            .ToListAsync();
-
-        var topSources = await query
-            .Where(item => item.ServerName != null && item.ServerName != string.Empty)
-            .GroupBy(item => item.ServerName!)
-            .Select(group => new
-            {
-                ServerName = group.Key,
-                Events = group.Count(),
-                Errors = group.Sum(item => item.EventType == PlaybackTelemetryEventTypes.Error ? 1 : 0)
-            })
-            .OrderByDescending(item => item.Events)
-            .Take(8)
-            .ToListAsync();
-
-        var recentErrors = await query
-            .Where(item => item.EventType == PlaybackTelemetryEventTypes.Error)
-            .OrderByDescending(item => item.CreatedAtUtc)
-            .Take(10)
-            .ToListAsync();
+        var counts = await countsTask;
+        var startup = await startupTask;
+        var timeline = await timelineTask;
+        var eventTypes = await eventTypesTask;
+        var topSources = await topSourcesTask;
+        var recentErrors = await recentErrorsTask;
 
         var summary = new AdminTelemetrySummaryDto
         {
             FromUtc = fromUtc,
             ToUtc = toUtc,
             Hours = hours,
-            TotalEvents = totalEvents,
-            Sessions = sessions,
-            StartupSamples = startupValues.Count,
-            AvgStartupMs = startupValues.Count == 0 ? 0 : Math.Round(startupValues.Average(), 1),
-            P95StartupMs = CalculateP95(startupValues),
-            RebufferEvents = rebufferEvents,
-            AvgRebufferMs = Math.Round(avgRebufferMs, 1),
-            RebufferRatePerSession = sessions == 0 ? 0 : Math.Round((double)rebufferEvents / sessions, 2),
-            ErrorEvents = errorEvents,
-            ErrorRatePerSession = sessions == 0 ? 0 : Math.Round((double)errorEvents / sessions, 2),
-            AvgBitrateBps = (long)Math.Round(avgBitrateBps),
+            TotalEvents = counts.TotalEvents,
+            Sessions = counts.Sessions,
+            StartupSamples = startup.Samples,
+            AvgStartupMs = startup.Avg,
+            P95StartupMs = startup.P95,
+            RebufferEvents = counts.RebufferEvents,
+            AvgRebufferMs = Math.Round(counts.AvgRebufferMs, 1),
+            RebufferRatePerSession = counts.Sessions == 0 ? 0 : Math.Round((double)counts.RebufferEvents / counts.Sessions, 2),
+            ErrorEvents = counts.ErrorEvents,
+            ErrorRatePerSession = counts.Sessions == 0 ? 0 : Math.Round((double)counts.ErrorEvents / counts.Sessions, 2),
+            AvgBitrateBps = (long)Math.Round(counts.AvgBitrateBps),
             Timeline = timeline.Select(bucket => new AdminTelemetryBucketDto
             {
                 BucketStartUtc = bucket.Date.AddHours(bucket.Hour),
@@ -130,12 +74,121 @@ public sealed class AdminTelemetryController(
                 Errors = source.Errors,
                 ErrorRate = source.Events == 0 ? 0 : Math.Round((double)source.Errors / source.Events, 3)
             }).ToList(),
-            RecentErrors = recentErrors
-                .Select(MapEvent)
-                .ToList()
+            RecentErrors = recentErrors.Select(MapEvent).ToList()
         };
 
         return Ok(ApiResponse<AdminTelemetrySummaryDto>.Ok(summary));
+
+        async Task<(int TotalEvents, int Sessions, int RebufferEvents, int ErrorEvents, double AvgRebufferMs, double AvgBitrateBps)> LoadCountsAsync()
+        {
+            await using var c = await ContextFactory.CreateDbContextAsync();
+            var q = c.PlaybackTelemetry.AsNoTracking()
+                .Where(item => item.CreatedAtUtc >= fromUtc && item.CreatedAtUtc <= toUtc);
+            var totalEvents = await q.CountAsync();
+            var sessions = await q
+                .Where(item => item.SessionId != null && item.SessionId != string.Empty)
+                .Select(item => item.SessionId)
+                .Distinct()
+                .CountAsync();
+            var rebufferEvents = await q.CountAsync(item => item.EventType == PlaybackTelemetryEventTypes.Rebuffer);
+            var errorEvents = await q.CountAsync(item => item.EventType == PlaybackTelemetryEventTypes.Error);
+            var avgRebufferMs = await q
+                .Where(item => item.EventType == PlaybackTelemetryEventTypes.Rebuffer)
+                .AverageAsync(item => (double?)item.Value) ?? 0;
+            var avgBitrateBps = await q
+                .Where(item => item.EventType == PlaybackTelemetryEventTypes.Bitrate && item.Value > 0)
+                .AverageAsync(item => (double?)item.Value) ?? 0;
+            return (totalEvents, sessions, rebufferEvents, errorEvents, avgRebufferMs, avgBitrateBps);
+        }
+
+        async Task<(int Samples, double Avg, long P95)> LoadStartupStatsAsync()
+        {
+            await using var c = await ContextFactory.CreateDbContextAsync();
+            if (c.Database.IsNpgsql())
+            {
+                // P95 chính xác bằng percentile_cont ngay trong PostgreSQL (không kéo mẫu về app).
+                var row = await c.Database.SqlQueryRaw<StartupStatsRow>(
+                    "SELECT COUNT(*)::bigint AS \"Count\", COALESCE(AVG(\"Value\"::double precision), 0) AS \"Avg\", COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY \"Value\"::double precision), 0) AS \"P95\" FROM playback_telemetry WHERE \"EventType\" = {0} AND \"CreatedAtUtc\" >= {1} AND \"CreatedAtUtc\" <= {2}",
+                    PlaybackTelemetryEventTypes.Startup, fromUtc, toUtc).SingleAsync();
+                return ((int)row.Count, Math.Round(row.Avg, 1), (long)Math.Round(row.P95));
+            }
+
+            var startupValues = await c.PlaybackTelemetry.AsNoTracking()
+                .Where(item => item.CreatedAtUtc >= fromUtc && item.CreatedAtUtc <= toUtc
+                            && item.EventType == PlaybackTelemetryEventTypes.Startup)
+                .OrderByDescending(item => item.CreatedAtUtc)
+                .Select(item => item.Value)
+                .Take(MaxStartupSamplesForPercentile)
+                .ToListAsync();
+            return (startupValues.Count,
+                startupValues.Count == 0 ? 0 : Math.Round(startupValues.Average(), 1),
+                CalculateP95(startupValues));
+        }
+
+        async Task<List<TimelineRow>> LoadTimelineAsync()
+        {
+            await using var c = await ContextFactory.CreateDbContextAsync();
+            return await c.PlaybackTelemetry.AsNoTracking()
+                .Where(item => item.CreatedAtUtc >= fromUtc && item.CreatedAtUtc <= toUtc)
+                .GroupBy(item => new { item.CreatedAtUtc.Date, item.CreatedAtUtc.Hour })
+                .Select(group => new TimelineRow
+                {
+                    Date = group.Key.Date,
+                    Hour = group.Key.Hour,
+                    Events = group.Count(),
+                    Errors = group.Sum(item => item.EventType == PlaybackTelemetryEventTypes.Error ? 1 : 0),
+                    Rebuffers = group.Sum(item => item.EventType == PlaybackTelemetryEventTypes.Rebuffer ? 1 : 0),
+                    StartupSum = group.Sum(item => item.EventType == PlaybackTelemetryEventTypes.Startup ? item.Value : 0),
+                    StartupCount = group.Sum(item => item.EventType == PlaybackTelemetryEventTypes.Startup ? 1 : 0)
+                })
+                .OrderBy(bucket => bucket.Date)
+                .ThenBy(bucket => bucket.Hour)
+                .ToListAsync();
+        }
+
+        async Task<List<AdminTelemetryEventTypeCountDto>> LoadEventTypesAsync()
+        {
+            await using var c = await ContextFactory.CreateDbContextAsync();
+            return await c.PlaybackTelemetry.AsNoTracking()
+                .Where(item => item.CreatedAtUtc >= fromUtc && item.CreatedAtUtc <= toUtc)
+                .GroupBy(item => item.EventType)
+                .Select(group => new AdminTelemetryEventTypeCountDto
+                {
+                    EventType = group.Key,
+                    Count = group.Count()
+                })
+                .OrderByDescending(item => item.Count)
+                .ToListAsync();
+        }
+
+        async Task<List<TopSourceRow>> LoadTopSourcesAsync()
+        {
+            await using var c = await ContextFactory.CreateDbContextAsync();
+            return await c.PlaybackTelemetry.AsNoTracking()
+                .Where(item => item.CreatedAtUtc >= fromUtc && item.CreatedAtUtc <= toUtc
+                            && item.ServerName != null && item.ServerName != string.Empty)
+                .GroupBy(item => item.ServerName!)
+                .Select(group => new TopSourceRow
+                {
+                    ServerName = group.Key,
+                    Events = group.Count(),
+                    Errors = group.Sum(item => item.EventType == PlaybackTelemetryEventTypes.Error ? 1 : 0)
+                })
+                .OrderByDescending(item => item.Events)
+                .Take(8)
+                .ToListAsync();
+        }
+
+        async Task<List<PlaybackTelemetryEntity>> LoadRecentErrorsAsync()
+        {
+            await using var c = await ContextFactory.CreateDbContextAsync();
+            return await c.PlaybackTelemetry.AsNoTracking()
+                .Where(item => item.CreatedAtUtc >= fromUtc && item.CreatedAtUtc <= toUtc
+                            && item.EventType == PlaybackTelemetryEventTypes.Error)
+                .OrderByDescending(item => item.CreatedAtUtc)
+                .Take(10)
+                .ToListAsync();
+        }
     }
 
     [HttpGet("events")]
@@ -189,6 +242,31 @@ public sealed class AdminTelemetryController(
             Page = page,
             PageSize = pageSize
         }));
+    }
+
+    private sealed class TimelineRow
+    {
+        public DateTime Date { get; set; }
+        public int Hour { get; set; }
+        public int Events { get; set; }
+        public int Errors { get; set; }
+        public int Rebuffers { get; set; }
+        public long StartupSum { get; set; }
+        public int StartupCount { get; set; }
+    }
+
+    private sealed class TopSourceRow
+    {
+        public string ServerName { get; set; } = string.Empty;
+        public int Events { get; set; }
+        public int Errors { get; set; }
+    }
+
+    private sealed class StartupStatsRow
+    {
+        public long Count { get; set; }
+        public double Avg { get; set; }
+        public double P95 { get; set; }
     }
 
     private static AdminTelemetryEventDto MapEvent(PlaybackTelemetryEntity item) => new()

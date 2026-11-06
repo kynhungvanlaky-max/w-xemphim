@@ -122,6 +122,13 @@ public class EpisodesController(
                 return cachedVip;
             }
 
+            var isAdmin = await db.UserSecurity.AsNoTracking().AnyAsync(s => s.UserId == userId && s.IsAdmin);
+            if (isAdmin)
+            {
+                cache?.Set(cacheKey, true, TimeSpan.FromMinutes(5));
+                return true;
+            }
+
             var user = await db.Users.FindAsync(userId);
             var isVip = user is not null && user.Membership != WebXemPhim.Shared.Enums.MembershipTier.Free && (!user.VipExpiresAtUtc.HasValue || user.VipExpiresAtUtc.Value > DateTime.UtcNow);
             

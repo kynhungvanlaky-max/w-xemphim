@@ -33,7 +33,9 @@ public class StreamController(
     IStreamSegmentTokenProtector? segmentTokens = null,
     StreamOriginCircuitBreaker? circuitBreaker = null,
     IConfiguration? configuration = null,
-    ICloudStorageService? cloudStorage = null) : ControllerBase
+    ICloudStorageService? cloudStorage = null,
+    EpisodeVideoStorage? videoStorage = null,
+    IStreamPolicyService? streamPolicyService = null) : ControllerBase
 {
     /// <summary>Tên của HttpClient dùng để proxy video từ máy chủ nguồn.</summary>
     private const string StreamProxyClientName = "StreamProxy";
@@ -84,7 +86,24 @@ public class StreamController(
         }
 
         var isVip = await IsCallerVipAsync(db);
+        var policy = streamPolicyService?.GetPolicyForStream(stream.ServerName, stream.ServerType);
+        if (policy is not null)
+        {
+            if (!policy.IsActive)
+            {
+                return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                    ApiResponse<SignedStreamDto>.Fail($"Máy chủ '{policy.DisplayName}' đang tạm dừng bảo trì. Vui lòng chọn nguồn phát khác."));
+            }
+
+            if (policy.IsVipOnly && !isVip)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    ApiResponse<SignedStreamDto>.Fail($"Luồng phát trên máy chủ '{policy.DisplayName}' được tối ưu riêng cho hội viên VIP. Vui lòng nâng cấp VIP hoặc chọn nguồn thường."));
+            }
+        }
+
         var isVipStream = stream.ServerType == StreamServerType.VipFastServer ||
+                          (policy?.IsVipOnly == true) ||
                           (!string.IsNullOrEmpty(stream.Quality) && stream.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase));
         if (isVipStream && !isVip)
         {
@@ -199,7 +218,24 @@ public class StreamController(
         }
 
         var isVip = await IsCallerVipAsync(db);
+        var policy = streamPolicyService?.GetPolicyForStream(stream.ServerName, stream.ServerType);
+        if (policy is not null)
+        {
+            if (!policy.IsActive)
+            {
+                return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                    ApiResponse<SignedStreamDto>.Fail($"Máy chủ '{policy.DisplayName}' đang tạm dừng bảo trì. Vui lòng chọn nguồn phát khác."));
+            }
+
+            if (policy.IsVipOnly && !isVip)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    ApiResponse<SignedStreamDto>.Fail($"Luồng phát trên máy chủ '{policy.DisplayName}' được tối ưu riêng cho hội viên VIP. Vui lòng nâng cấp VIP hoặc chọn nguồn thường."));
+            }
+        }
+
         var isVipStream = stream.ServerType == StreamServerType.VipFastServer ||
+                          (policy?.IsVipOnly == true) ||
                           (!string.IsNullOrEmpty(stream.Quality) && stream.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase));
         if (isVipStream && !isVip)
         {
@@ -554,7 +590,15 @@ public class StreamController(
             return NotFound(ApiResponse<string>.Fail("Không tìm thấy nguồn phát video được chỉ định."));
         }
 
+        var policy = streamPolicyService?.GetPolicyForStream(stream.ServerName, stream.ServerType);
+        if (policy is not null && !policy.IsActive)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                ApiResponse<string>.Fail($"Máy chủ '{policy.DisplayName}' đang tạm dừng bảo trì. Vui lòng chọn nguồn phát khác."));
+        }
+
         var isVipStream = stream.ServerType == StreamServerType.VipFastServer ||
+                          (policy?.IsVipOnly == true) ||
                           (!string.IsNullOrEmpty(stream.Quality) && stream.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase));
 
         if (isVipStream && string.IsNullOrWhiteSpace(sid))
@@ -562,6 +606,8 @@ public class StreamController(
             return StatusCode(StatusCodes.Status403Forbidden,
                 ApiResponse<string>.Fail("Luồng phát VIP yêu cầu phiên phát (session) hợp lệ."));
         }
+
+        var isPlaybackUserVip = false;
 
         // URL kiểu mới mang theo mã phiên. Lease phải còn hoạt động và khớp tập phim;
         // nhờ vậy khi người dùng bị evict/logout/ban, URL cũ lập tức mất hiệu lực dù
@@ -587,20 +633,21 @@ public class StreamController(
                     ApiResponse<string>.Fail("Phiên phát không khớp với tập phim được yêu cầu."));
             }
 
-            if (isVipStream)
+            isPlaybackUserVip = await IsUserVipAsync(db, lease.UserId);
+            if (isVipStream && !isPlaybackUserVip)
             {
-                var isVip = await IsUserVipAsync(db, lease.UserId);
-                if (!isVip)
-                {
-                    return StatusCode(StatusCodes.Status403Forbidden,
-                        ApiResponse<string>.Fail("Yêu cầu gói thành viên VIP để xem nguồn phát này."));
-                }
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    ApiResponse<string>.Fail("Yêu cầu gói thành viên VIP để xem nguồn phát này."));
             }
 
             // Gia hạn cookie phiên mỗi khi trình duyệt thực sự gửi request media.
             // Cookie là HttpOnly nên JavaScript không đọc được; URL cũ vẫn dùng được
             // sau khi exp nhờ cookie còn sống, miễn lease chưa bị thu hồi.
             SetPlaybackCookie(episodeId, sid, clientIp);
+        }
+        else
+        {
+            isPlaybackUserVip = await IsCallerVipAsync(db);
         }
 
         // Ưu tiên: Phát từ Cloud Storage riêng (Cloudflare R2 / S3)
@@ -625,6 +672,16 @@ public class StreamController(
             if (System.IO.File.Exists(localPath))
             {
                 var contentType = GetMediaContentType(localPath);
+                if (!isPlaybackUserVip && policy != null && policy.MaxBandwidthKbps > 0)
+                {
+                    Response.ContentType = contentType;
+                    Response.Headers.CacheControl = "no-store, private, max-age=0";
+                    var bodyFeature = HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpResponseBodyFeature>();
+                    bodyFeature?.DisableBuffering();
+                    await using var fs = System.IO.File.OpenRead(localPath);
+                    await CopyBodyWithIdleTimeoutAsync(fs, Response.Body, policy.MaxBandwidthKbps, policy.BufferInitialBurstKb, isPlaybackUserVip, cancellationToken);
+                    return new EmptyResult();
+                }
                 return PhysicalFile(localPath, contentType, enableRangeProcessing: true);
             }
             stream.StreamUrl = ResolveCloudFallbackMedia(stream.StreamUrl, stream.Quality);
@@ -712,7 +769,7 @@ public class StreamController(
             var bodyFeature = HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpResponseBodyFeature>();
             bodyFeature?.DisableBuffering();
             await using var body = await upstreamResponse.Content.ReadAsStreamAsync(cancellationToken);
-            await CopyBodyWithIdleTimeoutAsync(body, Response.Body, cancellationToken);
+            await CopyBodyWithIdleTimeoutAsync(body, Response.Body, policy?.MaxBandwidthKbps ?? 0, policy?.BufferInitialBurstKb ?? 0, isPlaybackUserVip, cancellationToken);
         }
 
         return new EmptyResult();
@@ -840,6 +897,44 @@ public class StreamController(
             SetPlaybackCookie(payload.EpisodeId, payload.SessionId, clientIp);
         }
 
+        StreamServerPolicyDto? policy = null;
+        var isPlaybackUserVip = false;
+
+        if (streamPolicyService != null)
+        {
+            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+            var streamSource = await FindStreamSourceAsync(db, payload.EpisodeId, payload.Position);
+            if (streamSource != null)
+            {
+                policy = streamPolicyService.GetPolicyForStream(streamSource.ServerName, streamSource.ServerType);
+            }
+
+            if (!string.IsNullOrWhiteSpace(payload.SessionId))
+            {
+                var lease = await streamSessionService.GetActiveLeaseAsync(payload.SessionId, cancellationToken);
+                if (lease != null && lease.UserId != Guid.Empty)
+                {
+                    isPlaybackUserVip = await IsUserVipAsync(db, lease.UserId);
+                }
+            }
+            else
+            {
+                isPlaybackUserVip = await IsCallerVipAsync(db);
+            }
+
+            if (policy != null && !policy.IsActive)
+            {
+                return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                    ApiResponse<string>.Fail("Máy chủ phát này đang được bảo trì theo cấu hình quản trị viên. Vui lòng chọn nguồn phát khác."));
+            }
+
+            if (policy != null && policy.IsVipOnly && !isPlaybackUserVip)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    ApiResponse<string>.Fail("Yêu cầu gói thành viên VIP để xem nguồn phát này."));
+            }
+        }
+
         if (!Uri.TryCreate(payload.UpstreamUrl, UriKind.Absolute, out var upstreamUri)
             || (upstreamUri.Scheme != Uri.UriSchemeHttp && upstreamUri.Scheme != Uri.UriSchemeHttps))
         {
@@ -917,7 +1012,7 @@ public class StreamController(
             var bodyFeature = HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpResponseBodyFeature>();
             bodyFeature?.DisableBuffering();
             await using var body = await upstreamResponse.Content.ReadAsStreamAsync(cancellationToken);
-            await CopyBodyWithIdleTimeoutAsync(body, Response.Body, cancellationToken);
+            await CopyBodyWithIdleTimeoutAsync(body, Response.Body, policy?.MaxBandwidthKbps ?? 0, policy?.BufferInitialBurstKb ?? 0, isPlaybackUserVip, cancellationToken);
         }
 
         return new EmptyResult();
@@ -1354,9 +1449,17 @@ public class StreamController(
     private async Task CopyBodyWithIdleTimeoutAsync(
         Stream source,
         Stream destination,
-        CancellationToken cancellationToken)
+        int maxBandwidthKbps = 0,
+        int initialBurstKb = 0,
+        bool isVipUser = false,
+        CancellationToken cancellationToken = default)
     {
         var buffer = ArrayPool<byte>.Shared.Rent(CopyBufferSize);
+        long totalBytesWritten = 0;
+        var burstBytes = (long)initialBurstKb * 1024;
+        var bytesPerSecond = maxBandwidthKbps > 0 ? (long)maxBandwidthKbps * 1024 / 8 : 0;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
         try
         {
             while (true)
@@ -1377,6 +1480,26 @@ public class StreamController(
 
                 if (read == 0) break;
                 await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+
+                totalBytesWritten += read;
+
+                // Rate limiting cho luồng thường không phải VIP
+                if (!isVipUser && bytesPerSecond > 0 && totalBytesWritten > burstBytes)
+                {
+                    var throttledBytes = totalBytesWritten - burstBytes;
+                    var expectedSeconds = (double)throttledBytes / bytesPerSecond;
+                    var actualSeconds = sw.Elapsed.TotalSeconds;
+                    var diffSeconds = expectedSeconds - actualSeconds;
+
+                    if (diffSeconds > 0.01)
+                    {
+                        var delayMs = (int)(diffSeconds * 1000);
+                        if (delayMs > 0)
+                        {
+                            await Task.Delay(Math.Min(delayMs, 1000), cancellationToken);
+                        }
+                    }
+                }
             }
 
             await destination.FlushAsync(cancellationToken);
@@ -1489,6 +1612,13 @@ public class StreamController(
             return cachedVip;
         }
 
+        var isAdmin = await db.UserSecurity.AsNoTracking().AnyAsync(s => s.UserId == userId && s.IsAdmin);
+        if (isAdmin)
+        {
+            cache?.Set(cacheKey, true, TimeSpan.FromMinutes(5));
+            return true;
+        }
+
         var user = await db.Users.FindAsync(userId);
         var isVip = user is not null && user.Membership != MembershipTier.Free && (!user.VipExpiresAtUtc.HasValue || user.VipExpiresAtUtc.Value > DateTime.UtcNow);
 
@@ -1554,6 +1684,12 @@ public class StreamController(
         localPath = string.Empty;
         if (string.IsNullOrWhiteSpace(streamUrl)) return false;
 
+        if (videoStorage != null && videoStorage.TryResolveLocalVideo(streamUrl, out var epVideoPath, out _))
+        {
+            localPath = epVideoPath;
+            return true;
+        }
+
         string fileName;
         if (streamUrl.StartsWith("local://", StringComparison.OrdinalIgnoreCase))
         {
@@ -1578,8 +1714,13 @@ public class StreamController(
         }
 
         var configuredDir = configuration?.GetValue<string>("Storage:MediaDirectory");
+        var configuredVideoDir = configuration?.GetValue<string>("Storage:EpisodeVideoPath");
         string[] searchDirs = [
+            configuredVideoDir ?? string.Empty,
             configuredDir ?? string.Empty,
+            videoStorage?.RootPath ?? string.Empty,
+            Path.Combine(Directory.GetCurrentDirectory(), "data", "videos", "episodes"),
+            Path.Combine(AppContext.BaseDirectory, "data", "videos", "episodes"),
             "/root/data/movies",
             Path.Combine(AppContext.BaseDirectory, "movies"),
             Path.Combine(Directory.GetCurrentDirectory(), "movies")

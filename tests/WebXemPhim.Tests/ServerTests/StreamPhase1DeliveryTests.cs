@@ -838,4 +838,49 @@ public sealed class StreamPhase1TelemetryIntegrationTests(TestApiFactory factory
         Assert.True(apiRes.Data!.IsSuccess);
         Assert.Equal(200, apiRes.Data.StatusCode);
     }
+
+    [Fact]
+    public async Task AdminEpisodesController_ProbeStream_R2WithoutCloudStorage_Returns503()
+    {
+        var controller = new AdminEpisodesController(
+            new Mock<IDbContextFactory<AppDbContext>>().Object,
+            TimeProvider.System,
+            httpClientFactory: new Mock<IHttpClientFactory>().Object);
+
+        var result = await controller.ProbeStream(new ProbeStreamRequest
+        {
+            StreamUrl = "r2://webxemphim-movies/sample.mp4"
+        });
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var apiRes = Assert.IsType<ApiResponse<ProbeStreamResultDto>>(ok.Value);
+        Assert.False(apiRes.Data!.IsSuccess);
+        Assert.Equal(503, apiRes.Data.StatusCode);
+        Assert.Contains("Cloudflare R2", apiRes.Data.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task AdminEpisodesController_ProbeStream_R2Unconfigured_Returns503()
+    {
+        var mockCloud = new Mock<WebXemPhim.Server.Services.CloudStorage.ICloudStorageService>();
+        mockCloud.Setup(c => c.IsCloudStorageUrl(It.IsAny<string>())).Returns(true);
+        mockCloud.Setup(c => c.IsConfigured).Returns(false);
+
+        var controller = new AdminEpisodesController(
+            new Mock<IDbContextFactory<AppDbContext>>().Object,
+            TimeProvider.System,
+            httpClientFactory: new Mock<IHttpClientFactory>().Object,
+            cloudStorage: mockCloud.Object);
+
+        var result = await controller.ProbeStream(new ProbeStreamRequest
+        {
+            StreamUrl = "r2://webxemphim-movies/sample.mp4"
+        });
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var apiRes = Assert.IsType<ApiResponse<ProbeStreamResultDto>>(ok.Value);
+        Assert.False(apiRes.Data!.IsSuccess);
+        Assert.Equal(503, apiRes.Data.StatusCode);
+        Assert.Contains("khóa truy cập", apiRes.Data.ErrorMessage);
+    }
 }

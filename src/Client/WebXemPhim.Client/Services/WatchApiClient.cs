@@ -64,7 +64,7 @@ public sealed class WatchApiClient(
     public async Task<SignedStreamDto?> SignStreamAsync(
         int episodeId,
         int position,
-        string sessionId,
+        string? sessionId = null,
         CancellationToken cancellationToken = default)
     {
         if (!auth.IsAuthenticated || string.IsNullOrWhiteSpace(auth.AccessToken)) return null;

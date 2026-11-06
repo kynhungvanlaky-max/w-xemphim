@@ -56,25 +56,25 @@ public class UpsertMovieRequest : IValidatableObject
     public int ReleaseYear { get; set; } = DateTime.UtcNow.Year;
     [Range(1, 1440)]
     public int DurationMinutes { get; set; } = 120;
-    [Required, StringLength(16)]
+    [StringLength(16)]
     public string AgeRating { get; set; } = "16+";
-    [Required, StringLength(32)]
+    [StringLength(32)]
     public string Quality { get; set; } = "4K UHD";
     [EnumDataType(typeof(MovieType))]
     public MovieType Type { get; set; } = MovieType.Movie;
-    [Required, StringLength(80)]
+    [StringLength(80)]
     public string Country { get; set; } = "Việt Nam";
     [StringLength(120)]
     public string Director { get; set; } = string.Empty;
     public bool IsTrending { get; set; }
     public bool IsFeatured { get; set; }
-    [Range(1, 10000)]
+    [Range(0, 10000)]
     public int TotalEpisodes { get; set; } = 1;
-    [Range(1, 10000)]
+    [Range(0, 10000)]
     public int CurrentEpisode { get; set; } = 1;
-    [Required, MaxLength(50)]
+    [MaxLength(50)]
     public List<int> GenreIds { get; set; } = [];
-    [Required, MaxLength(100)]
+    [MaxLength(100)]
     public List<string> CastNames { get; set; } = [];
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
@@ -82,7 +82,7 @@ public class UpsertMovieRequest : IValidatableObject
             yield return new ValidationResult("Tên diễn viên không được vượt quá 120 ký tự hoặc là null.", [nameof(CastNames)]);
         if (GenreIds?.Any(id => id <= 0) == true)
             yield return new ValidationResult("ID thể loại phải là số dương.", [nameof(GenreIds)]);
-        if (CurrentEpisode > TotalEpisodes)
+        if (TotalEpisodes > 0 && CurrentEpisode > TotalEpisodes)
             yield return new ValidationResult("Tập hiện tại không được vượt tổng số tập.", [nameof(CurrentEpisode)]);
     }
 }
@@ -91,7 +91,7 @@ public class UpsertEpisodeRequest
 {
     [Range(1, 10000)]
     public int EpisodeNumber { get; set; } = 1;
-    [Required, StringLength(240)]
+    [StringLength(240)]
     public string Title { get; set; } = string.Empty;
     [Range(1, 1440)]
     public int DurationMinutes { get; set; } = 45;
@@ -101,22 +101,29 @@ public class UpsertEpisodeRequest
     public string Overview { get; set; } = string.Empty;
     [StringLength(600), SafeResourceUrl]
     public string StreamUrl { get; set; } = string.Empty;
-    [Required, StringLength(120)]
+    [StringLength(120)]
     public string ServerName { get; set; } = "VIP CDN";
-    [Required, StringLength(32)]
+    [StringLength(32)]
     public string Quality { get; set; } = "1080p";
     [EnumDataType(typeof(StreamServerType))]
     public StreamServerType ServerType { get; set; } = StreamServerType.VipFastServer;
+    /// <summary>Tự động nhân bản đa chất lượng (4K/1080p/720p/480p) và phân phối đều vào 4 cụm máy chủ có sẵn.</summary>
+    public bool AutoDistributeMultiQuality { get; set; } = true;
+    /// <summary>Chất lượng trần tối đa của nguồn phát gốc (Master).</summary>
+    [StringLength(32)]
+    public string MasterMaxQuality { get; set; } = "1080p FHD";
 }
 
 public class UpdateEpisodeRequest
 {
     [Range(1, 10000)]
     public int EpisodeNumber { get; set; } = 1;
-    [Required, StringLength(240)]
+    [StringLength(240)]
     public string Title { get; set; } = string.Empty;
     [Range(1, 1440)]
     public int DurationMinutes { get; set; } = 45;
+    [StringLength(600), SafeResourceUrl(true)]
+    public string ThumbnailUrl { get; set; } = string.Empty;
     [StringLength(2000)]
     public string Overview { get; set; } = string.Empty;
 }
@@ -183,6 +190,31 @@ public class BulkMovieActionRequest
     [Required]
     public string Action { get; set; } = string.Empty; // "delete", "toggle_trending", "toggle_featured", "change_genre"
     public int? TargetGenreId { get; set; }
+}
+
+/// <summary>
+/// Thao tác hàng loạt trên người dùng (lock/unlock/cấp - thu hồi VIP) trong 1 request
+/// thay vì N request tuần tự từ client.
+/// </summary>
+public class AdminBulkUserActionRequest
+{
+    [Required, MinLength(1), MaxLength(500)]
+    public List<Guid> UserIds { get; set; } = [];
+    [Required]
+    public string Action { get; set; } = string.Empty; // "lock", "unlock", "grant_vip", "revoke_vip"
+    [Range(15, 43200)]
+    public int LockMinutes { get; set; } = 1440;
+    [Range(1, 3650)]
+    public int VipDays { get; set; } = 30;
+}
+
+/// <summary>Đếm số đơn thanh toán theo trạng thái trong 1 round-trip (cho tab KPI VIP).</summary>
+public class AdminPaymentSummaryDto
+{
+    public int Total { get; set; }
+    public int Pending { get; set; }
+    public int Completed { get; set; }
+    public int Failed { get; set; }
 }
 
 public class CloneMovieRequest
@@ -288,7 +320,7 @@ public class PaymentRejectionRequest
 
 public class UpsertVipPlanRequest
 {
-    [Required, StringLength(64)]
+    [StringLength(64)]
     public string Id { get; set; } = string.Empty;
 
     [Required, StringLength(120)]
@@ -335,5 +367,96 @@ public class BatchEpisodeGenerateRequest
     public StreamServerType ServerType { get; set; } = StreamServerType.VipFastServer;
     [StringLength(32)]
     public string Quality { get; set; } = "1080p FHD";
+    public bool AutoDistributeMultiQuality { get; set; } = false;
+    [StringLength(32)]
+    public string MasterMaxQuality { get; set; } = "1080p FHD";
 }
+
+public class AutoProvisionStreamsRequest
+{
+    [StringLength(600), SafeResourceUrl]
+    public string? MasterStreamUrl { get; set; }
+    [StringLength(32)]
+    public string MasterMaxQuality { get; set; } = "1080p FHD";
+    public bool ReplaceExisting { get; set; } = true;
+    public string? TargetServers { get; set; }
+}
+
+public class VideoIngestResultDto
+{
+    public int EpisodeId { get; set; }
+    public string StorageMode { get; set; } = "Local Disk";
+    public string MasterFileName { get; set; } = string.Empty;
+    public long FileSizeBytes { get; set; }
+    public List<string> GeneratedQualities { get; set; } = [];
+    public int DistributedServersCount { get; set; }
+    public List<StreamSourceDto> Streams { get; set; } = [];
+}
+
+public class CloudStorageStatusDto
+{
+    public bool IsConfigured { get; set; }
+    public string Provider { get; set; } = "CloudflareR2";
+    public string? BucketName { get; set; }
+    public string? PublicBaseUrl { get; set; }
+    public bool HasCredentials { get; set; }
+}
+
+public class CloudStorageUploadResultDto
+{
+    public string Url { get; set; } = string.Empty;
+    public string? PlayableUrl { get; set; }
+    public string ObjectKey { get; set; } = string.Empty;
+    public string StorageMode { get; set; } = "Cloudflare R2";
+    public string FileName { get; set; } = string.Empty;
+    public long FileSizeBytes { get; set; }
+    public string ContentType { get; set; } = string.Empty;
+    public bool IsPublic { get; set; }
+}
+
+public class CloudStoragePresignedUploadDto
+{
+    public string UploadUrl { get; set; } = string.Empty;
+    public string ObjectKey { get; set; } = string.Empty;
+    public string R2Url { get; set; } = string.Empty;
+    public string? PlayableUrl { get; set; }
+    public string ContentType { get; set; } = string.Empty;
+    public int ExpiresInMinutes { get; set; } = 120;
+}
+
+public class RequestPresignedUploadRequest
+{
+    public string FileName { get; set; } = string.Empty;
+    public string? ContentType { get; set; }
+    public string Folder { get; set; } = "episodes";
+}
+
+public class StreamServerPolicyDto
+{
+    public string ServerKey { get; set; } = string.Empty; // "vip", "cdn", "backup"
+    public string ServerNamePrefix { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public StreamServerType ServerType { get; set; } = StreamServerType.VipFastServer;
+    public bool IsActive { get; set; } = true;
+    public bool IsVipOnly { get; set; }
+    public int MaxBandwidthKbps { get; set; } // 0 = Unlimited
+    public string MaxQuality { get; set; } = "1080p FHD";
+    public int BufferInitialBurstKb { get; set; } = 4096;
+    public int Priority { get; set; } = 1;
+    public string Description { get; set; } = string.Empty;
+    public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
+}
+
+public class UpdateStreamServerPolicyRequest
+{
+    public bool IsActive { get; set; } = true;
+    public bool IsVipOnly { get; set; }
+    public int MaxBandwidthKbps { get; set; } // 0 = Unlimited
+    public string MaxQuality { get; set; } = "1080p FHD";
+    public int BufferInitialBurstKb { get; set; } = 4096;
+    public int Priority { get; set; } = 1;
+    public string? Description { get; set; }
+}
+
+
 

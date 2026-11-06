@@ -43,24 +43,59 @@ public sealed class AdminMoviesController(
         [FromQuery] string? country = null,
         [FromQuery] double? minRating = null,
         [FromQuery] double? maxRating = null,
-        [FromQuery] string? sortBy = null)
+        [FromQuery] string? sortBy = null,
+        [FromQuery] bool? summary = false)
     {
         await using var context = await ContextFactory.CreateDbContextAsync();
-        var query = context.Movies
-            .Include(m => m.MovieGenres).ThenInclude(mg => mg.Genre)
-            .Include(m => m.CastMembers)
-            .Include(m => m.Episodes)
-            .AsQueryable();
+        var isSummary = summary == true;
+
+        IQueryable<MovieEntity> query;
+        if (isSummary)
+        {
+            // Chế độ tóm tắt: không eager-load collection (Genres/Cast/Episodes rỗng) để
+            // tránh N+1 khi cửa admin chỉ cần bảng danh sách (Overview, picker...).
+            query = context.Movies.AsNoTracking().AsQueryable();
+        }
+        else
+        {
+            query = context.Movies
+                .Include(m => m.MovieGenres).ThenInclude(mg => mg.Genre)
+                .Include(m => m.CastMembers)
+                .Include(m => m.Episodes)
+                .AsSplitQuery()
+                .AsQueryable();
+        }
 
         if (!string.IsNullOrWhiteSpace(q))
         {
             var s = q.Trim().ToLower();
-            query = query.Where(m => m.Title.ToLower().Contains(s)
-                || m.OriginalTitle.ToLower().Contains(s)
-                || m.Slug.ToLower().Contains(s)
-                || (m.Director != null && m.Director.ToLower().Contains(s))
-                || m.CastMembers.Any(c => c.Name.ToLower().Contains(s))
-                || m.MovieGenres.Any(mg => mg.Genre.Name.ToLower().Contains(s)));
+            if (context.Database.IsNpgsql())
+            {
+                // PostgreSQL: tìm trên cột SearchText đã chuẩn hoá (có btree index) + slug;
+                // chỉ mở rộng sang thể loại khi đang eager-load collection (non-summary).
+                if (isSummary)
+                {
+                    query = query.Where(m => EF.Functions.Like(m.SearchText, $"%{s}%")
+                                          || EF.Functions.Like(m.Slug, $"%{s}%"));
+                }
+                else
+                {
+                    query = query.Where(m => EF.Functions.Like(m.SearchText, $"%{s}%")
+                                          || EF.Functions.Like(m.Slug, $"%{s}%")
+                                          || m.MovieGenres.Any(mg => EF.Functions.Like(mg.Genre.Name, $"%{s}%")
+                                                                || EF.Functions.Like(mg.Genre.Slug, $"%{s}%")));
+                }
+            }
+            else
+            {
+                // InMemory / các provider khác giữ nguyên đường đi cũ (không dựa vào SearchText).
+                query = query.Where(m => m.Title.ToLower().Contains(s)
+                    || m.OriginalTitle.ToLower().Contains(s)
+                    || m.Slug.ToLower().Contains(s)
+                    || (m.Director != null && m.Director.ToLower().Contains(s))
+                    || m.CastMembers.Any(c => c.Name.ToLower().Contains(s))
+                    || m.MovieGenres.Any(mg => mg.Genre.Name.ToLower().Contains(s)));
+            }
         }
 
         if (type.HasValue)
@@ -85,7 +120,7 @@ public sealed class AdminMoviesController(
             var st = status.Trim().ToLower();
             if (st == "trending") query = query.Where(m => m.IsTrending);
             else if (st == "featured") query = query.Where(m => m.IsFeatured);
-            else if (st == "standard") query = query.Where(m => !m.IsTrending && !m.IsFeatured);
+            else if (st is "standard" or "regular") query = query.Where(m => !m.IsTrending && !m.IsFeatured);
         }
 
         if (year.HasValue && year.Value > 0)
@@ -124,7 +159,9 @@ public sealed class AdminMoviesController(
         query = (sortBy?.ToLowerInvariant()) switch
         {
             "rating" or "rating_desc" => query.OrderByDescending(m => m.Rating),
-            "releaseyear" or "date_desc" or "year_desc" => query.OrderByDescending(m => m.ReleaseYear),
+            "date_desc" => query.OrderByDescending(m => m.Id),
+            "releaseyear" or "year_desc" => query.OrderByDescending(m => m.ReleaseYear).ThenByDescending(m => m.Id),
+            "year_asc" => query.OrderBy(m => m.ReleaseYear).ThenBy(m => m.Id),
             "viewcount" or "views_desc" => query.OrderByDescending(m => m.ViewCount),
             "title" or "title_asc" => query.OrderBy(m => m.Title),
             "title_desc" => query.OrderByDescending(m => m.Title),
@@ -142,7 +179,7 @@ public sealed class AdminMoviesController(
 
         var pagedResult = new PagedResult<MovieDetailDto>
         {
-            Items = movies.Select(MapMovieDetail).ToList(),
+            Items = movies.Select(m => isSummary ? MapMovieSummary(m) : MapMovieDetail(m)).ToList(),
             TotalItems = totalItems,
             Page = Math.Max(page, 1),
             PageSize = pageSize
@@ -195,9 +232,14 @@ public sealed class AdminMoviesController(
 
         if (request.GenreIds.Count > 0)
         {
-            foreach (var gid in request.GenreIds.Distinct())
+            var distinctGenreIds = request.GenreIds.Distinct().ToList();
+            var validGenreIds = await context.Genres
+                .Where(g => distinctGenreIds.Contains(g.Id))
+                .Select(g => g.Id)
+                .ToHashSetAsync();
+            foreach (var gid in distinctGenreIds)
             {
-                if (await context.Genres.AnyAsync(g => g.Id == gid))
+                if (validGenreIds.Contains(gid))
                 {
                     movie.MovieGenres.Add(new MovieGenreEntity { GenreId = gid });
                 }
@@ -320,42 +362,73 @@ public sealed class AdminMoviesController(
         movie.VoteCount = request.VoteCount;
         movie.ReleaseYear = request.ReleaseYear;
         movie.DurationMinutes = request.DurationMinutes;
-        movie.AgeRating = request.AgeRating;
-        movie.Quality = request.Quality;
+        movie.AgeRating = string.IsNullOrWhiteSpace(request.AgeRating) ? "16+" : request.AgeRating.Trim();
+        movie.Quality = string.IsNullOrWhiteSpace(request.Quality) ? "4K UHD" : request.Quality.Trim();
         movie.Type = request.Type;
-        movie.Country = request.Country;
-        movie.Director = request.Director;
+        movie.Country = string.IsNullOrWhiteSpace(request.Country) ? "Việt Nam" : request.Country.Trim();
+        movie.Director = string.IsNullOrWhiteSpace(request.Director) ? "Đang cập nhật" : request.Director.Trim();
         movie.IsTrending = request.IsTrending;
         movie.IsFeatured = request.IsFeatured;
-        movie.TotalEpisodes = request.TotalEpisodes;
-        movie.CurrentEpisode = request.CurrentEpisode;
+        movie.TotalEpisodes = Math.Max(1, request.TotalEpisodes);
+        movie.CurrentEpisode = Math.Clamp(request.CurrentEpisode, 0, movie.TotalEpisodes);
 
-        movie.SearchText = MovieSearchTextBuilder.Build(movie.Title, movie.OriginalTitle, movie.Director, request.CastNames.Count > 0 ? request.CastNames : movie.CastMembers.Select(c => c.Name), movie.Overview);
+        var cleanedCast = (request.CastNames ?? [])
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Select(n => n.Trim())
+            .ToList();
 
-        context.MovieGenres.RemoveRange(movie.MovieGenres);
-        foreach (var gid in request.GenreIds.Distinct())
+        movie.SearchText = MovieSearchTextBuilder.Build(
+            movie.Title,
+            movie.OriginalTitle,
+            movie.Director,
+            cleanedCast.Count > 0 ? cleanedCast : movie.CastMembers.Select(c => c.Name),
+            movie.Overview);
+
+        var desiredGenreIds = (request.GenreIds ?? []).Where(gid => gid > 0).Distinct().ToHashSet();
+        var genresToRemove = movie.MovieGenres.Where(mg => !desiredGenreIds.Contains(mg.GenreId)).ToList();
+        if (genresToRemove.Count > 0)
         {
-            if (await context.Genres.AnyAsync(g => g.Id == gid))
+            context.MovieGenres.RemoveRange(genresToRemove);
+        }
+
+        var existingGenreIds = movie.MovieGenres.Select(mg => mg.GenreId).ToHashSet();
+        var validGenreIds = await context.Genres
+            .Where(g => desiredGenreIds.Contains(g.Id))
+            .Select(g => g.Id)
+            .ToHashSetAsync();
+        foreach (var gid in desiredGenreIds)
+        {
+            if (!existingGenreIds.Contains(gid) && validGenreIds.Contains(gid))
             {
                 context.MovieGenres.Add(new MovieGenreEntity { MovieId = movie.Id, GenreId = gid });
             }
         }
 
-        if (request.CastNames.Count > 0)
+        if (request.CastNames is not null && cleanedCast.Count > 0)
         {
-            context.CastMembers.RemoveRange(movie.CastMembers);
-            for (var i = 0; i < request.CastNames.Count; i++)
+            var existingByPos = movie.CastMembers.ToDictionary(c => c.Position);
+            for (var i = 0; i < cleanedCast.Count; i++)
             {
-                var name = request.CastNames[i].Trim();
-                if (!string.IsNullOrWhiteSpace(name))
+                var pos = i + 1;
+                if (existingByPos.TryGetValue(pos, out var existingCast))
+                {
+                    existingCast.Name = cleanedCast[i];
+                }
+                else
                 {
                     context.CastMembers.Add(new CastMemberEntity
                     {
                         MovieId = movie.Id,
-                        Position = i + 1,
-                        Name = name
+                        Position = pos,
+                        Name = cleanedCast[i]
                     });
                 }
+            }
+
+            var extraCast = movie.CastMembers.Where(c => c.Position > cleanedCast.Count).ToList();
+            if (extraCast.Count > 0)
+            {
+                context.CastMembers.RemoveRange(extraCast);
             }
         }
 

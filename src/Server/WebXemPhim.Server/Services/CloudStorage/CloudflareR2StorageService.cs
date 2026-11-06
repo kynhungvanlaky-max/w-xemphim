@@ -307,6 +307,53 @@ public sealed class CloudflareR2StorageService : ICloudStorageService, IDisposab
         }
     }
 
+    public Task<WebXemPhim.Shared.Models.CloudStoragePresignedUploadDto?> GeneratePresignedUploadUrlAsync(
+        string fileName,
+        string? contentType = null,
+        string folder = "episodes",
+        TimeSpan? expiry = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_s3Client is null || string.IsNullOrWhiteSpace(_options.BucketName))
+        {
+            return Task.FromResult<WebXemPhim.Shared.Models.CloudStoragePresignedUploadDto?>(null);
+        }
+
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        var resolvedContentType = string.IsNullOrWhiteSpace(contentType)
+            ? GetMediaContentType(ext)
+            : contentType;
+
+        var safeFolder = string.IsNullOrWhiteSpace(folder) ? "episodes" : folder.Trim().Trim('/').Replace("\\", "/");
+        var objectKey = $"{safeFolder}/{DateTime.UtcNow:yyyyMM}/{Guid.NewGuid():N}{ext}";
+
+        var duration = expiry ?? TimeSpan.FromMinutes(_options.PresignedUrlExpirationMinutes > 0 ? _options.PresignedUrlExpirationMinutes : 120);
+        var request = new GetPreSignedUrlRequest
+        {
+            BucketName = _options.BucketName,
+            Key = objectKey,
+            Verb = HttpVerb.PUT,
+            Expires = DateTime.UtcNow.Add(duration),
+            ContentType = resolvedContentType
+        };
+
+        var presignedUrl = _s3Client.GetPreSignedURL(request);
+        var r2Url = $"r2://{_options.BucketName}/{objectKey}";
+        string? playableUrl = !string.IsNullOrWhiteSpace(_options.PublicBaseUrl)
+            ? $"{_options.PublicBaseUrl.TrimEnd('/')}/{objectKey}"
+            : r2Url;
+
+        return Task.FromResult<WebXemPhim.Shared.Models.CloudStoragePresignedUploadDto?>(new WebXemPhim.Shared.Models.CloudStoragePresignedUploadDto
+        {
+            UploadUrl = presignedUrl,
+            ObjectKey = objectKey,
+            R2Url = r2Url,
+            PlayableUrl = playableUrl,
+            ContentType = resolvedContentType,
+            ExpiresInMinutes = (int)duration.TotalMinutes
+        });
+    }
+
     private static string GetMediaContentType(string path)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();

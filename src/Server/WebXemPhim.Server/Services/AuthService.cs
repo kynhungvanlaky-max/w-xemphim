@@ -55,10 +55,12 @@ public sealed class AuthService(
     IDbContextFactory<AppDbContext> contextFactory,
     TimeProvider timeProvider,
     IDataProtectionProvider dataProtectionProvider,
+    AuthSessionCache? sessionCache = null,
     ILogger<AuthService>? logger = null) : IAuthService
 {
     private readonly IDataProtector mfaProtector = dataProtectionProvider.CreateProtector("CinemaFlow.MfaSecret.v1");
     private readonly ILogger<AuthService>? _logger = logger;
+    private readonly AuthSessionCache? _sessionCache = sessionCache;
 
     public AuthService(IDbContextFactory<AppDbContext> contextFactory, TimeProvider timeProvider)
         : this(contextFactory, timeProvider, new EphemeralDataProtectionProvider()) { }
@@ -82,6 +84,7 @@ public sealed class AuthService(
         {
             Id = Guid.NewGuid(),
             FullName = request.FullName.Trim(),
+            SearchNameLower = request.FullName.Trim().ToLowerInvariant(),
             Email = request.Email.Trim(),
             NormalizedEmail = email,
             EmailLookupHash = emailLookupHash,
@@ -155,7 +158,12 @@ public sealed class AuthService(
 
         if (!valid)
         {
-            if (++security.FailedLoginAttempts >= 5) security.LockedUntilUtc = UtcNow.AddMinutes(15);
+            if (++security.FailedLoginAttempts >= 5)
+            {
+                security.LockedUntilUtc = UtcNow.AddMinutes(15);
+                // Tài khoản vừa bị khóa: chặn ngay các token còn cache để Khoá có hiệu lực lập tức.
+                _sessionCache?.InvalidateUser(user.Id);
+            }
             await context.SaveChangesAsync();
             return new AuthResult(null, AuthFailure.InvalidCredentials);
         }
@@ -298,6 +306,7 @@ public sealed class AuthService(
             .ToListAsync();
         context.AccessTokens.RemoveRange(accessTokens);
         context.MfaVerifiedSessions.RemoveRange(await context.MfaVerifiedSessions.Where(item => item.UserId == reset.UserId).ToListAsync());
+        _sessionCache?.InvalidateUser(reset.UserId);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return false; }
         return true;
@@ -348,6 +357,7 @@ public sealed class AuthService(
             .Where(token => token.UserId == userId && (currentTokenHash == null || token.Token != currentTokenHash))
             .ToListAsync();
         context.AccessTokens.RemoveRange(otherTokens);
+        _sessionCache?.InvalidateUser(userId);
 
         // Invalidate unused password reset tokens
         var staleResets = await context.PasswordResetTokens.Where(t => t.UserId == userId && t.UsedAtUtc == null).ToListAsync();
@@ -368,6 +378,14 @@ public sealed class AuthService(
     {
         if (!CredentialSecurity.IsToken(token)) return null;
         var tokenHash = CredentialSecurity.TokenHash(token);
+
+        // Hot path: 30s TTL cache giúp cửa admin mở N endpoint song song thay vì ~5 round-trip
+        // DB cho TỪNG request just để dựng claims.
+        if (_sessionCache?.TryGet(tokenHash, out var cachedUser) == true && cachedUser is not null)
+        {
+            return cachedUser;
+        }
+
         await using var context = await contextFactory.CreateDbContextAsync();
         var access = await context.AccessTokens
             .Include(item => item.User)
@@ -394,7 +412,10 @@ public sealed class AuthService(
 
         var user = await MapUserAsync(context, access.User);
         if (user is not null)
+        {
             user.MfaSessionVerified = !user.MfaEnabled || await context.MfaVerifiedSessions.AsNoTracking().AnyAsync(item => item.TokenHash == tokenHash && item.UserId == user.Id);
+            _sessionCache?.Set(tokenHash, user);
+        }
         return user;
     }
 
@@ -402,6 +423,7 @@ public sealed class AuthService(
     {
         if (!CredentialSecurity.IsToken(token)) return;
         var tokenHash = CredentialSecurity.TokenHash(token);
+        _sessionCache?.InvalidateToken(tokenHash);
         await using var context = await contextFactory.CreateDbContextAsync();
         var access = await context.AccessTokens.SingleOrDefaultAsync(item => item.Token == tokenHash);
         if (access is not null)
@@ -415,6 +437,7 @@ public sealed class AuthService(
 
     public async Task RevokeAllAccessTokensAsync(Guid userId)
     {
+        _sessionCache?.InvalidateUser(userId);
         await using var context = await contextFactory.CreateDbContextAsync();
         var tokens = await context.AccessTokens.Where(item => item.UserId == userId).ToListAsync();
         if (tokens.Count > 0)
@@ -529,6 +552,8 @@ public sealed class AuthService(
         if (!string.IsNullOrWhiteSpace(settings.FullName))
         {
             user.FullName = settings.FullName.Trim();
+            user.SearchNameLower = settings.FullName.Trim().ToLowerInvariant();
+            _sessionCache?.InvalidateUser(userId);
         }
 
         var lang = string.IsNullOrWhiteSpace(settings.Language) ? "vi" : settings.Language.Trim();

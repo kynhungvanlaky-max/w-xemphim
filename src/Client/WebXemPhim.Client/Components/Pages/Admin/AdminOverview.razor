@@ -416,13 +416,13 @@
         try
         {
             var statsTask = AdminApi.GetStatsAsync();
-            var moviesTask = AdminApi.GetMoviesAsync();
+            var moviesTask = AdminApi.GetMoviesPagedAsync(page: 1, pageSize: 6, summary: true);
             var healthTask = AdminApi.GetSystemHealthAsync();
             var auditTask = AdminApi.GetAuditLogsAsync(take: 4);
             await Task.WhenAll(statsTask, moviesTask, healthTask, auditTask);
 
             stats = await statsTask;
-            recentMovies = await moviesTask;
+            recentMovies = (await moviesTask).Items;
             health = await healthTask;
             recentAuditLogs = await auditTask;
         }

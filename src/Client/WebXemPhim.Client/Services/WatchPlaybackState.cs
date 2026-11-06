@@ -41,6 +41,10 @@ public sealed class WatchPlaybackState
     public IEnumerable<string> Servers => Sources.Select(source => source.ServerName).Distinct();
     public IEnumerable<string> Qualities => Sources.Where(source => source.ServerName == Source?.ServerName)
         .Select(source => source.Quality).Distinct();
+    public IEnumerable<string> EpisodeQualities => Sources
+        .Select(source => source.Quality)
+        .Where(q => !string.IsNullOrWhiteSpace(q))
+        .Distinct();
     public EpisodeDto? Previous => Neighbor(-1);
     public EpisodeDto? Next => Neighbor(1);
 
@@ -62,22 +66,22 @@ public sealed class WatchPlaybackState
         if (serverName.Contains("VIP 1", StringComparison.OrdinalIgnoreCase))
         {
             shortName = "VIP 1 (Hà Nội)";
-            friendlyName = "Nguồn 1: Siêu Tốc (VIP)";
+            friendlyName = "VIP 1: Siêu Tốc (Hà Nội)";
         }
         else if (serverName.Contains("VIP 2", StringComparison.OrdinalIgnoreCase))
         {
             shortName = "VIP 2 (Sài Gòn)";
-            friendlyName = "Nguồn 2: Ổn Định (VIP)";
+            friendlyName = "VIP 2: Ổn Định (Sài Gòn)";
         }
         else if (serverName.Contains("Hydra", StringComparison.OrdinalIgnoreCase))
         {
             shortName = "Hydra CDN";
-            friendlyName = "Nguồn 3: Chống Lag";
+            friendlyName = "Hydra CDN: Chống Lag";
         }
         else if (serverName.Contains("Backup", StringComparison.OrdinalIgnoreCase) || serverName.Contains("Dự phòng", StringComparison.OrdinalIgnoreCase))
         {
             shortName = "Dự Phòng";
-            friendlyName = "Nguồn 4: Tiết Kiệm Data";
+            friendlyName = "Direct Backup: Tiết Kiệm Data";
         }
 
         var badge = isVip ? "VIP 4K" : isHydra ? "CDN Fast" : "Dự Phòng";
@@ -107,12 +111,13 @@ public sealed class WatchPlaybackState
 
     public static string GetResolutionBadge(string quality)
     {
+        if (string.IsNullOrEmpty(quality)) return "HD";
         if (quality.Contains("4K", StringComparison.OrdinalIgnoreCase)) return "4K";
         if (quality.Contains("60fps", StringComparison.OrdinalIgnoreCase)) return "60FPS";
         if (quality.Contains("1080p", StringComparison.OrdinalIgnoreCase) || quality.Contains("FHD", StringComparison.OrdinalIgnoreCase)) return "FHD";
         if (quality.Contains("720p", StringComparison.OrdinalIgnoreCase) || quality.Contains("HD", StringComparison.OrdinalIgnoreCase)) return "HD";
         if (quality.Contains("480p", StringComparison.OrdinalIgnoreCase)) return "SD";
-        return "SD";
+        return "HD";
     }
 
     public void Load(MovieDetailDto movie, int? number)
@@ -165,11 +170,25 @@ public sealed class WatchPlaybackState
 
     public bool SetQuality(string quality)
     {
-        var selected = Sources.FirstOrDefault(source => source.ServerName == Source?.ServerName && source.Quality == quality);
+        var selected = Sources.FirstOrDefault(source => source.ServerName == Source?.ServerName && source.Quality == quality && CanPlay(source))
+            ?? Sources.FirstOrDefault(source => source.Quality == quality && CanPlay(source))
+            ?? Sources.FirstOrDefault(source => source.ServerName == Source?.ServerName && source.Quality == quality)
+            ?? Sources.FirstOrDefault(source => source.Quality == quality);
         if (selected is null) return false;
         if (!CanPlay(selected)) return false;
         Source = selected;
         return true;
+    }
+
+    public StreamSourceDto? FindQualitySource(string quality) =>
+        Sources.FirstOrDefault(source => source.ServerName == Source?.ServerName && source.Quality == quality)
+        ?? Sources.FirstOrDefault(source => source.Quality == quality);
+
+    public StreamSourceDto? FindServerSource(string server)
+    {
+        var matching = Sources.Where(source => source.ServerName == server).ToList();
+        return matching.FirstOrDefault(source => source.Quality == Source?.Quality)
+            ?? matching.FirstOrDefault();
     }
 
     public IEnumerable<EpisodeDto> Search(string? query) => string.IsNullOrWhiteSpace(query) ? Episodes
@@ -190,6 +209,16 @@ public sealed class WatchPlaybackState
         return Current is not null && index >= 0 && index < Episodes.Count ? Episodes[index] : null;
     }
 
-    private static bool IsPlayable(string url) => Uri.TryCreate(url, UriKind.Absolute, out var uri)
-        && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp || uri.Scheme.Equals("r2", StringComparison.OrdinalIgnoreCase) || uri.Scheme.Equals("s3", StringComparison.OrdinalIgnoreCase));
+    public static bool IsPlayable(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+        if (url.StartsWith("/", StringComparison.Ordinal)) return true;
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttps 
+                || uri.Scheme == Uri.UriSchemeHttp 
+                || uri.Scheme.Equals("r2", StringComparison.OrdinalIgnoreCase) 
+                || uri.Scheme.Equals("s3", StringComparison.OrdinalIgnoreCase)
+                || uri.Scheme.Equals("local", StringComparison.OrdinalIgnoreCase)
+                || uri.Scheme.Equals("blob", StringComparison.OrdinalIgnoreCase));
+    }
 }

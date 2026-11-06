@@ -9,6 +9,8 @@ using WebXemPhim.Shared.Enums;
 using WebXemPhim.Shared.Models;
 using WebXemPhim.Shared.Requests;
 using WebXemPhim.Shared.Responses;
+using WebXemPhim.Shared.Security;
+using WebXemPhim.Server.Security;
 
 namespace WebXemPhim.Server.Controllers.Admin;
 
@@ -19,9 +21,11 @@ public sealed class AdminPaymentsController(
     IWebHostEnvironment? env = null,
     IHttpClientFactory? httpClientFactory = null,
     IHubContext<CinemaHub>? hubContext = null,
-    IMemoryCache? memoryCache = null)
+    IMemoryCache? memoryCache = null,
+    IAuthSessionCache? authSessionCache = null)
     : AdminBaseController(contextFactory, timeProvider, env, httpClientFactory)
 {
+    private readonly IAuthSessionCache? _sessionCache = authSessionCache;
     [HttpGet("payments")]
     public async Task<ActionResult<ApiResponse<PagedResult<PaymentDto>>>> GetPayments(
         [FromQuery] string? q = null,
@@ -32,36 +36,11 @@ public sealed class AdminPaymentsController(
         [FromQuery] string? sortBy = null)
     {
         await using var context = await ContextFactory.CreateDbContextAsync();
-        var query = context.Payments.Include(p => p.User).AsQueryable();
-
-        if (!string.IsNullOrWhiteSpace(q))
-        {
-            var s = q.Trim().ToLower();
-            query = query.Where(p => p.OrderCode.ToLower().Contains(s)
-                                  || p.PlanName.ToLower().Contains(s)
-                                  || (p.User != null && (p.User.Email.ToLower().Contains(s) || p.User.FullName.ToLower().Contains(s))));
-        }
+        var query = await BuildPaymentFilterQueryAsync(context, q, method);
 
         if (status.HasValue)
         {
             query = query.Where(p => p.Status == status.Value);
-        }
-
-        var methodFilter = method?.Trim().ToLower();
-        if (!string.IsNullOrWhiteSpace(methodFilter))
-        {
-            if (methodFilter == "vietqr" || methodFilter == "banktransfer")
-            {
-                query = query.Where(p => p.Method == PaymentMethod.BankTransfer);
-            }
-            else if (methodFilter == "momo")
-            {
-                query = query.Where(p => p.Method == PaymentMethod.Momo);
-            }
-            else if (methodFilter == "visa")
-            {
-                query = query.Where(p => p.Method == PaymentMethod.Visa);
-            }
         }
 
         query = (sortBy?.ToLowerInvariant()) switch
@@ -172,6 +151,7 @@ public sealed class AdminPaymentsController(
         try
         {
             await context.SaveChangesAsync();
+            _sessionCache?.InvalidateUser(payment.UserId);
             memoryCache?.Remove($"vip_status_{payment.UserId}");
             memoryCache?.Remove($"isvip:{payment.UserId}");
             var auditDetails = System.Text.Json.JsonSerializer.Serialize(new
@@ -323,6 +303,58 @@ public sealed class AdminPaymentsController(
         return Ok(ApiResponse<PaymentDto>.Ok(dto, "Đã từ chối đơn thanh toán thành công."));
     }
 
+    [HttpGet("payments/summary")]
+    public async Task<ActionResult<ApiResponse<AdminPaymentSummaryDto>>> GetPaymentSummary([FromQuery] string? q = null, [FromQuery] string? method = null)
+    {
+        await using var context = await ContextFactory.CreateDbContextAsync();
+        var query = await BuildPaymentFilterQueryAsync(context, q, method);
+
+        var counts = await query
+            .GroupBy(p => p.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync();
+
+        var summary = new AdminPaymentSummaryDto
+        {
+            Total = counts.Sum(item => item.Count),
+            Pending = counts.Where(item => item.Status == PaymentStatus.Pending).Sum(item => item.Count),
+            Completed = counts.Where(item => item.Status == PaymentStatus.Completed).Sum(item => item.Count),
+            Failed = counts.Where(item => item.Status == PaymentStatus.Failed).Sum(item => item.Count)
+        };
+
+        return Ok(ApiResponse<AdminPaymentSummaryDto>.Ok(summary));
+    }
+
+    [HttpGet("payments/export-csv")]
+    public async Task<ActionResult> ExportPaymentsCsv([FromQuery] string? q = null, [FromQuery] string? method = null, [FromQuery] PaymentStatus? status = null)
+    {
+        await using var context = await ContextFactory.CreateDbContextAsync();
+        var query = await BuildPaymentFilterQueryAsync(context, q, method);
+        if (status.HasValue)
+        {
+            query = query.Where(p => p.Status == status.Value);
+        }
+
+        var rows = await query.OrderByDescending(p => p.CreatedAtUtc).ToListAsync();
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append("Id,OrderCode,UserEmail,UserFullName,PlanName,Amount,Method,Status,CreatedAt,PaidAt,TransactionReference,Note");
+        sb.AppendLine();
+        foreach (var p in rows)
+        {
+            sb.Append(CsvSecurity.FormatRow(
+                p.Id, p.OrderCode, p.User?.Email ?? string.Empty, p.User?.FullName ?? string.Empty, p.PlanName,
+                p.Amount, p.Method, p.Status,
+                p.CreatedAtUtc.ToString("yyyy-MM-dd HH:mm:ss"),
+                p.PaidAtUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? string.Empty,
+                p.TransactionReference ?? string.Empty, p.Note ?? string.Empty));
+            sb.AppendLine();
+        }
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes("\uFEFF" + sb.ToString());
+        return File(bytes, "text/csv;charset=utf-8", $"cinemaflow_payments_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv");
+    }
+
     [HttpGet("vip-plans")]
     public async Task<ActionResult<ApiResponse<List<VipPlanDto>>>> GetVipPlans([FromServices] IPaymentService paymentSvc)
     {
@@ -341,5 +373,67 @@ public sealed class AdminPaymentsController(
         await LogAuditAsync(context, "UPDATE_VIP_PLAN", "VipPlan", id, $"Cập nhật cấu hình gói VIP '{updated.Name}' ({updated.Price:N0}đ, {updated.DurationDays} ngày).");
 
         return Ok(ApiResponse<VipPlanDto>.Ok(updated, $"Đã lưu cấu hình gói '{updated.Name}' thành công."));
+    }
+
+    /// <summary>
+    /// Dựng query thanh toán đã áp bộ lọc tìm kiếm/phương thức dùng chung cho danh sách,
+    /// KPI summary và export CSV. Trên PostgreSQL tìm user qua cột không mã hoá
+    /// (NormalizedEmail/SearchNameLower) thay vì LIKE trên cột đã mã hoá.
+    /// </summary>
+    private static async Task<IQueryable<PaymentEntity>> BuildPaymentFilterQueryAsync(
+        AppDbContext context,
+        string? q,
+        string? method)
+    {
+        var query = context.Payments.Include(p => p.User).AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var s = q.Trim().ToLower();
+            List<Guid> matchedUserIds;
+            if (context.Database.IsRelational())
+            {
+                matchedUserIds = await context.Users.AsNoTracking()
+                    .Where(u => EF.Functions.Like(u.NormalizedEmail, $"%{s}%")
+                             || EF.Functions.Like(u.SearchNameLower, $"%{s}%"))
+                    .Select(u => u.Id)
+                    .ToListAsync();
+            }
+            else
+            {
+                var allUsers = await context.Users.AsNoTracking().ToListAsync();
+                matchedUserIds = allUsers
+                    .Where(u =>
+                        (!string.IsNullOrEmpty(u.Email) && u.Email.Contains(s, StringComparison.OrdinalIgnoreCase)) ||
+                        (!string.IsNullOrEmpty(u.NormalizedEmail) && u.NormalizedEmail.Contains(s, StringComparison.OrdinalIgnoreCase)) ||
+                        (!string.IsNullOrEmpty(u.FullName) && u.FullName.Contains(s, StringComparison.OrdinalIgnoreCase)))
+                    .Select(u => u.Id)
+                    .ToList();
+            }
+
+            query = query.Where(p => p.OrderCode.ToLower().Contains(s)
+                                  || p.PlanName.ToLower().Contains(s)
+                                  || (p.TransactionReference != null && p.TransactionReference.ToLower().Contains(s))
+                                  || matchedUserIds.Contains(p.UserId));
+        }
+
+        var methodFilter = method?.Trim().ToLower();
+        if (!string.IsNullOrWhiteSpace(methodFilter))
+        {
+            if (methodFilter == "vietqr" || methodFilter == "banktransfer")
+            {
+                query = query.Where(p => p.Method == PaymentMethod.BankTransfer);
+            }
+            else if (methodFilter == "momo")
+            {
+                query = query.Where(p => p.Method == PaymentMethod.Momo);
+            }
+            else if (methodFilter == "visa")
+            {
+                query = query.Where(p => p.Method == PaymentMethod.Visa);
+            }
+        }
+
+        return query;
     }
 }

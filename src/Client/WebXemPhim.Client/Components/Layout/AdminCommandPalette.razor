@@ -87,6 +87,8 @@
     private ElementReference inputElement;
     private string searchQuery = "";
     private int selectedIndex = 0;
+    private bool shouldFocusInput;
+    private bool prevIsOpen;
     private DotNetObjectReference<AdminCommandPalette>? dotNetRef;
 
     public record PaletteCommand(string Title, string Description, string Category, string TargetUrl, CinemaIconName Icon, string Badge);
@@ -96,6 +98,7 @@
         new("Tổng quan hệ thống", "Xem các chỉ số thời gian thực, dung lượng DB, doanh thu", "Trang Điều Hành", "/admin", CinemaIconName.Dashboard, "Nav"),
         new("Quản lý Phim", "Duyệt danh sách, thêm, sửa, nhân bản, thao tác hàng loạt", "Trang Điều Hành", "/admin/movies", CinemaIconName.Film, "Nav"),
         new("Quản lý Tập phim & Streams", "Cấu hình multi-server stream, kiểm tra ping luồng", "Trang Điều Hành", "/admin/episodes", CinemaIconName.List, "Nav"),
+        new("Điều khiển Máy chủ & Phân luồng", "Cấu hình trần băng thông, phân luồng VIP và bảo trì cụm server", "Trang Điều Hành", "/admin/servers", CinemaIconName.HardDrive, "Streaming"),
         new("Quản lý Người dùng", "Hồ sơ người dùng 360°, mở/khóa tài khoản, quyền admin", "Trang Điều Hành", "/admin/users", CinemaIconName.Users, "Nav"),
         new("Đánh giá & Bình luận", "Kiểm duyệt nội dung, trả lời chính thức, lọc spam", "Trang Điều Hành", "/admin/reviews", CinemaIconName.Star, "Nav"),
         new("Gói VIP & Thanh toán", "Duyệt giao dịch chuyển khoản thủ công, báo cáo tài chính", "Trang Điều Hành", "/admin/vip", CinemaIconName.Crown, "Nav"),
@@ -108,14 +111,38 @@
         new("Chuyển giao diện Sáng / Tối (Toggle Theme)", "Chuyển đổi tức thời giữa giao diện Sáng và Tối", "Hệ Thống", "THEME_TOGGLE", CinemaIconName.Sun, "Giao diện")
     ];
 
-    private List<PaletteCommand> FilteredCommands
+    private List<PaletteCommand> filteredCommands = [];
+
+    private List<PaletteCommand> FilteredCommands => filteredCommands;
+
+    protected override void OnInitialized()
     {
-        get
+        filteredCommands = allCommands;
+    }
+
+    private void UpdateFilter()
+    {
+        if (string.IsNullOrWhiteSpace(searchQuery))
         {
-            if (string.IsNullOrWhiteSpace(searchQuery)) return allCommands;
-            var q = searchQuery.Trim().ToLower();
-            return allCommands.Where(c => c.Title.ToLower().Contains(q) || c.Description.ToLower().Contains(q) || c.Category.ToLower().Contains(q)).ToList();
+            filteredCommands = allCommands;
+            return;
         }
+
+        var q = searchQuery.Trim().ToLowerInvariant();
+        filteredCommands = allCommands
+            .Where(c => c.Title.ToLowerInvariant().Contains(q)
+                     || c.Description.ToLowerInvariant().Contains(q)
+                     || c.Category.ToLowerInvariant().Contains(q))
+            .ToList();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (IsOpen && !prevIsOpen)
+        {
+            shouldFocusInput = true;
+        }
+        prevIsOpen = IsOpen;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -133,8 +160,9 @@
             }
         }
 
-        if (IsOpen)
+        if (IsOpen && shouldFocusInput)
         {
+            shouldFocusInput = false;
             try
             {
                 await inputElement.FocusAsync();
@@ -152,8 +180,10 @@
         IsOpen = !IsOpen;
         if (IsOpen)
         {
+            shouldFocusInput = true;
             searchQuery = "";
             selectedIndex = 0;
+            UpdateFilter();
         }
         await IsOpenChanged.InvokeAsync(IsOpen);
         StateHasChanged();
@@ -164,6 +194,7 @@
         IsOpen = true;
         searchQuery = "";
         selectedIndex = 0;
+        UpdateFilter();
         await IsOpenChanged.InvokeAsync(IsOpen);
         StateHasChanged();
     }
@@ -178,6 +209,7 @@
     private void ResetPaletteSelection()
     {
         selectedIndex = 0;
+        UpdateFilter();
     }
 
     private void HandleKeyDown(KeyboardEventArgs e)

@@ -304,7 +304,7 @@
 @if (replyingReview != null)
 {
     <div class="admin-modal-backdrop" @onclick="CloseReplyModal">
-        <div class="admin-modal-card" style="max-width: 540px;" role="dialog" aria-modal="true" aria-labelledby="review-reply-title" @onclick:stopPropagation>
+        <div class="admin-modal-card" style="max-width: 540px;" role="dialog" aria-modal="true" aria-labelledby="review-reply-title" tabindex="-1" @onkeydown="HandleReplyModalKeyDown" @onclick:stopPropagation>
             <div class="admin-modal-header">
                 <h3 id="review-reply-title">Phản hồi đánh giá của @replyingReview.UserFullName</h3>
                 <button type="button" class="btn-close-modal" @onclick="CloseReplyModal">&times;</button>
@@ -637,6 +637,7 @@
 
     private void OpenReplyModal(AdminReviewDto rev)
     {
+        showFilterSettings = false;
         replyingReview = rev;
         adminReplyText = rev.AdminReply ?? "";
         replyFormError = null;
@@ -756,6 +757,14 @@
         finally
         {
             StateHasChanged();
+        }
+    }
+
+    private void HandleReplyModalKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            CloseReplyModal();
         }
     }
 

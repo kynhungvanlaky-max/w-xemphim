@@ -864,6 +864,161 @@ public sealed class AdminControllerTests
         Assert.Equal("https://example.com/movie.m3u8", stored.StreamUrl);
     }
 
+    [Fact]
+    public async Task BulkUserAction_LockGrantAndRevokeVip_WorksInSingleRequest()
+    {
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
+
+        Guid userId;
+        await using (var context = new AppDbContext(test.Options))
+        {
+            userId = (await context.Users.FirstAsync()).Id;
+        }
+
+        // 1. Lock
+        var lockResult = await test.Users.BulkUserAction(new AdminBulkUserActionRequest
+        {
+            UserIds = [userId],
+            Action = "lock",
+            LockMinutes = 60
+        });
+        var lockOk = Assert.IsType<OkObjectResult>(lockResult.Result);
+        var lockEnvelope = Assert.IsType<ApiResponse<int>>(lockOk.Value);
+        Assert.True(lockEnvelope.Success);
+        Assert.Equal(1, lockEnvelope.Data);
+
+        await using (var verify = new AppDbContext(test.Options))
+        {
+            var security = await verify.UserSecurity.FirstOrDefaultAsync(s => s.UserId == userId);
+            Assert.NotNull(security);
+            Assert.True(security!.LockedUntilUtc > DateTime.UtcNow);
+        }
+
+        // 2. Grant VIP
+        var grantResult = await test.Users.BulkUserAction(new AdminBulkUserActionRequest
+        {
+            UserIds = [userId],
+            Action = "grant_vip",
+            VipDays = 45
+        });
+        Assert.IsType<OkObjectResult>(grantResult.Result);
+
+        await using (var verify = new AppDbContext(test.Options))
+        {
+            var user = await verify.Users.FindAsync(userId);
+            Assert.Equal(MembershipTier.Vip, user!.Membership);
+            Assert.NotNull(user.VipExpiresAtUtc);
+        }
+
+        // 3. Revoke VIP
+        var revokeResult = await test.Users.BulkUserAction(new AdminBulkUserActionRequest
+        {
+            UserIds = [userId],
+            Action = "revoke_vip"
+        });
+        Assert.IsType<OkObjectResult>(revokeResult.Result);
+
+        await using (var verify = new AppDbContext(test.Options))
+        {
+            var user = await verify.Users.FindAsync(userId);
+            Assert.Equal(MembershipTier.Free, user!.Membership);
+            Assert.Null(user.VipExpiresAtUtc);
+        }
+    }
+
+    [Fact]
+    public async Task BulkUserAction_EmptyIds_ReturnsBadRequest()
+    {
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
+
+        var result = await test.Users.BulkUserAction(new AdminBulkUserActionRequest
+        {
+            UserIds = [],
+            Action = "lock"
+        });
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+        var envelope = Assert.IsType<ApiResponse<int>>(badRequest.Value);
+        Assert.False(envelope.Success);
+    }
+
+    [Fact]
+    public async Task GetPaymentSummary_ReturnsCountsForCurrentScope()
+    {
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
+
+        await using (var context = new AppDbContext(test.Options))
+        {
+            var user = await context.Users.FirstAsync();
+            context.Payments.Add(new PaymentEntity
+            {
+                Id = Guid.NewGuid(),
+                OrderCode = "ORD-PENDING-002",
+                UserId = user.Id,
+                PlanId = "vip-30",
+                PlanName = "VIP 1 Tháng",
+                Amount = 59000m,
+                Method = PaymentMethod.BankTransfer,
+                Status = PaymentStatus.Pending,
+                CreatedAtUtc = DateTime.UtcNow
+            });
+            await context.SaveChangesAsync();
+        }
+
+        var result = await test.Payments.GetPaymentSummary();
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var envelope = Assert.IsType<ApiResponse<AdminPaymentSummaryDto>>(okResult.Value);
+
+        Assert.True(envelope.Success);
+        Assert.NotNull(envelope.Data);
+        Assert.Equal(2, envelope.Data.Total);
+        Assert.Equal(1, envelope.Data.Pending);
+        Assert.Equal(1, envelope.Data.Completed);
+        Assert.Equal(0, envelope.Data.Failed);
+    }
+
+    [Fact]
+    public async Task GetPaymentSummary_NoPayments_ReturnsZeroedSummary()
+    {
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
+
+        await using (var context = new AppDbContext(test.Options))
+        {
+            context.Payments.RemoveRange(context.Payments);
+            await context.SaveChangesAsync();
+        }
+
+        var result = await test.Payments.GetPaymentSummary();
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var envelope = Assert.IsType<ApiResponse<AdminPaymentSummaryDto>>(okResult.Value);
+
+        Assert.True(envelope.Success);
+        Assert.NotNull(envelope.Data);
+        Assert.Equal(0, envelope.Data.Total);
+        Assert.Equal(0, envelope.Data.Pending);
+        Assert.Equal(0, envelope.Data.Completed);
+        Assert.Equal(0, envelope.Data.Failed);
+    }
+
+    [Fact]
+    public async Task ExportPaymentsCsv_ReturnsCsvWithHeaderAndRows()
+    {
+        var test = CreateControllers();
+        await SeedSampleDataAsync(test.Options);
+
+        var result = await test.Payments.ExportPaymentsCsv();
+        var file = Assert.IsType<FileContentResult>(result);
+        var text = System.Text.Encoding.UTF8.GetString(file.FileContents);
+
+        Assert.Contains("OrderCode", text);
+        Assert.Contains("ORD-001", text);
+        Assert.StartsWith("\uFEFF", text);
+    }
+
     private static async Task SeedEpisodeAsync(DbContextOptions<AppDbContext> options, int episodeId)
     {
         await using var context = new AppDbContext(options);

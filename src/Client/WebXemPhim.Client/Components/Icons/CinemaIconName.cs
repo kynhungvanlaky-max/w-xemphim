@@ -51,6 +51,7 @@ public enum CinemaIconName
     VolumeMute,
     Maximize,
     Minimize,
+    PictureInPicture,
     Rewind10,
     Forward10,
     Settings,
@@ -59,5 +60,8 @@ public enum CinemaIconName
     AlertCircle,
     Grid,
     MoreHorizontal,
-    Image
+    Image,
+    HardDrive,
+    Upload,
+    Globe
 }

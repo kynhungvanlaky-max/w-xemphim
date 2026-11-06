@@ -25,14 +25,18 @@ services:
       - Security__AllowedOrigins__3=http://client:8080
       - Security__AllowedOrigins__4=http://webxemphim-client:8080
       - Security__DataProtectionKeyPath=/app/keys
-      # Required: there is deliberately no public fallback key in this file.
-      - Security__StreamSigningKey=${STREAM_SIGNING_KEY:?STREAM_SIGNING_KEY_REQUIRED}
+      # Dev fallback keys for local docker-compose testing; production uses docker-compose.prod.yml
+      - Security__StreamSigningKey=${STREAM_SIGNING_KEY:-WebXemPhimDevelopmentSecretSigningKey_CinemaFlow2026_SecureKey}
       - Security__StreamTtlMinutes=${STREAM_TTL_MINUTES:-10}
       # The signed playback URL is opened by the BROWSER, so it has to point at a public host.
       # Without it the API hands out the internal container host (server:8080) and the player
       # fails to load the video.
       - Security__PublicApiBaseUrl=${PUBLIC_API_BASE_URL:-http://localhost:${SERVER_PORT:-5085}}
-      - Payment__WebhookSecret=${PAYMENT_WEBHOOK_SECRET:?PAYMENT_WEBHOOK_SECRET_REQUIRED}
+      - Payment__WebhookSecret=${PAYMENT_WEBHOOK_SECRET:-WebXemPhimDevelopmentSecretWebhookKey_CinemaFlow2026_SecureKey}
+      - Supabase__Url=${SUPABASE_URL:-https://qczivykdsiuhbmxcvbyl.supabase.co}
+      - Supabase__PublishableKey=${SUPABASE_PUBLISHABLE_KEY:-sb_publishable_hyt65wxuj4HI8bCL87Wguw_Ao1qXWlC}
+      - Supabase__SecretKey=${SUPABASE_SECRET_KEY:-sb_secret_prH-64wefnjdFXnRgVRwQA_Caqa8QTV}
+      - Supabase__JwksUrl=${SUPABASE_JWKS_URL:-https://qczivykdsiuhbmxcvbyl.supabase.co/auth/v1/.well-known/jwks.json}
       - Security__KnownProxyNetworks__0=172.16.0.0/12
       - Security__KnownProxyNetworks__1=10.0.0.0/8
       - Security__KnownProxyNetworks__2=192.168.0.0/16

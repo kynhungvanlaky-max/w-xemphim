@@ -109,10 +109,19 @@
                 }
             }
 
+            videoEl._lastKnownTime = 0;
+            videoEl._isSwitchingSource = false;
+
             function updateTime() {
                 if (isScrubbing) return;
                 const cur = videoEl.currentTime;
                 const dur = videoEl.duration || 0;
+                if (!videoEl.seeking && cur > 0) {
+                    videoEl._lastKnownTime = cur;
+                }
+                if (videoEl._isSwitchingSource && cur === 0 && videoEl._lastKnownTime > 0) {
+                    return;
+                }
                 const pct = dur > 0 ? (cur / dur) * 100 : 0;
                 if (progressTrack) {
                     progressTrack.setAttribute('aria-valuenow', Math.round(pct).toString());
@@ -325,17 +334,31 @@
                         : Math.max(0, Math.min(duration, videoEl.currentTime + (e.key === 'ArrowRight' ? 10 : -10)));
                 });
 
+                let trackRect = null;
+                const updateTrackRect = () => {
+                    if (progressTrack) trackRect = progressTrack.getBoundingClientRect();
+                };
+                progressTrack.addEventListener('mouseenter', updateTrackRect);
+                window.addEventListener('resize', updateTrackRect);
+
+                let rafTooltip = null;
                 progressTrack.addEventListener('mousemove', (e) => {
                     if (!progressTooltip) return;
-                    const rect = progressTrack.getBoundingClientRect();
-                    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                    const dur = videoEl.duration || 0;
-                    progressTooltip.textContent = formatTime(pos * dur);
-                    progressTooltip.style.left = (pos * 100) + '%';
-                    progressTooltip.style.display = 'block';
+                    if (!trackRect) updateTrackRect();
+                    if (!trackRect || trackRect.width <= 0) return;
+                    const clientX = e.clientX;
+                    if (rafTooltip) cancelAnimationFrame(rafTooltip);
+                    rafTooltip = requestAnimationFrame(() => {
+                        const pos = Math.max(0, Math.min(1, (clientX - trackRect.left) / trackRect.width));
+                        const dur = videoEl.duration || 0;
+                        progressTooltip.textContent = formatTime(pos * dur);
+                        progressTooltip.style.left = (pos * 100) + '%';
+                        progressTooltip.style.display = 'block';
+                    });
                 });
 
                 progressTrack.addEventListener('mouseleave', () => {
+                    if (rafTooltip) cancelAnimationFrame(rafTooltip);
                     if (progressTooltip) progressTooltip.style.display = 'none';
                 });
             }
@@ -497,8 +520,16 @@
                 }
             }
 
-            // Mouse movement for auto-hiding controls
-            containerEl.addEventListener('mousemove', resetHideTimer);
+            // Mouse movement for auto-hiding controls (throttled to 100ms)
+            let lastMouseMoveTime = 0;
+            const onContainerMouseMove = () => {
+                const now = performance.now();
+                if (now - lastMouseMoveTime > 100) {
+                    lastMouseMoveTime = now;
+                    resetHideTimer();
+                }
+            };
+            containerEl.addEventListener('mousemove', onContainerMouseMove);
             containerEl.addEventListener('touchstart', resetHideTimer);
             containerEl.addEventListener('mouseleave', () => {
                 if (!videoEl.paused && !containerEl.contains(document.activeElement)) containerEl.classList.add('controls-hidden');
@@ -564,25 +595,29 @@
             let lastTotalFrames = 0;
             let autoQualityEnabled = true;
             let lastAutoDownscaleTime = 0;
+            let lastAutoUpscaleTime = 0;
+            let stableCyclesCount = 0;
 
             function runHardwareAndBufferGuard() {
-                if (disposed || videoEl.paused || videoEl.ended || !autoQualityEnabled || isBuffering) return;
+                if (disposed || videoEl.paused || videoEl.ended || !autoQualityEnabled || isBuffering || videoEl._isSwitchingSource) return;
                 const now = Date.now();
-                if (now - lastAutoDownscaleTime < 6000) return;
 
                 // 1. Kiểm tra giật lag do phần cứng yếu (GPU/CPU dropped frames)
+                let dropRatio = 0;
+                let deltaTotal = 0;
                 if (typeof videoEl.getVideoPlaybackQuality === 'function') {
                     const q = videoEl.getVideoPlaybackQuality();
                     const deltaDropped = q.droppedVideoFrames - lastDroppedFrames;
-                    const deltaTotal = q.totalVideoFrames - lastTotalFrames;
+                    deltaTotal = q.totalVideoFrames - lastTotalFrames;
                     lastDroppedFrames = q.droppedVideoFrames;
                     lastTotalFrames = q.totalVideoFrames;
 
-                    if (deltaTotal >= 24) {
-                        const dropRatio = deltaDropped / deltaTotal;
+                    if (deltaTotal >= 20) {
+                        dropRatio = deltaDropped / deltaTotal;
                         // Rớt > 5% khung hình trong 3s -> phần cứng quá tải, tự hạ chất lượng
-                        if (dropRatio > 0.05) {
+                        if (dropRatio > 0.05 && now - lastAutoDownscaleTime >= 6000) {
                             lastAutoDownscaleTime = now;
+                            stableCyclesCount = 0;
                             triggerAutoDownscale('hardware', 'Phần cứng giật khung hình (' + Math.round(dropRatio * 100) + '%), tự động hạ độ phân giải để giải phóng CPU.');
                             return;
                         }
@@ -590,9 +625,9 @@
                 }
 
                 // 2. Kiểm tra cạn Buffer mạng (Buffer-Based Algorithm - BBA)
+                let forwardBuffer = 0;
                 if (videoEl.buffered && videoEl.buffered.length > 0) {
                     const cur = videoEl.currentTime;
-                    let forwardBuffer = 0;
                     for (let i = 0; i < videoEl.buffered.length; i++) {
                         if (videoEl.buffered.start(i) <= cur && cur <= videoEl.buffered.end(i)) {
                             forwardBuffer = videoEl.buffered.end(i) - cur;
@@ -600,11 +635,24 @@
                         }
                     }
 
-                    if (forwardBuffer > 0 && forwardBuffer < 3.5) {
+                    if (forwardBuffer > 0 && forwardBuffer < 3.5 && now - lastAutoDownscaleTime >= 6000) {
                         lastAutoDownscaleTime = now;
+                        stableCyclesCount = 0;
                         triggerAutoDownscale('buffer', 'Bộ đệm mạng thấp (' + forwardBuffer.toFixed(1) + 's), tự động hạ độ phân giải để chống đứng hình.');
                         return;
                     }
+                }
+
+                // 3. Khôi phục chất lượng (Auto-Upscale) khi phần cứng mát và mạng dồi dào
+                if (forwardBuffer >= 18 && dropRatio < 0.005) {
+                    stableCyclesCount += 1;
+                    if (stableCyclesCount >= 6 && (now - lastAutoUpscaleTime > 20000) && (now - lastAutoDownscaleTime > 20000)) {
+                        stableCyclesCount = 0;
+                        lastAutoUpscaleTime = now;
+                        triggerAutoUpscale();
+                    }
+                } else {
+                    stableCyclesCount = 0;
                 }
             }
 
@@ -634,6 +682,32 @@
                 }
             }
 
+            function triggerAutoUpscale() {
+                if (containerEl._cinemaHls) {
+                    const hls = containerEl._cinemaHls;
+                    if (hls.levels && hls.currentLevel >= 0 && hls.currentLevel < hls.levels.length - 1) {
+                        const targetLvl = hls.currentLevel + 1;
+                        hls.nextLevel = targetLvl;
+                        hls.currentLevel = targetLvl;
+                        const lvlName = hls.levels[targetLvl] ? (hls.levels[targetLvl].height ? (hls.levels[targetLvl].height + 'p') : ('Level ' + targetLvl)) : 'HD';
+                        if (dotNetHelper) {
+                            try {
+                                dotNetHelper.invokeMethodAsync('OnPlayerNotice', '✨ Khôi phục chất lượng (' + lvlName + ') do mạng & phần cứng đã ổn định.');
+                                dotNetHelper.invokeMethodAsync('OnHlsLevelSwitched', targetLvl);
+                            } catch (_) {}
+                        }
+                        return;
+                    }
+                }
+
+                if (dotNetHelper) {
+                    try {
+                        const recHeight = Math.round((videoEl.clientHeight || 720) * Math.min(window.devicePixelRatio || 1, 2));
+                        dotNetHelper.invokeMethodAsync('OnAutoUpscaleRequested', recHeight);
+                    } catch (_) {}
+                }
+            }
+
             abrGuardTimer = setInterval(runHardwareAndBufferGuard, 3000);
             containerEl._cinemaAbrGuard = { timer: abrGuardTimer };
 
@@ -654,6 +728,9 @@
                 if (containerEl._cinemaWatermark) {
                     try { clearInterval(containerEl._cinemaWatermark.interval); } catch (_) {}
                     try { window.removeEventListener('resize', containerEl._cinemaWatermark.onResize); } catch (_) {}
+                    if (containerEl._cinemaWatermark.observer) {
+                        try { containerEl._cinemaWatermark.observer.disconnect(); } catch (_) {}
+                    }
                     containerEl._cinemaWatermark = null;
                 }
                 if (containerEl._cinemaHls) {
@@ -682,6 +759,9 @@
             if (containerEl && containerEl._cinemaWatermark) {
                 try { clearInterval(containerEl._cinemaWatermark.interval); } catch (_) {}
                 try { window.removeEventListener('resize', containerEl._cinemaWatermark.onResize); } catch (_) {}
+                if (containerEl._cinemaWatermark.observer) {
+                    try { containerEl._cinemaWatermark.observer.disconnect(); } catch (_) {}
+                }
                 delete containerEl._cinemaWatermark;
             }
         },
@@ -719,22 +799,25 @@
 
                 const textWidth = ctx.measureText(text).width;
                 const padding = fontSize * 1.2;
-                // 6 vùng an toàn, khớp với các class .wm-pos-* của CSS.
-                const zone = parseInt(canvas.getAttribute('data-watermark-zone') || '0', 10) || 0;
+                // 6 vùng an toàn: né góc trên (chống đè nút extension tải video) và né thanh điều khiển phía dưới
+                const zoneAttr = parseInt(canvas.getAttribute('data-watermark-zone') || '0', 10) || 0;
+                const zone = (zoneAttr + watermarkTick) % 6;
                 const zones = [
-                    { x: 0.06, y: 0.08, align: 'left' },
-                    { x: 0.94, y: 0.08, align: 'right' },
-                    { x: 0.08, y: 0.42, align: 'left' },
-                    { x: 0.92, y: 0.42, align: 'right' },
-                    { x: 0.06, y: 0.82, align: 'left' },
-                    { x: 0.94, y: 0.82, align: 'right' }
+                    { x: 0.12, y: 0.18, align: 'left' },
+                    { x: 0.88, y: 0.18, align: 'right' },
+                    { x: 0.12, y: 0.48, align: 'left' },
+                    { x: 0.88, y: 0.48, align: 'right' },
+                    { x: 0.15, y: 0.72, align: 'left' },
+                    { x: 0.85, y: 0.72, align: 'right' }
                 ];
                 const spot = zones[Math.min(Math.max(zone, 0), zones.length - 1)];
                 const x = spot.align === 'right'
                     ? Math.max(padding, width * spot.x - textWidth)
                     : Math.max(padding, width * spot.x);
                 const y = Math.max(padding + fontSize, Math.min(height - padding, height * spot.y));
-                const angle = (Math.random() * 0.24) - 0.12;
+                // Góc nghiêng cố định theo từng vùng để không bị rung giật mỗi khi redraw/resize
+                const fixedAngles = [-0.08, 0.06, -0.05, 0.07, -0.06, 0.05];
+                const angle = fixedAngles[Math.abs(zone) % fixedAngles.length];
 
                 ctx.save();
                 ctx.translate(x, y);
@@ -747,11 +830,20 @@
                 ctx.restore();
             };
 
+            let watermarkTick = 0;
             draw();
-            const interval = setInterval(draw, 12000);
+            const interval = setInterval(function () {
+                watermarkTick++;
+                draw();
+            }, 12000);
             const onResize = function () { draw(); };
             window.addEventListener('resize', onResize);
-            containerEl._cinemaWatermark = { interval: interval, onResize: onResize };
+            let observer = null;
+            if (typeof MutationObserver !== 'undefined') {
+                observer = new MutationObserver(function () { draw(); });
+                observer.observe(canvas, { attributes: true, attributeFilter: ['data-watermark', 'data-watermark-zone'] });
+            }
+            containerEl._cinemaWatermark = { interval: interval, onResize: onResize, observer: observer };
         },
         isHlsStream: isHlsStream,
         loadSource: function (containerEl, videoEl, streamUrl, autoPlay, resumeSeconds) {
@@ -975,10 +1067,17 @@
         },
         switchSource: function (containerEl, videoEl, streamUrl, autoPlay, resumeSeconds) {
             if (!containerEl || !videoEl || !streamUrl) return;
+            const currentSrc = videoEl.getAttribute('data-active-src') || videoEl.currentSrc || videoEl.src || '';
+            if (currentSrc === streamUrl) return;
+
+            videoEl.setAttribute('data-active-src', streamUrl);
             const currentPos = (typeof resumeSeconds === 'number' && resumeSeconds > 0)
                 ? resumeSeconds
-                : (videoEl && Number.isFinite(videoEl.currentTime) && videoEl.currentTime > 0 ? videoEl.currentTime : 0);
+                : (videoEl && Number.isFinite(videoEl.currentTime) && videoEl.currentTime > 0 
+                    ? videoEl.currentTime 
+                    : (videoEl && Number.isFinite(videoEl._lastKnownTime) && videoEl._lastKnownTime > 0 ? videoEl._lastKnownTime : 0));
             const shouldPlay = (typeof autoPlay === 'boolean') ? autoPlay : (videoEl && !videoEl.paused && !videoEl.ended);
+            videoEl._isSwitchingSource = true;
             window.CinemaPlayer.loadSource(containerEl, videoEl, streamUrl, shouldPlay, currentPos);
         },
         // Gọi một Range request rất nhỏ bằng fetch để trình duyệt nhận/gia hạn

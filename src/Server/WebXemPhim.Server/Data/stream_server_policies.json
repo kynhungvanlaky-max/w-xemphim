@@ -1,0 +1,44 @@
+[
+  {
+    "ServerKey": "vip",
+    "ServerNamePrefix": "VIP",
+    "DisplayName": "C\u1EE5m VIP FastServer (\u0110\u1EB7c quy\u1EC1n VIP)",
+    "ServerType": 1,
+    "IsActive": true,
+    "IsVipOnly": true,
+    "MaxBandwidthKbps": 0,
+    "MaxQuality": "4K UHD",
+    "BufferInitialBurstKb": 8192,
+    "Priority": 1,
+    "Description": "\u0110\u01B0\u1EDDng truy\u1EC1n VIP Fast-Lane \u01B0u ti\u00EAn cao nh\u1EA5t, kh\u00F4ng gi\u1EDBi h\u1EA1n b\u0103ng th\u00F4ng, h\u1ED7 tr\u1EE3 4K 60fps v\u00E0 HDR cho tr\u1EA3i nghi\u1EC7m m\u01B0\u1EE3t m\u00E0 tuy\u1EC7t \u0111\u1ED1i.",
+    "UpdatedAtUtc": "2026-11-05T16:53:33.6630436Z"
+  },
+  {
+    "ServerKey": "cdn",
+    "ServerNamePrefix": "Hydra",
+    "DisplayName": "C\u1EE5m Hydra CDN (Ph\u1ED5 th\u00F4ng / Free)",
+    "ServerType": 2,
+    "IsActive": true,
+    "IsVipOnly": false,
+    "MaxBandwidthKbps": 3500,
+    "MaxQuality": "1080p FHD",
+    "BufferInitialBurstKb": 2048,
+    "Priority": 2,
+    "Description": "Ph\u00E2n ph\u1ED1i cho ng\u01B0\u1EDDi d\u00F9ng ph\u1ED5 th\u00F4ng qua m\u1EA1ng l\u01B0\u1EDBi Hydra Anycast CDN, gi\u1EDBi h\u1EA1n b\u0103ng th\u00F4ng ~3.5 Mbps \u0111\u1EC3 ti\u1EBFt ki\u1EC7m chi ph\u00ED v\u00E0 duy tr\u00EC t\u1EA3i \u1ED5n \u0111\u1ECBnh.",
+    "UpdatedAtUtc": "2026-11-05T16:53:31.9959315Z"
+  },
+  {
+    "ServerKey": "backup",
+    "ServerNamePrefix": "Backup",
+    "DisplayName": "C\u1EE5m Server D\u1EF1 Ph\u00F2ng (Backup Stream)",
+    "ServerType": 3,
+    "IsActive": true,
+    "IsVipOnly": false,
+    "MaxBandwidthKbps": 1500,
+    "MaxQuality": "720p HD",
+    "BufferInitialBurstKb": 1024,
+    "Priority": 3,
+    "Description": "M\u00E1y ch\u1EE7 d\u1EF1 ph\u00F2ng khi c\u00E1c c\u1EE5m ch\u00EDnh qu\u00E1 t\u1EA3i ho\u1EB7c g\u1EB7p s\u1EF1 c\u1ED1, gi\u1EDBi h\u1EA1n b\u0103ng th\u00F4ng 1.5 Mbps v\u00E0 tr\u1EA7n ch\u1EA5t l\u01B0\u1EE3ng 720p HD.",
+    "UpdatedAtUtc": "2026-11-05T16:51:20.4536503Z"
+  }
+]
