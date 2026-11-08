@@ -1,32 +1,51 @@
 # 🎬 CinemaFlow (WebXemPhim) - Nền Tảng Xem Phim Trực Tuyến Hiện Đại
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Render-brightgreen?logo=render&logoColor=white)](https://w-phim-client.onrender.com)
+[![API Status](https://img.shields.io/badge/API-Online%20(HTTP%20200)-blue?logo=render&logoColor=white)](https://w-phim-api.onrender.com/api/health)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![Blazor](https://img.shields.io/badge/Blazor-Interactive%20Server-0078D7?logo=blazor&logoColor=white)](https://dotnet.microsoft.com/apps/aspnet/web-apps/blazor)
 [![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17%20Alpine-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Caddy](https://img.shields.io/badge/Caddy-2.8%20Auto%20HTTPS-1F88C0?logo=caddy&logoColor=white)](https://caddyserver.com/)
-[![Cloudflare Tunnel](https://img.shields.io/badge/Cloudflare-Tunnel%20Zero%20Trust-F38020?logo=cloudflare&logoColor=white)](https://www.cloudflare.com/)
-[![Tests](https://img.shields.io/badge/Tests-637%20PASS%20%2B%201%20SKIP-brightgreen?logo=xunit&logoColor=white)](tests/)
+[![Cloudflare R2](https://img.shields.io/badge/Cloudflare-R2%20Storage-F38020?logo=cloudflare&logoColor=white)](https://www.cloudflare.com/)
+[![Tests](https://img.shields.io/badge/Tests-641%20PASS%20%2B%201%20SKIP-brightgreen?logo=xunit&logoColor=white)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **CinemaFlow (WebXemPhim)** là nền tảng streaming phim trực tuyến thế hệ mới, được kiến trúc hóa theo mô hình phân tách độc lập giữa **Server (ASP.NET Core Web API)** và **Client (Blazor Web App)** hoàn toàn bằng ngôn ngữ C# (.NET 10). 
 
-Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao cấp (**Cinema-grade Obsidian Palette**), tích hợp công nghệ phân phối luồng phát video bảo mật đa lớp (**Signed URLs, Concurrency Eviction, Anti-Hotlinking**), giao diện tối ưu hóa cảm ứng di động (**Mobile-First Bottom Dock**) và hỗ trợ triển khai linh hoạt, an toàn trên máy chủ Cloud (VPS Linux Docker Compose, Caddy Reverse Proxy & Cloudflare Tunnel).
+Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao cấp (**Cinema-grade Obsidian Palette**), tích hợp công nghệ phân phối luồng phát video bảo mật đa lớp (**Signed URLs, Concurrency Eviction, Anti-Hotlinking**), kho lưu trữ đám mây tốc độ cao Cloudflare R2, giao diện tối ưu hóa cảm ứng di động (**Mobile-First Bottom Dock**) và sẵn sàng triển khai mượt mà trên nền tảng đám mây **Render** và **VPS Linux Docker Compose**.
+
+---
+
+> [!IMPORTANT]
+> ### 🌐 Trải Nghiệm Trực Tiếp (Live Demo & Endpoints)
+> 
+> Hệ thống hiện đang hoạt động trực tuyến trên nền tảng đám mây Render với đầy đủ các dịch vụ:
+> 
+> | Dịch vụ | Địa chỉ truy cập trực tiếp | Kiểm tra sức khỏe (Health Check) |
+> | :--- | :--- | :--- |
+> | **🎬 Web Client (Blazor App)** | [https://w-phim-client.onrender.com](https://w-phim-client.onrender.com) | [`/health` (HTTP 200 OK)](https://w-phim-client.onrender.com/health) |
+> | **⚡ API Server (REST API)** | [https://w-phim-api.onrender.com](https://w-phim-api.onrender.com) | [`/api/health` (HTTP 200 OK)](https://w-phim-api.onrender.com/api/health) |
+> 
+> - 🍿 **Xem phim mẫu trực tiếp (4K UHD Multi-Server)**: [Đại Chiến Titan: Hồi Kết Tuyệt Đối - Tập 04](https://w-phim-client.onrender.com/watch/32?ep=4)
+> - 🔑 **Đăng nhập thử nghiệm 1-chạm (1-Click Tactile Demo)**: Truy cập trang [Đăng nhập](https://w-phim-client.onrender.com/login) và bấm trực tiếp vào các nút xúc giác **Admin**, **Hội viên VIP** hoặc **Thành viên** để tự động điền và trải nghiệm toàn quyền ngay tức thì.
 
 ---
 
 ## 📑 Mục Lục
-1. [🌟 Tính Năng Nổi Bật](#-tính-năng-nổi-bật)
+1. [🌐 Trải Nghiệm Trực Tiếp (Live Demo)](#-trải-nghiệm-trực-tiếp-live-demo--endpoints)
+2. [🌟 Tính Năng Nổi Bật](#-tính-năng-nổi-bật)
    - [Trải Nghiệm Xem Phim & Client](#1-trải-nghiệm-xem-phim--client)
    - [Tối Ưu Hóa Di Động (Mobile-First Experience)](#2-tối-ưu-hóa-di-động-mobile-first-experience)
    - [Động Cơ Bảo Mật Luồng Phát (Stream Security Engine)](#3-động-cơ-bảo-mật-luồng-phát-stream-security-engine)
    - [Trung Tâm Điều Hành Quản Trị (Admin Cockpit & Telemetry)](#4-trung-tâm-điều-hành-quản-trị-admin-cockpit--telemetry)
-2. [🏗️ Kiến Trúc Hệ Thống (Architecture)](#️-kiến-trúc-hệ-thống-architecture)
-3. [💻 Yêu Cầu Môi Trường (Prerequisites)](#-yêu-cầu-môi-trường-prerequisites)
-4. [🚀 Hướng Dẫn Cài Đặt & Chạy Cục Bộ (Local Development)](#-hướng-dẫn-cài-đặt--chạy-cục-bộ-local-development)
-5. [🐳 Triển Khai Docker VPS & CI/CD (Production Deployment)](#-triển-khai-docker-vps--cicd-production-deployment)
-6. [🧪 Kiểm Thử Tự Động (637 PASS, 0 Failed)](#-kiểm-thử-tự-động-637-pass-0-failed)
-7. [🔑 Danh Sách Tài Khoản Thử Nghiệm (Seed Accounts)](#-danh-sách-tài-khoản-thử-nghiệm-seed-accounts)
-8. [📐 Quy Chuẩn Lập Trình & Thiết Kế (Standards & Discipline)](#-quy-chuẩn-lập-trình--thiết-kế-standards--discipline)
+3. [🏗️ Kiến Trúc Hệ Thống (Architecture)](#️-kiến-trúc-hệ-thống-architecture)
+4. [💻 Yêu Cầu Môi Trường (Prerequisites)](#-yêu-cầu-môi-trường-prerequisites)
+5. [🚀 Hướng Dẫn Cài Đặt & Chạy Cục Bộ (Local Development)](#-hướng-dẫn-cài-đặt--chạy-cục-bộ-local-development)
+6. [☁️ Triển Khai Cloud Trên Render (Render Cloud Deployment)](#️-triển-khai-cloud-trên-render-render-cloud-deployment)
+7. [🐳 Triển Khai Docker VPS & CI/CD (VPS Deployment)](#-triển-khai-docker-vps--cicd-vps-deployment)
+8. [🧪 Kiểm Thử Tự Động (641 PASS, 0 Failed)](#-kiểm-thử-tự-động-641-pass-0-failed)
+9. [🔑 Danh Sách Tài Khoản Thử Nghiệm (Seed Accounts)](#-danh-sách-tài-khoản-thử-nghiệm-seed-accounts)
+10. [📐 Quy Chuẩn Lập Trình & Thiết Kế (Standards & Discipline)](#-quy-chuẩn-lập-trình--thiết-kế-standards--discipline)
+11. [📄 Giấy Phép & Bản Quyền (License)](#-giấy-phép--bản-quyền-license)
 
 ---
 
@@ -40,8 +59,8 @@ Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao c�
   - Chế độ rạp chiếu phim (**Lights Off**): Tối mờ toàn bộ giao diện xung quanh để tập trung trọn vẹn vào nội dung.
   - Tính năng **Tự động chuyển tập (Auto-Next)** và lưu lịch sử tiến trình xem (Resume Playback).
 - **Thanh công cụ nguồn phát tối giản (`Minimalist Stream Selector`)**:
-  - Giao diện siêu gọn (chiều cao <= 38px, nút <= 28px) hiển thị thời gian phản hồi máy chủ (Ping ms) theo thời gian thực.
-  - Cho phép người xem chuyển đổi mượt mà giữa các máy chủ CDN (Server 1, Server 2, Backup CDN) khi đường truyền mạng có sự cố.
+  - Giao diện siêu gọn (chiều cao <= 38px, nút <= 28px) hiển thị tên máy chủ chuẩn hóa và thời gian phản hồi (Ping ms) theo thời gian thực.
+  - Chuyển đổi mượt mà giữa các máy chủ VIP độc quyền và cụm máy chủ CDN phân tán mà không làm gián đoạn vị trí thời gian đang xem.
 - **Phân vùng Bento Box nghệ thuật (`Genre Bento Grid`)**:
   - Danh mục thể loại phim được thiết kế dạng lưới Bento bất đối xứng, phối hợp ảnh nền điện ảnh cùng hiệu ứng ánh sáng viền mềm mại.
 - **Khám phá & Tìm kiếm thông minh**:
@@ -51,7 +70,7 @@ Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao c�
   - Quản lý danh sách phim theo dõi (Watchlist) với cập nhật huy hiệu số lượng thời gian thực.
   - Gói đăng ký hội viên VIP (Silver, Gold, Platinum, Diamond) mở khóa các tác phẩm điện ảnh 4K độc quyền.
 - **Nút đăng nhập nhanh 1-chạm (1-Click Tactile Demo Buttons)**:
-  - Trang đăng nhập (`/login`) tích hợp sẵn bộ 3 nút xúc giác đăng nhập nhanh cho các vai trò **Admin**, **VIP**, **Thành viên**. Tự động điền thông tin và xác thực tức thì chỉ với một cú nhấp chuột, giúp việc trải nghiệm thử nghiệm trở nên liền mạch.
+  - Trang đăng nhập (`/login`) tích hợp sẵn bộ 3 nút xúc giác đăng nhập nhanh cho các vai trò **Admin**, **VIP**, **Thành viên**. Tự động điền thông tin và xác thực tức thì chỉ với một cú nhấp chuột.
 - **Hệ thống tương phản kép (Dual-Theme Contrast)**:
   - **Dark Mode**: Gam màu Obsidian `#07080a` / `#12141a` huyền bí, viền mờ `rgba(255,255,255,0.08)`.
   - **Light Mode**: Nền trắng sáng dập nổi `#cbd5e1`, văn bản tương phản cao `#0f172a`, công tắc xúc giác (Tactile switches) rực rỡ, không gây mỏi mắt.
@@ -67,7 +86,7 @@ Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao c�
 - **Chuẩn cảm ứng tối thiểu (Tap Targets >= 44px)**:
   - Tất cả các nút bấm, biểu tượng tìm kiếm, nút lọc và phím điều khiển đều đạt kích thước tối thiểu 44px x 44px, loại bỏ hiện tượng bấm nhầm trên màn hình cảm ứng.
 - **Cuộn gia tốc không rung lắc (Zero Horizontal Shake)**:
-  - Áp dụng `-webkit-overflow-scrolling: touch` trên các dải phim trượt ngang (`.home-movie-rail`, `.tonight-picks-grid`), khóa tràn khung `overflow-x: hidden` giữ giao diện vững chãi.
+  - Áp dụng `-webkit-overflow-scrolling: touch` trên các dải phim trượt ngang, khóa tràn khung `overflow-x: hidden` giữ giao diện vững chãi.
 
 ### 3. Động Cơ Bảo Mật Luồng Phát (Stream Security Engine)
 - **Chữ ký URL mật mã (Cryptographic Signed URLs)**:
@@ -75,7 +94,7 @@ Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao c�
   - Tham số chữ ký tự động hết hạn (`expires`), ngăn chặn hành vi copy link sang trình duyệt khác hoặc nhúng lậu (Anti-hotlinking).
 - **Khóa IP linh hoạt (IP Binding & Loopback Lease Fallback)**:
   - Chữ ký liên kết chặt chẽ với địa chỉ IP của thiết bị được cấp quyền.
-  - Tích hợp cơ chế thông minh nhận diện kết nối vòng lặp nội bộ (Loopback Lease) giữa Blazor Server WebSocket circuit và trình duyệt ngoài, giải quyết triệt để lỗi lệch IP khi đi qua Cloudflare Tunnel hoặc Reverse Proxy Caddy.
+  - Tích hợp cơ chế thông minh nhận diện kết nối vòng lặp nội bộ (Loopback Lease) giữa Blazor Server WebSocket circuit và trình duyệt ngoài, giải quyết triệt để lỗi lệch IP khi đi qua Cloudflare Tunnel hoặc Reverse Proxy.
 - **Kiểm soát phiên đồng thời & Cảnh báo Kick (Concurrency Kick UX)**:
   - Giới hạn 1 thiết bị phát video hoạt động đồng thời trên mỗi tài khoản.
   - Khi phát hiện tài khoản đăng nhập xem phim ở nơi khác, hệ thống sẽ kích hoạt hộp thoại **Eviction Modal** thông báo chi tiết thời gian và tự động tạm dừng phát video trên phiên cũ.
@@ -89,8 +108,9 @@ Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao c�
 - **Quản lý danh mục kho phim (`/admin/movies`)**:
   - Bộ lọc 7 chiều (thể loại, định dạng, chất lượng 4K/FHD, cờ thịnh hành, năm, IMDb, từ khóa).
   - Tự động xóa bộ nhớ đệm OutputCache ngay khi danh mục phim được cập nhật.
-- **Quản lý tập phim & CDN (`/admin/episodes`)**:
+- **Quản lý tập phim, cụm máy chủ & Cloudflare R2 (`/admin/episodes`)**:
   - Tạo và cập nhật tập phim linh hoạt, tải lên hình ảnh thumbnail tập phim, cấu hình luồng phát đa nguồn CDN.
+  - Hỗ trợ tải trực tiếp lên Cloudflare R2 tốc độ cao, phân phối theo cụm máy chủ và tự động downscale chất lượng.
 - **Quản lý người dùng (`/admin/users`)**:
   - Thống kê người dùng theo cấp bậc (Thường / VIP), quản lý trạng thái khóa/mở tài khoản, cấp phát thời hạn VIP.
 - **Nhật ký kiểm toán an toàn (`/admin/audit-logs`)**:
@@ -106,15 +126,16 @@ WebXemPhim Solution
 │   ├── Server/
 │   │   └── WebXemPhim.Server/     # ASP.NET Core REST API (.NET 10)
 │   │       ├── Controllers/       # Movies, Episodes, Stream, Auth, Telemetry, Admin Controllers
-│   │       ├── Data/              # EF Core AppDbContext, DatabaseSeeder, Migrations (PostgreSQL/MySQL)
+│   │       ├── Data/              # EF Core AppDbContext, DatabaseSeeder, Migrations (PostgreSQL/Supabase)
 │   │       ├── Hubs/              # SignalR CinemaHub (Real-time alerts, playback synchronization)
+│   │       ├── Services/          # Cloudflare R2, StreamSession, AuthService, FieldEncryption
 │   │       └── Security/          # StreamUrlSigner, Rate Limiting, PublicUrlResolver, HLS Rewriter
 │   │
 │   ├── Client/
 │   │   └── WebXemPhim.Client/     # Blazor Interactive Server Web App (.NET 10)
 │   │       ├── Components/        # Layout, Pages (Home, Watch, Explore, Genres, Watchlist, Admin)
 │   │       │   ├── Layout/        # MainLayout, NavMenu, MobileBottomNav, AdminSidebar
-│   │       │   ├── Player/        # CinemaPlayer, WatchDiscussion, StreamSelector
+│   │       │   ├── Player/        # CinemaPlayer, WatchDiscussion, StreamSelector, EpisodeDrawer
 │   │       │   └── Icons/         # CinemaIcon (Bộ icon SVG native siêu nhẹ)
 │   │       ├── Services/          # ApiClients, AuthState, WatchlistState, ThemeState, CircuitClientIp
 │   │       └── wwwroot/           # CSS Cinema-grade, JS Player/Theme scripts, Phông chữ Be Vietnam Pro
@@ -133,7 +154,7 @@ WebXemPhim Solution
 ├── docs/                          # Tài liệu kiến trúc, bảo mật stream, deployment, audit di động
 ├── scripts/                       # Scripts hỗ trợ khởi chạy, seed dữ liệu và thiết lập tunnel phát triển
 ├── tests/
-│   └── WebXemPhim.Tests/          # 638 Unit & Integration Testcases (Testcontainers PostgreSQL)
+│   └── WebXemPhim.Tests/          # 642 Unit & Integration Testcases (Testcontainers PostgreSQL)
 └── WebXemPhim.slnx                # Solution định dạng mới của .NET 10
 ```
 
@@ -144,7 +165,7 @@ WebXemPhim Solution
 - **Hệ điều hành**: Windows 10/11, macOS hoặc Linux (Ubuntu 22.04+).
 - **Bộ công cụ phát triển**: [.NET 10 SDK](https://dotnet.microsoft.com/download) (kiểm tra bằng lệnh `dotnet --version`).
 - **Cơ sở dữ liệu**:
-  - **Khuyến nghị**: [PostgreSQL 17](https://www.postgresql.org/) (hoặc chạy nhanh qua Docker).
+  - **Khuyến nghị**: [PostgreSQL 17](https://www.postgresql.org/) (hoặc chạy nhanh qua Docker / kết nối Supabase Pooler).
   - **Tùy chọn nhẹ**: MariaDB 10.6+ hoặc MySQL 8.0+.
 - **Docker Desktop** (tùy chọn - dùng khi chạy kiểm thử tích hợp Testcontainers hoặc đóng gói container).
 
@@ -196,7 +217,34 @@ dotnet run --project src/Client/WebXemPhim.Client/WebXemPhim.Client.csproj --lau
 
 ---
 
-## 🐳 Triển Khai Docker VPS & CI/CD (Production Deployment)
+## ☁️ Triển Khai Cloud Trên Render (Render Cloud Deployment)
+
+Hệ thống được cấu hình sẵn 2 Web Service độc lập trên **Render** (Singapore Region) thông qua Dockerfile tối ưu:
+
+| Service Name | Render Resource ID | Dockerfile | Public URL | Health Check Path |
+| :--- | :--- | :--- | :--- | :--- |
+| **`w-phim-api`** | `srv-dbkrfv95efls73ff858g` | `Dockerfile.server` | `https://w-phim-api.onrender.com` | `/api/health` |
+| **`w-phim-client`** | `srv-dbkrgr95efls73ffaqs0` | `Dockerfile.client` | `https://w-phim-client.onrender.com` | `/health` |
+
+### Quy trình kích hoạt triển khai bằng Render CLI:
+```bash
+# 1. Đăng nhập Render CLI (nếu chưa đăng nhập)
+render login
+
+# 2. Triển khai API Server với commit mới nhất
+render deploys create srv-dbkrfv95efls73ff858g --commit <COMMIT_ID> --confirm
+
+# 3. Triển khai Blazor Client với commit mới nhất
+render deploys create srv-dbkrgr95efls73ffaqs0 --commit <COMMIT_ID> --confirm
+
+# 4. Kiểm tra trạng thái deploy và nhật ký hoạt động
+render deploys list srv-dbkrfv95efls73ff858g
+render logs --resources srv-dbkrfv95efls73ff858g --tail
+```
+
+---
+
+## 🐳 Triển Khai Docker VPS & CI/CD (VPS Deployment)
 
 Dự án đi kèm bộ tệp cấu hình triển khai hoàn chỉnh cho môi trường Production trên VPS Linux (Ubuntu / Debian):
 
@@ -219,7 +267,7 @@ Xem hướng dẫn chi tiết từng bước thiết lập SSH, cấu hình tư�
 
 ---
 
-## 🧪 Kiểm Thử Tự Động (637 PASS, 0 Failed)
+## 🧪 Kiểm Thử Tự Động (641 PASS, 0 Failed)
 
 Toàn bộ logic nghiệp vụ, bảo mật luồng phát, chữ ký URL, cơ chế chống tấn công giả mạo (tampering), thuật toán giới hạn tần suất (rate limiting) và tích hợp cơ sở dữ liệu thực tế đều được bảo vệ nghiêm ngặt bởi bộ kiểm thử tự động lõi:
 
@@ -229,7 +277,7 @@ dotnet test WebXemPhim.slnx
 
 ### Kết quả chạy kiểm thử:
 ```text
-Passed!  - Failed: 0, Passed: 637, Skipped: 1, Total: 638, Duration: 2 m 30 s
+Passed!  - Failed: 0, Passed: 641, Skipped: 1, Total: 642, Duration: 2 m 31 s
 WebXemPhim.Tests.dll (.NETCoreApp,Version=v10.0)
 ```
 
@@ -237,14 +285,14 @@ WebXemPhim.Tests.dll (.NETCoreApp,Version=v10.0)
 1. **Relational Database & Full-Text Search**: Kiểm thử trên instance PostgreSQL thật qua Testcontainers, kiểm tra trigger tự động sinh vector tiếng Việt và chỉ mục GIN.
 2. **Stream Security & IP Binding**: Kiểm tra chữ ký HMAC, phát hiện token giả mạo, kiểm tra thời gian hết hạn (expiration) và cơ chế khóa IP.
 3. **Concurrency Control**: Kiểm tra hàm đếm view nguyên tử (`AtomicViewCounter`) và tính nhất quán khi có request đồng thời.
-4. **Session & Lease Lifecycle**: Kiểm tra refresh/revoke phiên phát và ràng buộc token theo session/IP.
+4. **Session & Lease Lifecycle**: Kiểm tra refresh/revoke phiên phát và ràng buộc token theo session/IP, bảo vệ chống kẹt luồng phát khi khởi tạo.
 5. **Rate Limiting**: Bắn burst traffic kiểm tra mã lỗi HTTP 429 Too Many Requests.
 
 ---
 
 ## 🔑 Danh Sách Tài Khoản Thử Nghiệm (Seed Accounts)
 
-Cơ sở dữ liệu mẫu được nạp sẵn các tài khoản thử nghiệm với đầy đủ các quyền hạn *(Gợi ý: Tại trang đăng nhập `/login`, bạn có thể nhấp trực tiếp vào các nút bấm xúc giác **Admin**, **VIP Demo**, hoặc **Thành viên** để hệ thống tự động điền và đăng nhập ngay mà không cần nhập tay)*:
+Cơ sở dữ liệu mẫu được nạp sẵn các tài khoản thử nghiệm với đầy đủ các quyền hạn *(Gợi ý: Tại trang đăng nhập `/login`, bạn có thể nhấp trực tiếp vào các nút bấm xúc giác **Admin**, **Hội viên VIP**, hoặc **Thành viên** để hệ thống tự động điền và đăng nhập ngay mà không cần nhập tay)*:
 
 | Vai trò / Phân quyền | Email đăng nhập | Tên đăng nhập phụ | Mật khẩu | Quyền lợi & Mô tả |
 | :--- | :--- | :--- | :--- | :--- |
@@ -260,7 +308,7 @@ Cơ sở dữ liệu mẫu được nạp sẵn các tài khoản thử nghiệm
 
 Dự án tuân thủ nghiêm ngặt các quy tắc kỹ thuật trong [`AGENTS.md`](AGENTS.md):
 
-1. **Testing First**: Bất kỳ sự thay đổi code logic nào cũng phải đảm bảo 100% testcases đều PASS.
+1. **Testing First**: Bất kỳ sự thay đổi code logic nào cũng phải đảm bảo 100% testcases đều PASS (`dotnet test`).
 2. **Build Check 100% 0 Errors**: Toàn bộ Solution phải biên dịch thành công (`dotnet build WebXemPhim.slnx`) với 0 Warning và 0 Error trước khi kết thúc bất kỳ phiên làm việc nào.
 3. **Kiến Trúc Tách Biệt C# Only**: Client và Server giao tiếp hoàn toàn qua chuẩn REST API và SignalR, tuyệt đối không gọi chéo CSDL trực tiếp từ Client.
 4. **Chuẩn Thẩm Mỹ Điện Ảnh (`taste-skill`)**:
