@@ -2,28 +2,30 @@
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Render-brightgreen?logo=render&logoColor=white)](https://w-phim-client.onrender.com)
 [![API Status](https://img.shields.io/badge/API-Online%20(HTTP%20200)-blue?logo=render&logoColor=white)](https://w-phim-api.onrender.com/api/health)
+[![Supabase](https://img.shields.io/badge/Database-Supabase%20PostgreSQL-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com/)
+[![Cloudflare R2](https://img.shields.io/badge/Cloudflare-R2%20Storage-F38020?logo=cloudflare&logoColor=white)](https://www.cloudflare.com/)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![Blazor](https://img.shields.io/badge/Blazor-Interactive%20Server-0078D7?logo=blazor&logoColor=white)](https://dotnet.microsoft.com/apps/aspnet/web-apps/blazor)
-[![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17%20Alpine-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Cloudflare R2](https://img.shields.io/badge/Cloudflare-R2%20Storage-F38020?logo=cloudflare&logoColor=white)](https://www.cloudflare.com/)
 [![Tests](https://img.shields.io/badge/Tests-641%20PASS%20%2B%201%20SKIP-brightgreen?logo=xunit&logoColor=white)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **CinemaFlow (WebXemPhim)** là nền tảng streaming phim trực tuyến thế hệ mới, được kiến trúc hóa theo mô hình phân tách độc lập giữa **Server (ASP.NET Core Web API)** và **Client (Blazor Web App)** hoàn toàn bằng ngôn ngữ C# (.NET 10). 
 
-Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao cấp (**Cinema-grade Obsidian Palette**), tích hợp công nghệ phân phối luồng phát video bảo mật đa lớp (**Signed URLs, Concurrency Eviction, Anti-Hotlinking**), kho lưu trữ đám mây tốc độ cao Cloudflare R2, giao diện tối ưu hóa cảm ứng di động (**Mobile-First Bottom Dock**) và sẵn sàng triển khai mượt mà trên nền tảng đám mây **Render** và **VPS Linux Docker Compose**.
+Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao cấp (**Cinema-grade Obsidian Palette**), tích hợp công nghệ phân phối luồng phát video bảo mật đa lớp (**Signed URLs, Concurrency Eviction, Anti-Hotlinking**), cơ sở dữ liệu đám mây **Supabase PostgreSQL**, kho lưu trữ đám mây tốc độ cao Cloudflare R2, giao diện tối ưu hóa cảm ứng di động (**Mobile-First Bottom Dock**) và sẵn sàng triển khai mượt mà trên nền tảng đám mây **Render** và **VPS Linux Docker Compose**.
 
 ---
 
 > [!IMPORTANT]
 > ### 🌐 Trải Nghiệm Trực Tiếp (Live Demo & Endpoints)
 > 
-> Hệ thống hiện đang hoạt động trực tuyến trên nền tảng đám mây Render với đầy đủ các dịch vụ:
+> Hệ thống hiện đang hoạt động trực tuyến trên nền tảng đám mây Render kết hợp CSDL Supabase với đầy đủ các dịch vụ:
 > 
-> | Dịch vụ | Địa chỉ truy cập trực tiếp | Kiểm tra sức khỏe (Health Check) |
+> | Dịch vụ | Địa chỉ truy cập trực tiếp | Kiểm tra sức khỏe / Ghi chú |
 > | :--- | :--- | :--- |
 > | **🎬 Web Client (Blazor App)** | [https://w-phim-client.onrender.com](https://w-phim-client.onrender.com) | [`/health` (HTTP 200 OK)](https://w-phim-client.onrender.com/health) |
 > | **⚡ API Server (REST API)** | [https://w-phim-api.onrender.com](https://w-phim-api.onrender.com) | [`/api/health` (HTTP 200 OK)](https://w-phim-api.onrender.com/api/health) |
+> | **🗄️ Database (Managed Cloud)** | [Supabase PostgreSQL](https://supabase.com) | AWS ap-south-1 Pooler, schema `public` & `webxemphim` |
+> | **📦 Media Storage (CDN)** | Cloudflare R2 Storage | Tốc độ cao, phân phối video và thumbnail sắc nét |
 > 
 > - 🍿 **Xem phim mẫu trực tiếp (4K UHD Multi-Server)**: [Đại Chiến Titan: Hồi Kết Tuyệt Đối - Tập 04](https://w-phim-client.onrender.com/watch/32?ep=4)
 > - 🔑 **Đăng nhập thử nghiệm 1-chạm (1-Click Tactile Demo)**: Truy cập trang [Đăng nhập](https://w-phim-client.onrender.com/login) và bấm trực tiếp vào các nút xúc giác **Admin**, **Hội viên VIP** hoặc **Thành viên** để tự động điền và trải nghiệm toàn quyền ngay tức thì.
@@ -40,7 +42,7 @@ Hệ thống được thiết kế theo chuẩn thẩm mỹ điện ảnh cao c�
 3. [🏗️ Kiến Trúc Hệ Thống (Architecture)](#️-kiến-trúc-hệ-thống-architecture)
 4. [💻 Yêu Cầu Môi Trường (Prerequisites)](#-yêu-cầu-môi-trường-prerequisites)
 5. [🚀 Hướng Dẫn Cài Đặt & Chạy Cục Bộ (Local Development)](#-hướng-dẫn-cài-đặt--chạy-cục-bộ-local-development)
-6. [☁️ Triển Khai Cloud Trên Render (Render Cloud Deployment)](#️-triển-khai-cloud-trên-render-render-cloud-deployment)
+6. [☁️ Triển Khai Cloud Trên Render & Supabase (Cloud Deployment)](#️-triển-khai-cloud-trên-render--supabase-cloud-deployment)
 7. [🐳 Triển Khai Docker VPS & CI/CD (VPS Deployment)](#-triển-khai-docker-vps--cicd-vps-deployment)
 8. [🧪 Kiểm Thử Tự Động (641 PASS, 0 Failed)](#-kiểm-thử-tự-động-641-pass-0-failed)
 9. [🔑 Danh Sách Tài Khoản Thử Nghiệm (Seed Accounts)](#-danh-sách-tài-khoản-thử-nghiệm-seed-accounts)
@@ -126,7 +128,7 @@ WebXemPhim Solution
 │   ├── Server/
 │   │   └── WebXemPhim.Server/     # ASP.NET Core REST API (.NET 10)
 │   │       ├── Controllers/       # Movies, Episodes, Stream, Auth, Telemetry, Admin Controllers
-│   │       ├── Data/              # EF Core AppDbContext, DatabaseSeeder, Migrations (PostgreSQL/Supabase)
+│   │       ├── Data/              # EF Core AppDbContext, DatabaseSeeder, Supabase Pooler Migrations
 │   │       ├── Hubs/              # SignalR CinemaHub (Real-time alerts, playback synchronization)
 │   │       ├── Services/          # Cloudflare R2, StreamSession, AuthService, FieldEncryption
 │   │       └── Security/          # StreamUrlSigner, Rate Limiting, PublicUrlResolver, HLS Rewriter
@@ -165,8 +167,8 @@ WebXemPhim Solution
 - **Hệ điều hành**: Windows 10/11, macOS hoặc Linux (Ubuntu 22.04+).
 - **Bộ công cụ phát triển**: [.NET 10 SDK](https://dotnet.microsoft.com/download) (kiểm tra bằng lệnh `dotnet --version`).
 - **Cơ sở dữ liệu**:
-  - **Khuyến nghị**: [PostgreSQL 17](https://www.postgresql.org/) (hoặc chạy nhanh qua Docker / kết nối Supabase Pooler).
-  - **Tùy chọn nhẹ**: MariaDB 10.6+ hoặc MySQL 8.0+.
+  - **Môi trường Cloud / Production (Mặc định)**: [Supabase PostgreSQL](https://supabase.com) (kết nối trực tiếp hoặc thông qua Supabase Connection Pooler AWS ap-south-1 với cổng 5432/6543, xác thực SSL/TLS an toàn).
+  - **Môi trường Cục bộ (Local Development)**: Sử dụng instance Supabase có sẵn hoặc chạy Docker PostgreSQL 17 Alpine cục bộ.
 - **Docker Desktop** (tùy chọn - dùng khi chạy kiểm thử tích hợp Testcontainers hoặc đóng gói container).
 
 ---
@@ -192,9 +194,9 @@ cp src/Server/WebXemPhim.Server/appsettings.Development.example.json src/Server/
 cp src/Client/WebXemPhim.Client/appsettings.Development.example.json src/Client/WebXemPhim.Client/appsettings.Development.json
 ```
 
-*(Mặc định kết nối CSDL sử dụng `Host=127.0.0.1;Port=5432;Database=webxemphim;Username=webxemphim;Password=webxemphim;`)*
+*(Bạn có thể trỏ `ConnectionStrings:Default` tới CSDL Supabase đám mây hoặc CSDL PostgreSQL cục bộ)*
 
-### Bước 3: Khởi động cơ sở dữ liệu PostgreSQL (qua Docker)
+### Bước 3: Khởi động cơ sở dữ liệu (Nếu chạy Docker cục bộ)
 ```bash
 docker run --name cinema-postgres -e POSTGRES_DB=webxemphim -e POSTGRES_USER=webxemphim -e POSTGRES_PASSWORD=webxemphim -p 5432:5432 -d postgres:17-alpine
 ```
@@ -217,14 +219,22 @@ dotnet run --project src/Client/WebXemPhim.Client/WebXemPhim.Client.csproj --lau
 
 ---
 
-## ☁️ Triển Khai Cloud Trên Render (Render Cloud Deployment)
+## ☁️ Triển Khai Cloud Trên Render & Supabase (Cloud Deployment)
 
-Hệ thống được cấu hình sẵn 2 Web Service độc lập trên **Render** (Singapore Region) thông qua Dockerfile tối ưu:
+Hệ thống được cấu hình sẵn 2 Web Service độc lập trên **Render** (Singapore Region) kết nối trực tiếp với cụm cơ sở dữ liệu **Supabase PostgreSQL**:
 
-| Service Name | Render Resource ID | Dockerfile | Public URL | Health Check Path |
-| :--- | :--- | :--- | :--- | :--- |
-| **`w-phim-api`** | `srv-dbkrfv95efls73ff858g` | `Dockerfile.server` | `https://w-phim-api.onrender.com` | `/api/health` |
-| **`w-phim-client`** | `srv-dbkrgr95efls73ffaqs0` | `Dockerfile.client` | `https://w-phim-client.onrender.com` | `/health` |
+| Dịch vụ | Nền tảng | Resource ID / Host | Cấu hình Runtime |
+| :--- | :--- | :--- | :--- |
+| **API Server (`w-phim-api`)** | Render Web Service | `srv-dbkrfv95efls73ff858g` | Docker (`Dockerfile.server`), ASP.NET Core 10 |
+| **Client App (`w-phim-client`)** | Render Web Service | `srv-dbkrgr95efls73ffaqs0` | Docker (`Dockerfile.client`), Blazor Web App |
+| **Database** | Supabase Managed | `aws-0-ap-south-1.pooler.supabase.com` | PostgreSQL 17 + Supabase Pooler |
+| **Media Storage** | Cloudflare R2 | Buckets cá nhân tốc độ cao | Phân phối luồng video & ảnh bìa |
+
+### Cơ chế kết nối Supabase Cloud:
+- API Server kết nối với Supabase qua Connection Pooler giúp tối ưu số lượng kết nối đồng thời từ các container.
+- Tự động chạy Migration và Seed dữ liệu chuẩn hóa vào Supabase schema (`public` và `webxemphim`).
+- Hỗ trợ đầy đủ extension `unaccent` và GIN vector search cho tìm kiếm tiếng Việt không dấu.
+- Dữ liệu mật khẩu và thông tin nhạy cảm của người dùng được mã hóa bằng AES-256 (Field Encryption).
 
 ### Quy trình kích hoạt triển khai bằng Render CLI:
 ```bash
