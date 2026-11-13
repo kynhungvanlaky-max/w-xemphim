@@ -333,7 +333,3 @@ Dự án tuân thủ nghiêm ngặt các quy tắc kỹ thuật trong [`AGENTS.m
 
 ---
 
-## 📄 Giấy Phép & Bản Quyền (License)
-
-Dự án được phân phối dưới giấy phép mã nguồn mở **MIT License**. Mọi chi tiết xin liên hệ repository chính thức tại:  
-👉 [GitHub Repository: kynhungvanlaky-max/w-xemphim](https://github.com/kynhungvanlaky-max/w-xemphim)
