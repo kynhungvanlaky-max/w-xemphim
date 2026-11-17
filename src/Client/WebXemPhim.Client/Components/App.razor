@@ -61,12 +61,26 @@
                     fetch(url, { mode: 'no-cors', cache: 'no-store' }).catch(function() {});
                 } catch(e) {}
             };
+            // 1. Ping local YARP reverse proxy (immediately forwards to Server REST API)
             ping('/api/health');
-            var apiBase = '@rawApiBase';
-            if (apiBase && apiBase !== '/' && apiBase !== window.location.origin) {
+
+            // 2. Direct ping to Server REST API domain (trims any trailing slash to avoid 404 //api/health)
+            var apiBase = ('@rawApiBase').replace(/\/+$/, '');
+            if (apiBase && apiBase !== '' && apiBase !== '/' && apiBase !== window.location.origin) {
                 ping(apiBase + '/api/health');
                 ping(apiBase + '/health');
+                ping(apiBase + '/api/home');
             }
+
+            // 3. Keep-alive ping when user focuses window or returns to tab
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) {
+                    ping('/api/health');
+                    if (apiBase && apiBase !== '' && apiBase !== '/' && apiBase !== window.location.origin) {
+                        ping(apiBase + '/api/health');
+                    }
+                }
+            });
         })();
     </script>
     <ImportMap AdditionalAttributes="@(new Dictionary<string, object> { ["nonce"] = HttpContextAccessor.HttpContext?.Items[WebSecurityExtensions.NonceKey]?.ToString() ?? "" })" />

@@ -114,7 +114,9 @@ builder.Services.AddHttpClient("BackendWarmup", client =>
     client.BaseAddress = new Uri(apiBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(15);
 });
-builder.Services.AddSingleton<IBackendWarmupService, BackendWarmupService>();
+builder.Services.AddSingleton<BackendWarmupService>();
+builder.Services.AddSingleton<IBackendWarmupService>(sp => sp.GetRequiredService<BackendWarmupService>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<BackendWarmupService>());
 
 builder.Services.AddHttpClient<IAdminApiClient, AdminApiClient>(client =>
 {

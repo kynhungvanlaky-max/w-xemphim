@@ -521,11 +521,32 @@
                     await AcquireLeaseAndStartHeartbeatAsync();
                 }
             }
+            else
+            {
+                loadError = "Đang kết nối trung tâm máy chủ phát phim...";
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(3000);
+                    if (version == loadVersion && movie is null)
+                    {
+                        await InvokeAsync(LoadMovie);
+                    }
+                });
+            }
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
             if (version != loadVersion) return;
-            movie = null; similarMovies = []; loadError = "Kết nối tới thư viện phim đang gián đoạn. Vui lòng thử lại.";
+            movie = null; similarMovies = [];
+            loadError = "Đang kết nối trung tâm máy chủ phát phim...";
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(3000);
+                if (version == loadVersion && movie is null)
+                {
+                    await InvokeAsync(LoadMovie);
+                }
+            });
         }
         finally { if (version == loadVersion) loading = false; }
     }
