@@ -42,22 +42,27 @@ builder.Services.AddRazorComponents()
 // các endpoint HTTP của web client vẫn giữ mức 64 KB.
 builder.Services.AddSignalR(options => options.MaximumReceiveMessageSize = 4 * 1024 * 1024);
 
-// Standard resilience handler for public consumer APIs
+// Standard resilience handler for public consumer APIs with cold-start tolerance for Render
 Action<HttpStandardResilienceOptions> standardResilience = options =>
 {
-    options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(15);
-    options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(60);
-    options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
+    options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(30);
+    options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(90);
+    options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(60);
 
     options.Retry.MaxRetryAttempts = 6;
-    options.Retry.Delay = TimeSpan.FromSeconds(1);
-    options.Retry.MaxDelay = TimeSpan.FromSeconds(4);
+    options.Retry.Delay = TimeSpan.FromSeconds(2);
+    options.Retry.MaxDelay = TimeSpan.FromSeconds(8);
     options.Retry.BackoffType = DelayBackoffType.Exponential;
     options.Retry.UseJitter = true;
     options.Retry.ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
-        .Handle<HttpRequestException>(exception => exception.StatusCode is null)
+        .Handle<HttpRequestException>()
+        .Handle<TaskCanceledException>()
+        .Handle<TimeoutException>()
         .HandleResult(response => response.StatusCode is HttpStatusCode.RequestTimeout
             || response.StatusCode == HttpStatusCode.TooManyRequests
+            || response.StatusCode == HttpStatusCode.BadGateway
+            || response.StatusCode == HttpStatusCode.ServiceUnavailable
+            || response.StatusCode == HttpStatusCode.GatewayTimeout
             || (int)response.StatusCode >= 500);
 };
 
@@ -93,16 +98,23 @@ if (!apiBaseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
 builder.Services.AddHttpClient<IMovieApiClient, MovieApiClient>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
-    client.Timeout = TimeSpan.FromSeconds(15);
+    client.Timeout = TimeSpan.FromSeconds(90);
 }).AddHttpMessageHandler<ForwardedClientIpHandler>()
   .AddStandardResilienceHandler(standardResilience);
 
 builder.Services.AddHttpClient("AccountApi", client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
-    client.Timeout = TimeSpan.FromSeconds(15);
+    client.Timeout = TimeSpan.FromSeconds(90);
 }).AddHttpMessageHandler<ForwardedClientIpHandler>()
   .AddStandardResilienceHandler(standardResilience);
+
+builder.Services.AddHttpClient("BackendWarmup", client =>
+{
+    client.BaseAddress = new Uri(apiBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+builder.Services.AddSingleton<IBackendWarmupService, BackendWarmupService>();
 
 builder.Services.AddHttpClient<IAdminApiClient, AdminApiClient>(client =>
 {
@@ -232,6 +244,14 @@ app.Use(async (context, next) =>
             ipProvider.ClientIp = clientIp.ToString();
         }
     }
+
+    // Trigger backend warmup immediately on incoming visitor traffic if not yet warm
+    var warmupService = context.RequestServices.GetService<IBackendWarmupService>();
+    if (warmupService != null && !warmupService.IsReady)
+    {
+        warmupService.TriggerWarmup();
+    }
+
     await next(context);
 });
 app.UseSiteSecurity(client: true, app.Environment.IsDevelopment(), app.Configuration);
@@ -249,12 +269,19 @@ app.UseAntiforgery();
 
 app.MapStaticAssets();
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy", service = "CinemaFlow.Client", timestamp = DateTimeOffset.UtcNow }));
-app.MapGet("/api/health", () => Results.Ok(new { status = "Healthy", service = "CinemaFlow.Client", timestamp = DateTimeOffset.UtcNow }));
+// /api/health is deliberately omitted here so that YARP reverse proxy forwards /api/health
+// directly to w-phim-api, ensuring any health ping to Client wakes up the API server as well.
 app.MapReverseProxy();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+lifetime.ApplicationStarted.Register(() =>
+{
+    app.Logger.LogInformation("WebXemPhim.Client started. Triggering background warmup for backend REST API...");
+    var warmup = app.Services.GetRequiredService<IBackendWarmupService>();
+    warmup.TriggerWarmup();
+});
 lifetime.ApplicationStopping.Register(() =>
 {
     app.Logger.LogInformation("WebXemPhim.Client application is stopping gracefully.");

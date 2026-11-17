@@ -1,5 +1,6 @@
 @page "/"
 @inject IMovieApiClient ApiClient
+@inject IBackendWarmupService WarmupService
 @inject ILogger<Home> Logger
 @implements IDisposable
 
@@ -157,6 +158,23 @@ else if (featuredMovie is not null)
     private HomeAggregateDto? _cachedAggregate;
     private PersistingComponentStateSubscription? _persistingSubscription;
 
+    protected override void OnInitialized()
+    {
+        WarmupService.OnBackendAwakened += OnBackendAwakenedHandler;
+    }
+
+    private void OnBackendAwakenedHandler()
+    {
+        if (_cachedAggregate is null || (_cachedAggregate.Featured is null && _cachedAggregate.Trending.Count == 0))
+        {
+            _ = InvokeAsync(async () =>
+            {
+                await LoadHomeDataAsync();
+                StateHasChanged();
+            });
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         if (ApplicationState is not null)
@@ -171,21 +189,60 @@ else if (featuredMovie is not null)
             }
         }
 
+        await LoadHomeDataAsync();
+    }
+
+    private async Task LoadHomeDataAsync()
+    {
         try
         {
             var aggregate = await ApiClient.GetHomeAggregateAsync();
-            if (aggregate is not null)
+            if (aggregate is not null && (aggregate.Featured is not null || aggregate.Trending.Count > 0 || aggregate.Latest.Count > 0))
             {
                 ApplyAggregate(aggregate);
+                loading = false;
+                return;
             }
         }
         catch (Exception ex)
         {
             Logger?.LogWarning(ex, "Không thể tải dữ liệu trang chủ từ API.");
         }
-        finally
+
+        _ = RetryLoadUntilAvailableAsync();
+    }
+
+    private async Task RetryLoadUntilAvailableAsync()
+    {
+        for (int i = 0; i < 10; i++)
+        {
+            if (_cachedAggregate is not null && (_cachedAggregate.Featured is not null || _cachedAggregate.Trending.Count > 0))
+            {
+                break;
+            }
+
+            await Task.Delay(3000);
+            try
+            {
+                var aggregate = await ApiClient.GetHomeAggregateAsync();
+                if (aggregate is not null && (aggregate.Featured is not null || aggregate.Trending.Count > 0 || aggregate.Latest.Count > 0))
+                {
+                    ApplyAggregate(aggregate);
+                    loading = false;
+                    await InvokeAsync(StateHasChanged);
+                    break;
+                }
+            }
+            catch
+            {
+                // Continue retrying while backend spins up
+            }
+        }
+
+        if (loading)
         {
             loading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -212,6 +269,7 @@ else if (featuredMovie is not null)
 
     public void Dispose()
     {
+        WarmupService.OnBackendAwakened -= OnBackendAwakenedHandler;
         _persistingSubscription?.Dispose();
     }
 }

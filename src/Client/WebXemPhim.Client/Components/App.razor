@@ -1,5 +1,6 @@
 @inject IHttpContextAccessor HttpContextAccessor
 @inject AuthState Auth
+@inject IConfiguration Configuration
 @using WebXemPhim.Shared.Security
 @using WebXemPhim.Client.Services
 @implements IDisposable
@@ -49,6 +50,25 @@
     <script id="route-style-map" type="application/json">@((MarkupString)RouteStyleMapJson)</script>
     <script src="@Assets["js/route-style-preload.js"]"></script>
     <script src="@Assets["js/theme-manager.js"]"></script>
+    @{
+        var rawApiBase = Configuration["Security:PublicApiBaseUrl"] ?? Configuration["ApiBaseUrl"] ?? "";
+        var scriptNonce = HttpContextAccessor.HttpContext?.Items[WebSecurityExtensions.NonceKey]?.ToString() ?? "";
+    }
+    <script nonce="@scriptNonce">
+        (function() {
+            var ping = function(url) {
+                try {
+                    fetch(url, { mode: 'no-cors', cache: 'no-store' }).catch(function() {});
+                } catch(e) {}
+            };
+            ping('/api/health');
+            var apiBase = '@rawApiBase';
+            if (apiBase && apiBase !== '/' && apiBase !== window.location.origin) {
+                ping(apiBase + '/api/health');
+                ping(apiBase + '/health');
+            }
+        })();
+    </script>
     <ImportMap AdditionalAttributes="@(new Dictionary<string, object> { ["nonce"] = HttpContextAccessor.HttpContext?.Items[WebSecurityExtensions.NonceKey]?.ToString() ?? "" })" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="alternate icon" type="image/png" href="favicon.png" />
