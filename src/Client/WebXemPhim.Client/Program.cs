@@ -177,20 +177,28 @@ builder.Services.AddReverseProxy()
         var proxySecret = SignedClientIpHeader.ResolveSecret(builder.Configuration);
         builderContext.AddRequestTransform(transformContext =>
         {
-            transformContext.ProxyRequest.Headers.Remove("X-Forwarded-Host");
-            transformContext.ProxyRequest.Headers.Remove("X-Forwarded-Proto");
-            transformContext.ProxyRequest.Headers.Remove("X-Forwarded-Prefix");
-            transformContext.ProxyRequest.Headers.Remove("X-Real-IP");
-            transformContext.ProxyRequest.Headers.Remove("CF-Connecting-IP");
-            transformContext.ProxyRequest.Headers.Remove("True-Client-IP");
-            transformContext.ProxyRequest.Headers.Remove("Forwarded");
+            var proxyHeaders = transformContext.ProxyRequest.Headers;
+            foreach (var headerName in proxyHeaders.Select(h => h.Key).ToList())
+            {
+                if (headerName.StartsWith("X-Forwarded-", StringComparison.OrdinalIgnoreCase)
+                    || headerName.StartsWith("CF-", StringComparison.OrdinalIgnoreCase)
+                    || headerName.StartsWith("X-Render-", StringComparison.OrdinalIgnoreCase)
+                    || headerName.StartsWith("Render-", StringComparison.OrdinalIgnoreCase)
+                    || headerName.Equals("X-Real-IP", StringComparison.OrdinalIgnoreCase)
+                    || headerName.Equals("True-Client-IP", StringComparison.OrdinalIgnoreCase)
+                    || headerName.Equals("CDN-Loop", StringComparison.OrdinalIgnoreCase)
+                    || headerName.Equals("Forwarded", StringComparison.OrdinalIgnoreCase))
+                {
+                    proxyHeaders.Remove(headerName);
+                }
+            }
 
             var remoteIp = transformContext.HttpContext.Connection.RemoteIpAddress;
             if (remoteIp is not null)
             {
                 var clientIp = SignedClientIpHeader.NormalizeIp(remoteIp);
                 SignedClientIpHeader.AttachSignedHeaders(
-                    transformContext.ProxyRequest.Headers,
+                    proxyHeaders,
                     clientIp,
                     proxySecret,
                     DateTimeOffset.UtcNow);

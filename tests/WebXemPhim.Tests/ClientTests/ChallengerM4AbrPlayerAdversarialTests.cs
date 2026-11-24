@@ -301,5 +301,12 @@ public sealed class ChallengerM4AbrPlayerAdversarialTests
         var handler = new WebXemPhim.Client.Services.ClientIpCircuitHandler(provider, accessor);
         await handler.OnConnectionUpAsync(null!, CancellationToken.None);
         Assert.Equal("198.51.100.88", provider.ClientIp);
+
+        // 4. Tamper-proof SSR-to-Circuit DataProtection handoff
+        var dp = Microsoft.AspNetCore.DataProtection.DataProtectionProvider.Create("WebXemPhim.Client.Tests");
+        var protectedIp = WebXemPhim.Client.Services.CircuitClientIpProvider.ProtectClientIp(dp, "::ffff:203.0.113.99");
+        Assert.False(string.IsNullOrWhiteSpace(protectedIp));
+        Assert.Equal("203.0.113.99", WebXemPhim.Client.Services.CircuitClientIpProvider.TryUnprotectClientIp(dp, protectedIp));
+        Assert.Null(WebXemPhim.Client.Services.CircuitClientIpProvider.TryUnprotectClientIp(dp, protectedIp + "tampered"));
     }
 }

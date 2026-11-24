@@ -1,4 +1,5 @@
 @inject IHttpContextAccessor HttpContextAccessor
+@inject Microsoft.AspNetCore.DataProtection.IDataProtectionProvider DataProtectionProvider
 @inject AuthState Auth
 @inject IConfiguration Configuration
 @using WebXemPhim.Shared.Security
@@ -89,7 +90,7 @@
     <HeadOutlet />
 </head>
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="InteractiveServer" ProtectedClientIp="@ProtectedClientIp" />
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script src="@Assets["js/admin-tools.js"]"></script>
@@ -103,6 +104,18 @@
     /// js/route-style-preload.js to preload the sheet of the route a visitor is about to open.
     /// </summary>
     private string RouteStyleMapJson => RouteStylesheetCatalog.ToJson(path => Assets[path]);
+
+    private string? ProtectedClientIp
+    {
+        get
+        {
+            var remoteIp = HttpContextAccessor.HttpContext?.Connection?.RemoteIpAddress;
+            if (remoteIp is null) return null;
+            return CircuitClientIpProvider.ProtectClientIp(
+                DataProtectionProvider,
+                SignedClientIpHeader.NormalizeIp(remoteIp));
+        }
+    }
 
     protected override void OnInitialized()
     {

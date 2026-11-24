@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components.Server.Circuits;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using WebXemPhim.Shared.Security;
 
@@ -11,6 +12,9 @@ public interface ICircuitClientIpProvider
 
 public sealed class CircuitClientIpProvider : ICircuitClientIpProvider
 {
+    public const string DataProtectionPurpose = "CinemaFlow.CircuitClientIp.v1";
+    private static readonly TimeSpan DefaultProtectionLifetime = TimeSpan.FromMinutes(15);
+
     private readonly IHttpContextAccessor? _httpContextAccessor;
     private string? _clientIp;
 
@@ -18,6 +22,29 @@ public sealed class CircuitClientIpProvider : ICircuitClientIpProvider
     {
         _httpContextAccessor = httpContextAccessor;
         TryCaptureFromHttpContext();
+    }
+
+    public static string? ProtectClientIp(IDataProtectionProvider provider, string? rawIp, TimeSpan? lifetime = null)
+    {
+        var normalized = SignedClientIpHeader.TryNormalizeIp(rawIp);
+        if (string.IsNullOrWhiteSpace(normalized)) return null;
+        var protector = provider.CreateProtector(DataProtectionPurpose).ToTimeLimitedDataProtector();
+        return protector.Protect(normalized, lifetime ?? DefaultProtectionLifetime);
+    }
+
+    public static string? TryUnprotectClientIp(IDataProtectionProvider provider, string? protectedToken)
+    {
+        if (string.IsNullOrWhiteSpace(protectedToken)) return null;
+        try
+        {
+            var protector = provider.CreateProtector(DataProtectionPurpose).ToTimeLimitedDataProtector();
+            var raw = protector.Unprotect(protectedToken);
+            return SignedClientIpHeader.TryNormalizeIp(raw);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public string? ClientIp

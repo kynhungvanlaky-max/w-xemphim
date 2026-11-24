@@ -1,6 +1,23 @@
-﻿<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+﻿@inject ICircuitClientIpProvider CircuitIpProvider
+@inject Microsoft.AspNetCore.DataProtection.IDataProtectionProvider DataProtectionProvider
+@using WebXemPhim.Client.Services
+
+<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">
         <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
 </Router>
+
+@code {
+    [Parameter] public string? ProtectedClientIp { get; set; }
+
+    protected override void OnInitialized()
+    {
+        var ip = CircuitClientIpProvider.TryUnprotectClientIp(DataProtectionProvider, ProtectedClientIp);
+        if (!string.IsNullOrWhiteSpace(ip))
+        {
+            CircuitIpProvider.ClientIp = ip;
+        }
+    }
+}

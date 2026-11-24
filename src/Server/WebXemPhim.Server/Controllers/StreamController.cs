@@ -374,13 +374,22 @@ public class StreamController(
 
         if (!validation.IsValid)
         {
+            var rawRemote = HttpContext.Connection.RemoteIpAddress is { } r
+                ? SignedClientIpHeader.NormalizeIp(r)
+                : "null";
+            var xffCount = Request.Headers.TryGetValue("X-Forwarded-For", out var xffVals)
+                ? xffVals.SelectMany(v => (v ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries)).Count()
+                : 0;
             logger.LogWarning(
-                "PlayStream rejected ({Status}) for episode={EpisodeId} pos={Pos} hasSid={HasSid} hasSignedProxyHeader={HasSignedProxyHeader}",
+                "PlayStream rejected ({Status}) for episode={EpisodeId} pos={Pos} hasSid={HasSid} hasSignedProxyHeader={HasSignedProxyHeader} resolvedIp={ResolvedIp} remoteIp={RemoteIp} xffCount={XffCount}",
                 validation.Status,
                 episodeId,
                 pos,
                 !string.IsNullOrWhiteSpace(sid),
-                Request.Headers.ContainsKey(SignedClientIpHeader.SignatureHeaderName));
+                Request.Headers.ContainsKey(SignedClientIpHeader.SignatureHeaderName),
+                clientIp,
+                rawRemote,
+                xffCount);
             return StatusCode(StatusCodes.Status403Forbidden,
                 ApiResponse<string>.Fail(validation.ErrorMessage ?? "Chữ ký bảo vệ luồng không hợp lệ."));
         }
