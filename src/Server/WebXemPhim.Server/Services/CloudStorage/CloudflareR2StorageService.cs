@@ -35,7 +35,11 @@ public sealed class CloudflareR2StorageService : ICloudStorageService, IDisposab
                 {
                     ServiceURL = serviceUrl,
                     ForcePathStyle = true,
-                    AuthenticationRegion = !string.IsNullOrWhiteSpace(_options.Region) ? _options.Region : "auto"
+                    AuthenticationRegion = !string.IsNullOrWhiteSpace(_options.Region) ? _options.Region : "auto",
+                    // AWSSDK.S3 v4 bật RequestChecksumCalculation=WHEN_SUPPORTED mặc định, chèn header
+                    // x-amz-checksum-crc32 / chunked trailer khiến Cloudflare R2 từ chối PUT & Presigned URL.
+                    RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
+                    ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED
                 };
 
                 _s3Client = new AmazonS3Client(credentials, config);
@@ -279,9 +283,21 @@ public sealed class CloudflareR2StorageService : ICloudStorageService, IDisposab
             BucketName = _options.BucketName,
             Key = key,
             InputStream = stream,
+            AutoCloseStream = false,
             ContentType = string.IsNullOrWhiteSpace(contentType) ? GetMediaContentType(key) : contentType,
-            DisablePayloadSigning = true
+            DisablePayloadSigning = true,
+            DisableDefaultChecksumValidation = true,
+            UseChunkEncoding = !stream.CanSeek
         };
+
+        if (stream.CanSeek)
+        {
+            var remaining = stream.Length - stream.Position;
+            if (remaining >= 0)
+            {
+                request.Headers.ContentLength = remaining;
+            }
+        }
 
         await _s3Client.PutObjectAsync(request, cancellationToken);
 

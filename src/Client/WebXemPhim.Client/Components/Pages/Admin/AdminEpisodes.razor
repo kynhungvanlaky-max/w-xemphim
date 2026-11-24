@@ -505,7 +505,7 @@
                         <div class="r2-upload-card">
                             <div class="r2-upload-picker-box">
                                 <label class="r2-upload-dropzone @(selectedEpisodeVideoFile != null ? "has-file" : "")">
-                                    <InputFile OnChange="HandleEpisodeVideoFileSelected" accept="video/mp4,video/webm,video/x-matroska,video/quicktime,.mp4,.webm,.mkv,.mov,.m4v" class="r2-file-input-hidden" />
+                                    <InputFile @ref="episodeR2FileInput" OnChange="HandleEpisodeVideoFileSelected" accept="video/mp4,video/webm,video/x-matroska,video/quicktime,.mp4,.webm,.mkv,.mov,.m4v" class="r2-file-input-hidden" />
                                     <CinemaIcon Name="CinemaIconName.Upload" Size="20" />
                                     <div class="r2-dropzone-text">
                                         @if (selectedEpisodeVideoFile != null)
@@ -548,7 +548,7 @@
                             {
                                 <div class="r2-upload-progress-wrap">
                                     <div class="r2-progress-label">
-                                        <span>Đang truyền tải video lên Cloudflare R2...</span>
+                                        <span>@(string.IsNullOrWhiteSpace(episodeUploadStageText) ? "Đang truyền tải video lên Cloudflare R2..." : episodeUploadStageText)</span>
                                         <strong class="font-mono-num">@episodeUploadProgress%</strong>
                                     </div>
                                     <div class="r2-progress-track">
@@ -833,7 +833,7 @@
                         </div>
                         <div class="r2-panel-body">
                             <label class="r2-upload-dropzone @(studioR2SelectedFile != null ? "has-file" : "")">
-                                <InputFile OnChange="HandleStudioR2FileSelected" accept="video/mp4,video/webm,video/x-matroska,video/quicktime,.mp4,.webm,.mkv,.mov,.m4v" class="r2-file-input-hidden" />
+                                <InputFile @ref="studioR2FileInput" OnChange="HandleStudioR2FileSelected" accept="video/mp4,video/webm,video/x-matroska,video/quicktime,.mp4,.webm,.mkv,.mov,.m4v" class="r2-file-input-hidden" />
                                 <CinemaIcon Name="CinemaIconName.Upload" Size="18" />
                                 <div class="r2-dropzone-text">
                                     @if (studioR2SelectedFile != null)
@@ -1556,9 +1556,11 @@
         UploadR2
     }
     private StreamInputMode episodeStreamInputMode = StreamInputMode.DirectUrl;
+    private InputFile? episodeR2FileInput;
     private IBrowserFile? selectedEpisodeVideoFile;
     private bool isUploadingEpisodeVideo;
     private double episodeUploadProgress;
+    private string episodeUploadStageText = "";
     private string? episodeUploadSuccessMsg;
 
     // Streams Studio R2 Direct Upload & Cluster Distribution Panel
@@ -1573,7 +1575,24 @@
     };
 
     private bool showR2StudioUpload;
+    private InputFile? studioR2FileInput;
     private IBrowserFile? studioR2SelectedFile;
+    private DotNetObjectReference<AdminEpisodes>? r2UploadDotNetRef;
+    private readonly Dictionary<string, (TaskCompletionSource<BrowserR2UploadResult> Tcs, Action<double, string> OnProgress)> pendingR2Uploads = new();
+    private string? activeEpisodeR2UploadId;
+    private string? activeStudioR2UploadId;
+
+    public sealed class BrowserR2UploadResult
+    {
+        public bool Ok { get; set; }
+        public string? Mode { get; set; }
+        public string? Url { get; set; }
+        public string? PlayableUrl { get; set; }
+        public string? ObjectKey { get; set; }
+        public string? FileName { get; set; }
+        public long FileSizeBytes { get; set; }
+        public string? Error { get; set; }
+    }
     private string studioR2MasterQuality = "1080p FHD";
     private bool studioR2SelectAllServers = true;
     private HashSet<string> studioR2SelectedServers = new(StringComparer.OrdinalIgnoreCase)
@@ -2100,35 +2119,133 @@
         }
     }
 
+    [JSInvokable]
+    public void OnR2UploadProgress(string uploadId, double percent, string stageText)
+    {
+        if (pendingR2Uploads.TryGetValue(uploadId, out var entry))
+        {
+            entry.OnProgress(percent, stageText);
+        }
+    }
+
+    [JSInvokable]
+    public void OnR2UploadCompleted(string uploadId, BrowserR2UploadResult result)
+    {
+        if (pendingR2Uploads.Remove(uploadId, out var entry))
+        {
+            entry.Tcs.TrySetResult(result ?? new BrowserR2UploadResult { Ok = false, Error = "Không nhận được phản hồi tải lên." });
+        }
+    }
+
+    private void AbortBrowserR2Upload(ref string? uploadIdSlot)
+    {
+        var id = uploadIdSlot;
+        uploadIdSlot = null;
+        if (string.IsNullOrEmpty(id)) return;
+        if (pendingR2Uploads.Remove(id, out var entry))
+        {
+            entry.Tcs.TrySetResult(new BrowserR2UploadResult { Ok = false, Error = "Đã hủy quá trình tải lên." });
+        }
+        try { _ = JS.InvokeVoidAsync("adminTools.abortR2Upload", id); } catch { }
+    }
+
+    private async Task<BrowserR2UploadResult> RunBrowserR2UploadAsync(
+        InputFile? fileInput,
+        string fileName,
+        string folder,
+        Action<string?> setActiveUploadId,
+        Action<double, string> onProgress)
+    {
+        if (fileInput?.Element is null)
+        {
+            return new BrowserR2UploadResult { Ok = false, Error = "Không tìm thấy phần tử chọn tệp. Vui lòng chọn lại tệp video." };
+        }
+
+        CloudStoragePresignedUploadDto? presigned = null;
+        try
+        {
+            var presignRes = await AdminApi.GetPresignedUploadUrlAsync(fileName, folder: folder);
+            if (presignRes?.Success == true && presignRes.Data is not null && !string.IsNullOrWhiteSpace(presignRes.Data.UploadUrl))
+            {
+                presigned = presignRes.Data;
+            }
+        }
+        catch
+        {
+            // Tiếp tục với kênh fallback XHR qua YARP proxy nếu không lấy được presigned URL.
+        }
+
+        var uploadId = Guid.NewGuid().ToString("N");
+        var tcs = new TaskCompletionSource<BrowserR2UploadResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        pendingR2Uploads[uploadId] = (tcs, onProgress);
+        setActiveUploadId(uploadId);
+
+        try
+        {
+            r2UploadDotNetRef ??= DotNetObjectReference.Create(this);
+            var options = new
+            {
+                uploadId,
+                presignedUrl = presigned?.UploadUrl,
+                r2Url = presigned?.R2Url,
+                playableUrl = presigned?.PlayableUrl,
+                objectKey = presigned?.ObjectKey,
+                contentType = presigned?.ContentType,
+                fallbackUploadUrl = "/api/admin/storage/upload-r2",
+                folder,
+                authToken = Auth.AccessToken ?? string.Empty
+            };
+
+            await JS.InvokeVoidAsync("adminTools.startR2Upload", fileInput.Element, options, r2UploadDotNetRef);
+            return await tcs.Task;
+        }
+        catch (Exception ex)
+        {
+            pendingR2Uploads.Remove(uploadId);
+            return new BrowserR2UploadResult { Ok = false, Error = "Lỗi khởi tạo kết nối tải lên R2: " + ex.Message };
+        }
+        finally
+        {
+            pendingR2Uploads.Remove(uploadId);
+            setActiveUploadId(null);
+        }
+    }
+
     private async Task<bool> ExecuteEpisodeR2Upload()
     {
         if (selectedEpisodeVideoFile == null) return false;
 
         isUploadingEpisodeVideo = true;
         episodeUploadProgress = 0;
+        episodeUploadStageText = "Đang khởi tạo kết nối tải lên Cloudflare R2...";
         actionError = null;
         episodeUploadSuccessMsg = null;
         StateHasChanged();
 
         try
         {
-            await using var stream = selectedEpisodeVideoFile.OpenReadStream(maxAllowedSize: 4L * 1024 * 1024 * 1024);
-            var progress = new Progress<double>(p =>
-            {
-                episodeUploadProgress = Math.Round(p, 0);
-                InvokeAsync(StateHasChanged);
-            });
+            var result = await RunBrowserR2UploadAsync(
+                episodeR2FileInput,
+                selectedEpisodeVideoFile.Name,
+                "episodes",
+                id => activeEpisodeR2UploadId = id,
+                (pct, stage) =>
+                {
+                    episodeUploadProgress = Math.Round(pct, 0);
+                    if (!string.IsNullOrWhiteSpace(stage)) episodeUploadStageText = stage;
+                    _ = InvokeAsync(StateHasChanged);
+                });
 
-            var res = await AdminApi.UploadToR2Async(stream, selectedEpisodeVideoFile.Name, "episodes", selectedEpisodeVideoFile.Size, progress);
-            if (res?.Success == true && !string.IsNullOrWhiteSpace(res.Data?.Url))
+            if (result.Ok && !string.IsNullOrWhiteSpace(result.Url))
             {
-                episodeModel.StreamUrl = res.Data.Url;
-                episodeUploadSuccessMsg = $"Đã tải lên R2 thành công ({Math.Round(selectedEpisodeVideoFile.Size / (1024.0 * 1024.0), 1)} MB)!";
+                episodeModel.StreamUrl = result.Url;
+                var modeTag = string.IsNullOrWhiteSpace(result.Mode) ? "Cloudflare R2" : result.Mode;
+                episodeUploadSuccessMsg = $"Đã tải lên {modeTag} thành công ({Math.Round(selectedEpisodeVideoFile.Size / (1024.0 * 1024.0), 1)} MB)!";
                 return true;
             }
             else
             {
-                actionError = res?.Message ?? "Không thể tải video lên Cloudflare R2.";
+                actionError = result.Error ?? "Không thể tải video lên Cloudflare R2.";
                 return false;
             }
         }
@@ -2170,10 +2287,12 @@
 
     private void CloseEpisodeModal()
     {
+        AbortBrowserR2Upload(ref activeEpisodeR2UploadId);
         showEpisodeModal = false;
         editingEpisodeId = null;
         selectedEpisodeVideoFile = null;
         episodeUploadSuccessMsg = null;
+        episodeUploadStageText = "";
         isUploadingEpisodeVideo = false;
         episodeUploadProgress = 0;
     }
@@ -2778,6 +2897,7 @@
 
     private void CloseStreamsManager()
     {
+        AbortBrowserR2Upload(ref activeStudioR2UploadId);
         managingEpisode = null;
         editingStreamPosition = null;
         showStreamForm = false;
@@ -2861,40 +2981,54 @@
 
         isStudioR2Uploading = true;
         studioR2UploadProgress = 0;
-        studioR2UploadStageText = "Đang truyền tải video Master lên Cloudflare R2...";
+        studioR2UploadStageText = "Đang khởi tạo kết nối tải lên Cloudflare R2...";
         streamActionAlert = null;
         streamActionError = null;
         StateHasChanged();
 
         try
         {
-            await using var stream = studioR2SelectedFile.OpenReadStream(maxAllowedSize: 4L * 1024 * 1024 * 1024);
-            var progress = new Progress<double>(p =>
-            {
-                studioR2UploadProgress = Math.Round(p, 0);
-                if (studioR2UploadProgress >= 99)
+            var fileName = studioR2SelectedFile.Name;
+            var fileSizeMb = Math.Round(studioR2SelectedFile.Size / (1024.0 * 1024.0), 1);
+
+            var uploadRes = await RunBrowserR2UploadAsync(
+                studioR2FileInput,
+                fileName,
+                "episodes",
+                id => activeStudioR2UploadId = id,
+                (pct, stage) =>
                 {
-                    studioR2UploadStageText = "Đang xử lý hạ cấp trần chất lượng & tải các bản luồng lên Cloudflare R2...";
-                }
-                InvokeAsync(StateHasChanged);
-            });
+                    studioR2UploadProgress = Math.Min(98, Math.Round(pct, 0));
+                    if (!string.IsNullOrWhiteSpace(stage)) studioR2UploadStageText = stage;
+                    _ = InvokeAsync(StateHasChanged);
+                });
+
+            if (!uploadRes.Ok || string.IsNullOrWhiteSpace(uploadRes.Url))
+            {
+                streamActionError = uploadRes.Error ?? "Không thể tải tệp video lên Cloudflare R2.";
+                return;
+            }
+
+            studioR2UploadProgress = 99;
+            studioR2UploadStageText = "Đang phân phối luồng phát cho các cụm máy chủ đã chọn...";
+            StateHasChanged();
 
             var targetServersParam = studioR2SelectAllServers ? "all" : string.Join(",", studioR2SelectedServers);
-            var res = await AdminApi.UploadEpisodeVideoAsync(
-                managingEpisode.Id,
-                stream,
-                studioR2SelectedFile.Name,
-                studioR2MasterQuality,
-                studioR2ReplaceExisting,
-                targetServersParam,
-                progress,
-                studioR2SelectedFile.Size);
-
-            if (res?.Success == true && res.Data != null)
+            var distRes = await AdminApi.AutoDistributeStreamsAsync(managingEpisode.Id, new AutoProvisionStreamsRequest
             {
-                var streamsCount = res.Data.Streams.Count;
-                var serversCount = res.Data.DistributedServersCount;
-                streamActionAlert = $"Đã tải video '{studioR2SelectedFile.Name}' ({Math.Round(studioR2SelectedFile.Size / (1024.0 * 1024.0), 1)} MB) lên Cloudflare R2 & tự động phân phối {streamsCount} luồng phát cho {serversCount} cụm máy chủ theo trần chất lượng thành công!";
+                MasterStreamUrl = uploadRes.Url,
+                MasterMaxQuality = studioR2MasterQuality,
+                ReplaceExisting = studioR2ReplaceExisting,
+                TargetServers = targetServersParam
+            });
+
+            if (distRes?.Success == true && distRes.Data != null)
+            {
+                studioR2UploadProgress = 100;
+                var streamsCount = distRes.Data.Count;
+                var serversCount = distRes.Data.Select(s => s.ServerName).Distinct().Count();
+                var modeTag = string.IsNullOrWhiteSpace(uploadRes.Mode) ? "Cloudflare R2" : uploadRes.Mode;
+                streamActionAlert = $"Đã tải video '{fileName}' ({fileSizeMb} MB) qua {modeTag} & phân phối {streamsCount} luồng phát cho {serversCount} cụm máy chủ thành công!";
                 showR2StudioUpload = false;
                 studioR2SelectedFile = null;
 
@@ -2907,7 +3041,7 @@
             }
             else
             {
-                streamActionError = res?.Message ?? "Không thể hoàn tất quá trình tải lên và phân phối luồng R2.";
+                streamActionError = distRes?.Message ?? "Đã tải lên R2 nhưng không thể phân phối luồng phát cho tập phim.";
             }
         }
         catch (Exception ex)
@@ -3412,5 +3546,9 @@
 
     public void Dispose()
     {
+        AbortBrowserR2Upload(ref activeEpisodeR2UploadId);
+        AbortBrowserR2Upload(ref activeStudioR2UploadId);
+        r2UploadDotNetRef?.Dispose();
+        r2UploadDotNetRef = null;
     }
 }

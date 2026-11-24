@@ -443,6 +443,116 @@ public sealed class AdminEpisodeVideoIngestTests : IDisposable
         Assert.Contains(mock.Invocations, inv => inv.height == 720);
         Assert.Contains(mock.Invocations, inv => inv.height == 480);
     }
+
+    private sealed class CountingFakeCloudStorage(bool failUpload = false) : WebXemPhim.Server.Services.CloudStorage.ICloudStorageService
+    {
+        public int UploadCalls { get; private set; }
+        public bool IsConfigured => true;
+        public bool IsCloudStorageUrl(string? streamUrl) => streamUrl?.StartsWith("r2://", StringComparison.OrdinalIgnoreCase) == true;
+        public string ExtractObjectKey(string streamUrl) => streamUrl.Replace("r2://webxemphim-movies/", "", StringComparison.OrdinalIgnoreCase);
+        public Task<string?> ResolvePlaybackUrlAsync(string streamUrl, TimeSpan? expiry = null, string httpMethod = "GET", CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+        public Task<(Stream? ContentStream, string? ContentType, long ContentLength, bool SupportsRange)> OpenReadStreamAsync(string objectKey, string? rangeHeader = null, CancellationToken cancellationToken = default) => Task.FromResult<(Stream?, string?, long, bool)>((null, null, 0, false));
+        public Task<bool> ExistsAsync(string objectKey, CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<CloudStoragePresignedUploadDto?> GeneratePresignedUploadUrlAsync(string fileName, string? contentType = null, string folder = "episodes", TimeSpan? expiry = null, CancellationToken cancellationToken = default) => Task.FromResult<CloudStoragePresignedUploadDto?>(null);
+
+        public Task<string> UploadFileAsync(Stream stream, string objectKey, string contentType, CancellationToken cancellationToken = default)
+        {
+            UploadCalls++;
+            if (failUpload)
+            {
+                throw new InvalidOperationException("Simulated R2 S3 error");
+            }
+            return Task.FromResult($"r2://webxemphim-movies/{objectKey}");
+        }
+    }
+
+    [Fact]
+    public async Task UploadEpisodeVideo_WithR2ConfiguredAndNoTranscoder_UploadsMasterOnceAndDistributesR2Urls()
+    {
+        await using var db = await _contextFactory.CreateDbContextAsync();
+        db.Movies.Add(new MovieEntity { Id = 32, Title = "Test R2", Slug = "test-r2" });
+        db.Episodes.Add(new EpisodeEntity { Id = 3201, MovieId = 32, EpisodeNumber = 1, Title = "Tập 01" });
+        await db.SaveChangesAsync();
+
+        var cloud = new CountingFakeCloudStorage(failUpload: false);
+        var controller = new AdminEpisodesController(
+            _contextFactory,
+            TimeProvider.System,
+            env: new TestHostEnvironment(_tempDirectory),
+            videoStorage: _videoStorage,
+            cloudStorage: cloud);
+
+        var videoBytes = new byte[2048];
+        Array.Copy(CreateDummyMp4Header(), videoBytes, 16);
+        using var ms = new MemoryStream(videoBytes);
+        var formFile = new FormFile(ms, 0, videoBytes.Length, "file", "Video.mp4")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "video/mp4"
+        };
+
+        var result = await controller.UploadEpisodeVideo(3201, formFile, masterMaxQuality: "1080p FHD", replaceExisting: true);
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var apiRes = Assert.IsType<ApiResponse<VideoIngestResultDto>>(ok.Value);
+
+        Assert.True(apiRes.Success);
+        Assert.NotNull(apiRes.Data);
+        Assert.Equal("Cloudflare R2", apiRes.Data.StorageMode);
+        // Must upload ONCE (not 4 duplicate copies when FFmpeg is absent)
+        Assert.Equal(1, cloud.UploadCalls);
+        Assert.NotEmpty(apiRes.Data.Streams);
+        Assert.All(apiRes.Data.Streams, s => Assert.StartsWith("r2://webxemphim-movies/episodes/3201/", s.StreamUrl));
+    }
+
+    [Fact]
+    public async Task UploadEpisodeVideo_WhenR2UploadFails_Returns502InsteadOfSilentLocalFallback()
+    {
+        await using var db = await _contextFactory.CreateDbContextAsync();
+        db.Movies.Add(new MovieEntity { Id = 33, Title = "Test R2 Error", Slug = "test-r2-err" });
+        db.Episodes.Add(new EpisodeEntity { Id = 3301, MovieId = 33, EpisodeNumber = 1, Title = "Tập 01" });
+        await db.SaveChangesAsync();
+
+        var cloud = new CountingFakeCloudStorage(failUpload: true);
+        var controller = new AdminEpisodesController(
+            _contextFactory,
+            TimeProvider.System,
+            env: new TestHostEnvironment(_tempDirectory),
+            videoStorage: _videoStorage,
+            cloudStorage: cloud);
+
+        var videoBytes = new byte[2048];
+        Array.Copy(CreateDummyMp4Header(), videoBytes, 16);
+        using var ms = new MemoryStream(videoBytes);
+        var formFile = new FormFile(ms, 0, videoBytes.Length, "file", "Video.mp4")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "video/mp4"
+        };
+
+        var result = await controller.UploadEpisodeVideo(3301, formFile, masterMaxQuality: "1080p FHD", replaceExisting: true);
+        var err = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status502BadGateway, err.StatusCode);
+        var apiRes = Assert.IsType<ApiResponse<VideoIngestResultDto>>(err.Value);
+        Assert.False(apiRes.Success);
+        Assert.Contains("Cloudflare R2", apiRes.Message ?? string.Empty);
+    }
+
+    [Fact]
+    public void AdminEpisodes_R2Upload_BypassesBlazorSignalROpenReadStream()
+    {
+        var razorPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Client", "WebXemPhim.Client", "Components", "Pages", "Admin", "AdminEpisodes.razor");
+        var razor = File.ReadAllText(razorPath);
+        var jsPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Client", "WebXemPhim.Client", "wwwroot", "js", "admin-tools.js");
+        var js = File.ReadAllText(jsPath);
+
+        Assert.Contains("adminTools.startR2Upload", razor);
+        Assert.DoesNotContain("selectedEpisodeVideoFile.OpenReadStream", razor);
+        Assert.DoesNotContain("studioR2SelectedFile.OpenReadStream", razor);
+        Assert.Contains("startR2Upload", js);
+        Assert.Contains("abortR2Upload", js);
+        Assert.Contains("xhr.open('PUT', presignedUrl", js);
+        Assert.Contains("/api/admin/storage/upload-r2", js);
+    }
 }
 
 internal static class HttpClientMockExtensions

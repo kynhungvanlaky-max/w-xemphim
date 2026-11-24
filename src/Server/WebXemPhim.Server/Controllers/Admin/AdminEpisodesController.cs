@@ -23,7 +23,8 @@ public sealed class AdminEpisodesController(
     PublicUrlResolver? publicUrlResolver = null,
     EpisodeVideoStorage? videoStorage = null,
     WebXemPhim.Server.Services.CloudStorage.ICloudStorageService? cloudStorage = null,
-    IStreamPolicyService? streamPolicyService = null)
+    IStreamPolicyService? streamPolicyService = null,
+    ILogger<AdminEpisodesController>? logger = null)
     : AdminBaseController(contextFactory, timeProvider, env, httpClientFactory)
 {
     [HttpGet("movies/{id:int}/episodes")]
@@ -501,54 +502,89 @@ public sealed class AdminEpisodesController(
 
         var ct = HttpContext?.RequestAborted ?? CancellationToken.None;
         var maxQuality = string.IsNullOrWhiteSpace(masterMaxQuality) ? "1080p FHD" : masterMaxQuality.Trim();
-        var createdFiles = await storage.SaveMasterAndRenditionsAsync(episodeId, extension, stream, maxQuality, ct);
-
         var storageMode = "Local Disk";
         var masterStreamUrl = $"local://ep-{episodeId}-master{extension}";
         var renditionUrls = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        // Tải dần từng bản chất lượng lên Cloudflare R2 (nếu R2 đã cấu hình)
-        if (cloudStorage?.IsConfigured == true)
+        if (cloudStorage?.IsConfigured == true && !storage.IsTranscoderAvailable)
         {
+            // Không có FFmpeg trên container cloud: đẩy trực tiếp 1 bản Master duy nhất lên R2
+            // (tránh nhân bản 4 file giống hệt nhau trên đĩa tạm và tránh upload trùng 4 lần gây timeout Render).
             try
             {
-                foreach (var fileName in createdFiles)
+                var r2Key = $"episodes/{episodeId}/ep-{episodeId}-master-{Guid.NewGuid():N}{extension}";
+                var contentType = EpisodeVideoStorage.ResolveContentType(extension) ?? "video/mp4";
+                var uploadedUrl = await cloudStorage.UploadFileAsync(stream, r2Key, contentType, ct);
+                if (string.IsNullOrWhiteSpace(uploadedUrl))
                 {
-                    var localPath = Path.Combine(storage.RootPath, fileName);
-                    if (System.IO.File.Exists(localPath))
+                    return StatusCode(StatusCodes.Status502BadGateway,
+                        ApiResponse<VideoIngestResultDto>.Fail("Cloudflare R2 không trả về đường dẫn tệp sau khi tải lên."));
+                }
+
+                masterStreamUrl = uploadedUrl;
+                storageMode = "Cloudflare R2";
+                renditionUrls["master"] = uploadedUrl;
+                foreach (var q in EpisodeVideoStorage.GetQualityLadder(maxQuality))
+                {
+                    renditionUrls[EpisodeVideoStorage.QualityToSlug(q)] = uploadedUrl;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Lỗi tải video tập {EpisodeId} ({FileName}) lên Cloudflare R2.", episodeId, file.FileName);
+                return StatusCode(StatusCodes.Status502BadGateway,
+                    ApiResponse<VideoIngestResultDto>.Fail($"Không thể tải video lên Cloudflare R2: {ex.Message}"));
+            }
+        }
+        else
+        {
+            var createdFiles = await storage.SaveMasterAndRenditionsAsync(episodeId, extension, stream, maxQuality, ct);
+
+            // Tải dần từng bản chất lượng đã hạ chuẩn bằng FFmpeg lên Cloudflare R2 (nếu R2 đã cấu hình)
+            if (cloudStorage?.IsConfigured == true)
+            {
+                try
+                {
+                    foreach (var fileName in createdFiles)
                     {
-                        string uploadedUrl;
-                        await using (var fs = System.IO.File.OpenRead(localPath))
+                        var localPath = Path.Combine(storage.RootPath, fileName);
+                        if (System.IO.File.Exists(localPath))
                         {
-                            var r2Key = $"episodes/{episodeId}/{fileName}";
-                            var contentType = EpisodeVideoStorage.ResolveContentType(extension) ?? "video/mp4";
-                            uploadedUrl = await cloudStorage.UploadFileAsync(fs, r2Key, contentType, ct);
-                        }
-                        if (!string.IsNullOrWhiteSpace(uploadedUrl))
-                        {
-                            var slug = EpisodeVideoStorage.ExtractSlugFromFileName(fileName, episodeId);
-                            renditionUrls[slug] = uploadedUrl;
-                            storageMode = "Cloudflare R2";
-                            if (slug == "master") masterStreamUrl = uploadedUrl;
-                            // Giải phóng tệp tạm cục bộ sau khi đã tải thành công lên Cloudflare R2
-                            try { System.IO.File.Delete(localPath); } catch { }
+                            string uploadedUrl;
+                            await using (var fs = System.IO.File.OpenRead(localPath))
+                            {
+                                var r2Key = $"episodes/{episodeId}/{fileName}";
+                                var contentType = EpisodeVideoStorage.ResolveContentType(extension) ?? "video/mp4";
+                                uploadedUrl = await cloudStorage.UploadFileAsync(fs, r2Key, contentType, ct);
+                            }
+                            if (!string.IsNullOrWhiteSpace(uploadedUrl))
+                            {
+                                var slug = EpisodeVideoStorage.ExtractSlugFromFileName(fileName, episodeId);
+                                renditionUrls[slug] = uploadedUrl;
+                                storageMode = "Cloudflare R2";
+                                if (slug == "master") masterStreamUrl = uploadedUrl;
+                                // Giải phóng tệp tạm cục bộ sau khi đã tải thành công lên Cloudflare R2
+                                try { System.IO.File.Delete(localPath); } catch { }
+                            }
                         }
                     }
                 }
+                catch (Exception ex)
+                {
+                    logger?.LogError(ex, "Lỗi tải các bản chất lượng của tập {EpisodeId} lên Cloudflare R2.", episodeId);
+                    return StatusCode(StatusCodes.Status502BadGateway,
+                        ApiResponse<VideoIngestResultDto>.Fail($"Không thể tải video lên Cloudflare R2: {ex.Message}"));
+                }
             }
-            catch
-            {
-                storageMode = "Local Disk (Cloud fallback)";
-            }
-        }
 
-        // Với các file chưa có link R2, fallback về local
-        foreach (var fileName in createdFiles)
-        {
-            var slug = EpisodeVideoStorage.ExtractSlugFromFileName(fileName, episodeId);
-            if (!renditionUrls.ContainsKey(slug))
+            // Với chế độ Local Disk (khi chưa cấu hình R2), ánh xạ sang local://
+            foreach (var fileName in createdFiles)
             {
-                renditionUrls[slug] = $"local://{fileName}";
+                var slug = EpisodeVideoStorage.ExtractSlugFromFileName(fileName, episodeId);
+                if (!renditionUrls.ContainsKey(slug))
+                {
+                    renditionUrls[slug] = $"local://{fileName}";
+                }
             }
         }
 

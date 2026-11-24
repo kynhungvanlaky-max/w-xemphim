@@ -57,6 +57,7 @@ public sealed class EpisodeVideoStorage
 
     public string RootPath { get; }
     public long MaxFileSizeBytes { get; }
+    public bool IsTranscoderAvailable => _transcoder?.IsTranscoderAvailable() == true;
 
     public static IReadOnlyList<string> AllowedExtensions =>
         AllowedVideoTypes.Select(t => t.Extension).Distinct().ToList();

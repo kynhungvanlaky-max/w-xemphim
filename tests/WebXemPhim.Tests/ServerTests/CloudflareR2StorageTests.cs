@@ -60,4 +60,28 @@ public class CloudflareR2StorageTests
         var url = await service.ResolvePlaybackUrlAsync("r2://webxemphim-movies/movies/dune2.mp4");
         Assert.Equal("https://media.webxemphim.vn/movies/dune2.mp4", url);
     }
+
+    [Fact]
+    public async Task GeneratePresignedUploadUrlAsync_UsesR2CompatibleSigV4_WithoutAwsSdkV4Crc32Checksum()
+    {
+        var options = Options.Create(new CloudStorageOptions
+        {
+            AccountId = "0123456789abcdef0123456789abcdef",
+            AccessKeyId = "AKIAIOSFODNN7EXAMPLE",
+            SecretAccessKey = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            BucketName = "webxemphim-movies",
+            Region = "auto"
+        });
+
+        using var service = new CloudflareR2StorageService(options, NullLogger<CloudflareR2StorageService>.Instance);
+
+        var presigned = await service.GeneratePresignedUploadUrlAsync("Video.mp4", "video/mp4", "episodes");
+        Assert.NotNull(presigned);
+        Assert.Contains("0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com", presigned.UploadUrl);
+        Assert.StartsWith("r2://webxemphim-movies/episodes/", presigned.R2Url);
+        Assert.Equal("video/mp4", presigned.ContentType);
+        // Cloudflare R2 rejects AWSSDK.S3 v4's default x-amz-checksum-crc32 parameter on presigned PUT URLs
+        Assert.DoesNotContain("x-amz-checksum-crc32", presigned.UploadUrl, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("x-amz-sdk-checksum-algorithm", presigned.UploadUrl, StringComparison.OrdinalIgnoreCase);
+    }
 }

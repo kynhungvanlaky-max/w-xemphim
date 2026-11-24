@@ -2797,13 +2797,11 @@ public static class DatabaseSeeder
 
     private static async Task RepairCloudStreamSourcesAsync(AppDbContext context, CancellationToken cancellationToken)
     {
+        // Chỉ sửa các đường dẫn ổ đĩa cục bộ không còn tồn tại trên cloud; tuyệt đối KHÔNG ghi đè các liên kết r2:// / s3:// / R2 hợp lệ.
         var brokenStreams = await context.StreamSources
             .Where(s => s.StreamUrl.StartsWith("local://")
                      || s.StreamUrl.StartsWith("file://")
-                     || s.StreamUrl.StartsWith("/root/data/movies/")
-                     || s.StreamUrl.StartsWith("r2://")
-                     || s.StreamUrl.StartsWith("s3://")
-                     || s.StreamUrl.Contains("r2.cloudflarestorage.com"))
+                     || s.StreamUrl.StartsWith("/root/data/movies/"))
             .ToListAsync(cancellationToken);
 
         if (brokenStreams.Count > 0)

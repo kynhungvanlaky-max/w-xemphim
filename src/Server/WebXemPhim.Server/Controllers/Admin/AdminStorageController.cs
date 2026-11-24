@@ -19,7 +19,8 @@ public sealed class AdminStorageController(
     ICloudStorageService cloudStorage,
     EpisodeVideoStorage? videoStorage = null,
     IWebHostEnvironment? env = null,
-    IHttpClientFactory? httpClientFactory = null)
+    IHttpClientFactory? httpClientFactory = null,
+    ILogger<AdminStorageController>? logger = null)
     : AdminBaseController(contextFactory, timeProvider, env, httpClientFactory)
 {
     private readonly CloudStorageOptions _options = storageOptions.Value;
@@ -197,7 +198,9 @@ public sealed class AdminStorageController(
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError,
+                logger?.LogError(ex, "Lỗi tải tệp '{FileName}' ({SizeBytes} bytes) lên Cloudflare R2 bucket '{Bucket}'.",
+                    file.FileName, file.Length, _options.BucketName);
+                return StatusCode(StatusCodes.Status502BadGateway,
                     ApiResponse<CloudStorageUploadResultDto>.Fail($"Lỗi khi tải tệp lên Cloudflare R2: {ex.Message}"));
             }
         }
