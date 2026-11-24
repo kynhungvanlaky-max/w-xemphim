@@ -224,10 +224,11 @@ builder.Services.AddScoped<IToastService>(sp => sp.GetRequiredService<ToastServi
 
 var app = builder.Build();
 
+var trustCloudflare = TrustedEdgeProxies.ShouldTrustCloudflareEdge(app.Configuration);
 var forwardedHeadersOptions = new ForwardedHeadersOptions
 {
     ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedHost,
-    ForwardLimit = 1
+    ForwardLimit = TrustedEdgeProxies.ResolveForwardLimit(app.Configuration, trustCloudflare)
 };
 var clientAllowedHosts = (app.Configuration["AllowedHosts"] ?? string.Empty)
     .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -264,6 +265,10 @@ if (clientNetworks is { Length: > 0 })
             forwardedHeadersOptions.KnownIPNetworks.Add(new IPNetwork(address, prefixLength));
         }
     }
+}
+if (trustCloudflare)
+{
+    TrustedEdgeProxies.AddCloudflareNetworks(forwardedHeadersOptions);
 }
 
 var behindProxy = app.Configuration.GetValue<bool>("Security:BehindReverseProxy")

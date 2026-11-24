@@ -248,10 +248,11 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+var trustCloudflare = TrustedEdgeProxies.ShouldTrustCloudflareEdge(app.Configuration);
 var forwardedHeadersOptions = new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
-    ForwardLimit = 1
+    ForwardLimit = TrustedEdgeProxies.ResolveForwardLimit(app.Configuration, trustCloudflare)
 };
 var serverAllowedHosts = (app.Configuration["AllowedHosts"] ?? string.Empty)
     .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -304,6 +305,10 @@ if (configuredProxyNetworks is { Length: > 0 })
             app.Logger.LogWarning("Ignoring invalid Security:KnownProxyNetworks entry '{Network}'.", network);
         }
     }
+}
+if (trustCloudflare)
+{
+    TrustedEdgeProxies.AddCloudflareNetworks(forwardedHeadersOptions, ApiRateLimits.AddTrustedProxyNetwork);
 }
 app.UseForwardedHeaders(forwardedHeadersOptions);
 app.UseResponseCompression();

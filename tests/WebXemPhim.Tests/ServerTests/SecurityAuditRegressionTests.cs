@@ -610,4 +610,55 @@ public sealed class SecurityAuditRegressionTests(TestApiFactory factory) : IClas
             ApiRateLimits.SetInternalProxySecret(null);
         }
     }
+
+    [Theory]
+    [InlineData("10.30.9.133", "203.0.113.10, 74.220.52.132, 162.158.162.161", "74.220.52.132")]
+    [InlineData("10.31.244.210", "203.0.113.10, 74.220.52.132, 172.70.188.98", "74.220.52.132")]
+    [InlineData("10.30.9.133", "74.220.52.132, 198.51.100.77, 172.70.188.98", "198.51.100.77")] // Spoofed left entry must be ignored
+    public async Task TrustedEdgeProxies_CloudflareAndRenderChain_ResolvesRealCallerIpConsistently(
+        string renderPodIp,
+        string forwardedFor,
+        string expectedIp)
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Security:TrustCloudflareProxies"] = "true"
+            })
+            .Build();
+
+        var trustCloudflare = TrustedEdgeProxies.ShouldTrustCloudflareEdge(config);
+        Assert.True(trustCloudflare);
+
+        var options = new Microsoft.AspNetCore.Builder.ForwardedHeadersOptions
+        {
+            ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
+                | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
+                | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedHost,
+            ForwardLimit = TrustedEdgeProxies.ResolveForwardLimit(config, trustCloudflare),
+            AllowedHosts = ["w-phim-api.onrender.com"]
+        };
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+        options.KnownIPNetworks.Add(new IPNetwork(IPAddress.Parse("10.0.0.0"), 8));
+        TrustedEdgeProxies.AddCloudflareNetworks(options);
+
+        var middleware = new Microsoft.AspNetCore.HttpOverrides.ForwardedHeadersMiddleware(
+            _ => Task.CompletedTask,
+            NullLoggerFactory.Instance,
+            Options.Create(options));
+
+        var ctx = new DefaultHttpContext();
+        ctx.Connection.RemoteIpAddress = IPAddress.Parse(renderPodIp);
+        ctx.Request.Host = new HostString("w-phim-api.onrender.com");
+        ctx.Request.Scheme = "http";
+        ctx.Request.Headers["X-Forwarded-For"] = forwardedFor;
+        ctx.Request.Headers["X-Forwarded-Proto"] = "https";
+        ctx.Request.Headers["X-Forwarded-Host"] = "w-phim-api.onrender.com";
+
+        await middleware.Invoke(ctx);
+
+        Assert.Equal(expectedIp, ctx.Connection.RemoteIpAddress?.ToString());
+        Assert.Equal("https", ctx.Request.Scheme);
+    }
 }
