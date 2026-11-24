@@ -53,12 +53,12 @@
         <div class="wv-workspace">
             <div class="wv-main">
                 <section class="wv-stage @(lightsOff ? "focused" : "")" aria-label="Khung phát phim">
-                    @if (playback.Source is not null && !string.IsNullOrEmpty(playback.Source.StreamUrl))
+                    @if (!string.IsNullOrEmpty(EffectivePlayerStreamUrl))
                     {
-                        <CinemaPlayer @key="PlayerKey" @ref="player" ActiveStreamUrl="@playback.Source.StreamUrl" PosterUrl="@PlayerPoster"
+                        <CinemaPlayer @key="PlayerKey" @ref="player" ActiveStreamUrl="@EffectivePlayerStreamUrl" PosterUrl="@PlayerPoster"
                                       UserEmail="@Auth.User?.Email"
                                       AutoPlay="@(autoPlayEpisodeId == playback.Current?.Id)" ResumeSeconds="resumeSeconds"
-                                      CurrentEpisodeTitle="@playback.Current!.Title" QualityLabel="@playback.Source.Quality"
+                                      CurrentEpisodeTitle="@playback.Current!.Title" QualityLabel="@playback.Source!.Quality"
                                       AvailableQualities="@playback.Qualities.ToList()"
                                       OnQualityChanged="SelectQuality"
                                       OnEnded="OnVideoEnded"
@@ -375,8 +375,15 @@
 
     /// <summary>Khoảng nghỉ tối thiểu giữa hai lần tự chuyển nguồn.</summary>
     private static readonly TimeSpan FailoverCooldown = TimeSpan.FromSeconds(10);
+    private string? pendingSwitchStreamUrl;
+    private string? EffectivePlayerStreamUrl =>
+        playback.Source is not null && !string.IsNullOrEmpty(playback.Source.StreamUrl)
+            ? playback.Source.StreamUrl
+            : (playback.Source is not null && !string.IsNullOrEmpty(pendingSwitchStreamUrl) ? pendingSwitchStreamUrl : null);
     private string ReturnUrl => $"/watch/{MovieId}" + (playback.Current is null ? "" : $"?ep={playback.Current.EpisodeNumber}");
-    private string PlayerKey => $"ep-{playback.Current?.Id}-{playback.Source?.ServerName}-{playback.Source?.Position}";
+    // Chỉ đổi @key khi đổi tập phim; đổi chất lượng/nguồn phát giữ sống <CinemaPlayer> và <video>
+    // để CinemaPlayer.switchSource() chuyển mượt mà không hủy DOM và không mất đoạn đang xem.
+    private string PlayerKey => $"ep-{playback.Current?.Id}";
     private readonly SemaphoreSlim _leaseLock = new(1, 1);
     private string FallbackBackdrop => !string.IsNullOrWhiteSpace(movie?.BackdropUrl) ? movie.BackdropUrl
         : !string.IsNullOrWhiteSpace(movie?.PosterUrl) ? movie.PosterUrl
@@ -472,7 +479,7 @@
     {
         var version = ++loadVersion; var id = MovieId;
         loading = true; loadError = null; lightsOff = false; reportOpen = false; vipPromptOpen = false; search = ""; status = null;
-        autoPlayEpisodeId = null; resumeSeconds = 0; currentCursorSeconds = 0;
+        autoPlayEpisodeId = null; resumeSeconds = 0; currentCursorSeconds = 0; pendingSwitchStreamUrl = null;
         try
         {
             playback.IsVipUser = Auth.User?.IsVip == true || Auth.User?.IsAdmin == true;
@@ -560,8 +567,11 @@
 
     private async Task HandlePlayerPause(double seconds)
     {
-        currentCursorSeconds = seconds;
-        resumeSeconds = seconds;
+        if (seconds > 0.2)
+        {
+            currentCursorSeconds = seconds;
+            resumeSeconds = seconds;
+        }
         await SaveCurrentProgressAsync(immediate: true);
     }
 
@@ -602,6 +612,7 @@
             _ = SaveCurrentProgressAsync(immediate: true);
         }
         autoPlayEpisodeId = episode.Id; resumeSeconds = 0; currentCursorSeconds = 0;
+        pendingSwitchStreamUrl = null;
         ResetFailoverBudget();
         playback.Select(episode.EpisodeNumber);
         Nav.NavigateTo($"/watch/{MovieId}?ep={episode.EpisodeNumber}");
@@ -632,10 +643,27 @@
             vipPromptOpen = true;
             return;
         }
+        var previousUrl = EffectivePlayerStreamUrl;
         await PreserveCursor();
         ResetFailoverBudget();
         playback.SetServer(server);
-        await AcquireLeaseAndStartHeartbeatAsync();
+        if (Auth.IsAuthenticated)
+        {
+            // Giữ <CinemaPlayer> sống trong khi chờ ký URL mới (ví dụ khi chuyển sang cụm VIP)
+            pendingSwitchStreamUrl = string.IsNullOrEmpty(playback.Source?.StreamUrl) ? previousUrl : null;
+            try
+            {
+                await AcquireLeaseAndStartHeartbeatAsync();
+            }
+            finally
+            {
+                pendingSwitchStreamUrl = null;
+            }
+        }
+        else
+        {
+            pendingSwitchStreamUrl = null;
+        }
     }
 
     private async Task SelectQuality(string quality)
@@ -647,10 +675,27 @@
             vipPromptOpen = true;
             return;
         }
+        var previousUrl = EffectivePlayerStreamUrl;
         await PreserveCursor();
         ResetFailoverBudget();
         playback.SetQuality(quality);
-        await AcquireLeaseAndStartHeartbeatAsync();
+        if (Auth.IsAuthenticated)
+        {
+            // Giữ <CinemaPlayer> sống trong lúc ký URL chất lượng mới để không nháy đen / hủy DOM
+            pendingSwitchStreamUrl = string.IsNullOrEmpty(playback.Source?.StreamUrl) ? previousUrl : null;
+            try
+            {
+                await AcquireLeaseAndStartHeartbeatAsync();
+            }
+            finally
+            {
+                pendingSwitchStreamUrl = null;
+            }
+        }
+        else
+        {
+            pendingSwitchStreamUrl = null;
+        }
     }
 
     private async Task SelectFreeStream()
@@ -942,8 +987,8 @@
         var signed = await Api.SignStreamAsync(episode.Id, source.Position, sessionId);
         if (signed is null || string.IsNullOrWhiteSpace(signed.StreamUrl)) return null;
 
-        // Cập nhật URL ngay trên đối tượng nguồn đang chọn; PlayerKey sẽ đổi và player
-        // nạp lại đúng một lần với URL gắn lease thay vì URL không có phiên.
+        // Cập nhật URL ngay trên đối tượng nguồn đang chọn; PlayerKey ổn định theo EpisodeId nên
+        // CinemaPlayer giữ nguyên <video> và chuyển mượt qua switchSource mà không mất đoạn đang xem.
         source.StreamUrl = signed.StreamUrl;
         return signed;
     }

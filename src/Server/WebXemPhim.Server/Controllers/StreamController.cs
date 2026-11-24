@@ -43,7 +43,7 @@ public class StreamController(
     private const string PlaybackCookiePath = "/api/stream";
     private const int FallbackPlaybackTtlSeconds = 600;
     private const int MaxUpstreamRedirects = 5;
-    private const int CopyBufferSize = 64 * 1024;
+    private const int CopyBufferSize = 128 * 1024;
     private const int MaxManifestChars = 4 * 1024 * 1024;
     private const string ManifestContentType = "application/vnd.apple.mpegurl; charset=utf-8";
 
@@ -1651,22 +1651,14 @@ public class StreamController(
 
     private static string ResolveCloudFallbackMedia(string? localUrl, string? quality = null)
     {
-        var url = localUrl ?? string.Empty;
         var q = quality ?? string.Empty;
-
-        if (url.Contains("tears", StringComparison.OrdinalIgnoreCase))
-            return "https://dn600309.us.archive.org/0/items/Tears-of-Steel/tears_of_steel_720p.mp4";
-        if (url.Contains("sintel", StringComparison.OrdinalIgnoreCase))
-            return "https://media.w3.org/2010/05/sintel/trailer.mp4";
-        if (url.Contains("ocean", StringComparison.OrdinalIgnoreCase))
-            return "https://vjs.zencdn.net/v/oceans.mp4";
 
         if (q.Contains("4K", StringComparison.OrdinalIgnoreCase) || q.Contains("1080p", StringComparison.OrdinalIgnoreCase))
             return "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4";
         if (q.Contains("720p", StringComparison.OrdinalIgnoreCase))
             return "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4";
-        if (q.Contains("480p", StringComparison.OrdinalIgnoreCase) || q.Contains("SD", StringComparison.OrdinalIgnoreCase))
-            return "https://vjs.zencdn.net/v/oceans.mp4";
+        if (q.Contains("480p", StringComparison.OrdinalIgnoreCase) || q.Contains("576p", StringComparison.OrdinalIgnoreCase) || q.Contains("SD", StringComparison.OrdinalIgnoreCase))
+            return "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-576p.mp4";
 
         return "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4";
     }

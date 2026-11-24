@@ -50,19 +50,21 @@ public class StreamPolicyServiceTests : IDisposable
         Assert.Equal(0, vip.MaxBandwidthKbps); // Unlimited
         Assert.Contains("4K", vip.MaxQuality);
         Assert.True(vip.IsVipOnly);
-        Assert.Equal(8192, vip.BufferInitialBurstKb);
+        Assert.Equal(16384, vip.BufferInitialBurstKb);
 
         var cdn = policies.FirstOrDefault(p => p.ServerKey == "cdn");
         Assert.NotNull(cdn);
-        Assert.Equal(3500, cdn.MaxBandwidthKbps);
+        Assert.Equal(0, cdn.MaxBandwidthKbps); // Unthrottled by default to prevent 1080p rebuffering
         Assert.Contains("1080p", cdn.MaxQuality);
         Assert.False(cdn.IsVipOnly);
+        Assert.Equal(8192, cdn.BufferInitialBurstKb);
 
         var backup = policies.FirstOrDefault(p => p.ServerKey == "backup");
         Assert.NotNull(backup);
-        Assert.Equal(1500, backup.MaxBandwidthKbps);
+        Assert.Equal(0, backup.MaxBandwidthKbps); // Unthrottled by default to prevent 720p/576p rebuffering
         Assert.Contains("720p", backup.MaxQuality);
         Assert.False(backup.IsVipOnly);
+        Assert.Equal(4096, backup.BufferInitialBurstKb);
     }
 
     [Theory]

@@ -42,6 +42,17 @@
     display: block;
 }
 
+.cp-switch-freeze {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #050608;
+    pointer-events: none;
+    z-index: 2;
+}
+
 /* Simple Cinema Buffering Spinner */
 .cp-buffering-spinner {
     position: absolute;

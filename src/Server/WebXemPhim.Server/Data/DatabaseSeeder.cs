@@ -1742,32 +1742,33 @@ public static class DatabaseSeeder
 
     public static List<StreamSourceDto> GenerateMultiServerStreams(int seed = 1)
     {
-        const string cdn4k = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4";
+        // Tất cả bậc chất lượng trên cả 4 cụm máy chủ dùng CÙNG MỘT nguồn phim chuẩn đa độ phân giải
+        // (184s, Accept-Ranges: bytes) để khi đổi chất lượng/nguồn phát không bị lệch nội dung hay mất đoạn đang xem.
+        const string cdn1080p = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4";
         const string cdn720p = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4";
-        const string cdnOceans = "https://vjs.zencdn.net/v/oceans.mp4";
-        const string cdnSintel = "https://media.w3.org/2010/05/sintel/trailer.mp4";
+        const string cdn576p = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-576p.mp4";
 
         return
         [
             // Server 1: VIP 1 (Hà Nội - VIP Siêu Tốc) - 4 qualities
-            new() { ServerName = "VIP 1 (Hà Nội)", ServerType = StreamServerType.VipFastServer, Quality = "4K Ultra HD", StreamUrl = cdn4k, Position = 1 },
-            new() { ServerName = "VIP 1 (Hà Nội)", ServerType = StreamServerType.VipFastServer, Quality = "1080p 60fps", StreamUrl = cdn4k, Position = 2 },
-            new() { ServerName = "VIP 1 (Hà Nội)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = cdn4k, Position = 3 },
+            new() { ServerName = "VIP 1 (Hà Nội)", ServerType = StreamServerType.VipFastServer, Quality = "4K Ultra HD", StreamUrl = cdn1080p, Position = 1 },
+            new() { ServerName = "VIP 1 (Hà Nội)", ServerType = StreamServerType.VipFastServer, Quality = "1080p 60fps", StreamUrl = cdn1080p, Position = 2 },
+            new() { ServerName = "VIP 1 (Hà Nội)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = cdn1080p, Position = 3 },
             new() { ServerName = "VIP 1 (Hà Nội)", ServerType = StreamServerType.VipFastServer, Quality = "720p HD", StreamUrl = cdn720p, Position = 4 },
 
             // Server 2: VIP 2 (Sài Gòn - VIP Ổn Định) - 3 qualities
-            new() { ServerName = "VIP 2 (Sài Gòn)", ServerType = StreamServerType.VipFastServer, Quality = "4K HDR", StreamUrl = cdn4k, Position = 5 },
-            new() { ServerName = "VIP 2 (Sài Gòn)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = cdn4k, Position = 6 },
+            new() { ServerName = "VIP 2 (Sài Gòn)", ServerType = StreamServerType.VipFastServer, Quality = "4K HDR", StreamUrl = cdn1080p, Position = 5 },
+            new() { ServerName = "VIP 2 (Sài Gòn)", ServerType = StreamServerType.VipFastServer, Quality = "1080p FHD", StreamUrl = cdn1080p, Position = 6 },
             new() { ServerName = "VIP 2 (Sài Gòn)", ServerType = StreamServerType.VipFastServer, Quality = "720p HD", StreamUrl = cdn720p, Position = 7 },
 
             // Server 3: Hydra CDN (Chống Lag - Miễn phí) - 3 qualities
-            new() { ServerName = "Hydra CDN", ServerType = StreamServerType.HydraCdn, Quality = "1080p FHD", StreamUrl = cdn720p, Position = 8 },
-            new() { ServerName = "Hydra CDN", ServerType = StreamServerType.HydraCdn, Quality = "720p HD", StreamUrl = cdnOceans, Position = 9 },
-            new() { ServerName = "Hydra CDN", ServerType = StreamServerType.HydraCdn, Quality = "480p SD", StreamUrl = cdnOceans, Position = 10 },
+            new() { ServerName = "Hydra CDN", ServerType = StreamServerType.HydraCdn, Quality = "1080p FHD", StreamUrl = cdn1080p, Position = 8 },
+            new() { ServerName = "Hydra CDN", ServerType = StreamServerType.HydraCdn, Quality = "720p HD", StreamUrl = cdn720p, Position = 9 },
+            new() { ServerName = "Hydra CDN", ServerType = StreamServerType.HydraCdn, Quality = "480p SD", StreamUrl = cdn576p, Position = 10 },
 
             // Server 4: Direct Backup (Tiết Kiệm Data - Miễn phí) - 2 qualities
-            new() { ServerName = "Direct Backup", ServerType = StreamServerType.BackupStream, Quality = "720p HD", StreamUrl = cdnSintel, Position = 11 },
-            new() { ServerName = "Direct Backup", ServerType = StreamServerType.BackupStream, Quality = "480p SD", StreamUrl = cdnOceans, Position = 12 }
+            new() { ServerName = "Direct Backup", ServerType = StreamServerType.BackupStream, Quality = "720p HD", StreamUrl = cdn720p, Position = 11 },
+            new() { ServerName = "Direct Backup", ServerType = StreamServerType.BackupStream, Quality = "480p SD", StreamUrl = cdn576p, Position = 12 }
         ];
     }
 
@@ -1987,31 +1988,32 @@ public static class DatabaseSeeder
             await context.SaveChangesAsync(cancellationToken);
         }
 
-        var demoStreamsToUpdate = await context.StreamSources
-            .Where(s => s.StreamUrl.Contains("cdn.plyr.io") || s.StreamUrl.Contains("w3schools.com") || s.StreamUrl.Contains("vjs.zencdn.net") || s.StreamUrl.Contains("w3.org") || s.StreamUrl.Contains("archive.org"))
+        // Chỉ đồng bộ các luồng demo cũ lệch nội dung (oceans/sintel/mov_bbb/archive hoặc 1080p trỏ nhầm 720p).
+        // Giữ nguyên toàn bộ luồng đã chuẩn hóa và các luồng R2/tùy chỉnh do Admin tải lên; tránh xóa/chèn 4.200 dòng mỗi lần boot.
+        var mismatchedDemoStreams = await context.StreamSources
+            .Where(s => s.StreamUrl.Contains("w3schools.com")
+                     || s.StreamUrl.Contains("vjs.zencdn.net")
+                     || s.StreamUrl.Contains("w3.org")
+                     || s.StreamUrl.Contains("archive.org")
+                     || (s.StreamUrl.Contains("View_From_A_Blue_Moon_Trailer-720p.mp4") && s.Quality.Contains("1080p")))
             .ToListAsync(cancellationToken);
 
-        if (demoStreamsToUpdate.Count > 0)
+        if (mismatchedDemoStreams.Count > 0)
         {
-            var episodeIds = demoStreamsToUpdate.Select(s => s.EpisodeId).Distinct().ToList();
-            foreach (var epId in episodeIds)
+            const string cdn1080p = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4";
+            const string cdn720p = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4";
+            const string cdn576p = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-576p.mp4";
+
+            foreach (var stream in mismatchedDemoStreams)
             {
-                var currentStreams = await context.StreamSources.Where(s => s.EpisodeId == epId).ToListAsync(cancellationToken);
-                context.StreamSources.RemoveRange(currentStreams);
-                var newStreams = GenerateMultiServerStreams(epId);
-                foreach (var s in newStreams)
-                {
-                    context.StreamSources.Add(new StreamSourceEntity
-                    {
-                        EpisodeId = epId,
-                        Position = s.Position,
-                        ServerName = s.ServerName,
-                        ServerType = s.ServerType,
-                        Quality = s.Quality,
-                        StreamUrl = s.StreamUrl
-                    });
-                }
+                var q = stream.Quality ?? string.Empty;
+                stream.StreamUrl = q.Contains("4K", StringComparison.OrdinalIgnoreCase) || q.Contains("1080p", StringComparison.OrdinalIgnoreCase)
+                    ? cdn1080p
+                    : q.Contains("720p", StringComparison.OrdinalIgnoreCase)
+                        ? cdn720p
+                        : cdn576p;
             }
+
             await context.SaveChangesAsync(cancellationToken);
         }
 
@@ -2806,25 +2808,24 @@ public static class DatabaseSeeder
 
         if (brokenStreams.Count > 0)
         {
-            const string cdn4k = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4";
+            const string cdn1080p = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4";
             const string cdn720p = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4";
-            const string cdnOceans = "https://vjs.zencdn.net/v/oceans.mp4";
-            const string cdnSintel = "https://media.w3.org/2010/05/sintel/trailer.mp4";
+            const string cdn576p = "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-576p.mp4";
 
             foreach (var stream in brokenStreams)
             {
                 var q = stream.Quality ?? "";
-                if (stream.ServerType == StreamServerType.VipFastServer)
+                if (q.Contains("4K", StringComparison.OrdinalIgnoreCase) || q.Contains("1080p", StringComparison.OrdinalIgnoreCase))
                 {
-                    stream.StreamUrl = q.Contains("720p") ? cdn720p : cdn4k;
+                    stream.StreamUrl = cdn1080p;
                 }
-                else if (stream.ServerType == StreamServerType.HydraCdn)
+                else if (q.Contains("720p", StringComparison.OrdinalIgnoreCase))
                 {
-                    stream.StreamUrl = q.Contains("480p") ? cdnOceans : cdn720p;
+                    stream.StreamUrl = cdn720p;
                 }
                 else
                 {
-                    stream.StreamUrl = q.Contains("480p") ? cdnOceans : cdnSintel;
+                    stream.StreamUrl = cdn576p;
                 }
             }
 

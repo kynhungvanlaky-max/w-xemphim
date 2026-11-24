@@ -70,7 +70,7 @@ public sealed class StreamPolicyService : IStreamPolicyService
             IsVipOnly = true,
             MaxBandwidthKbps = 0, // 0 = Không giới hạn, tốc độ tối đa đường truyền
             MaxQuality = "4K UHD",
-            BufferInitialBurstKb = 8192, // 8 MB pre-buffer phát tức thì siêu mượt
+            BufferInitialBurstKb = 16384, // 16 MB pre-buffer phát tức thì siêu mượt
             Priority = 1,
             Description = "Đường truyền VIP Fast-Lane ưu tiên cao nhất, không giới hạn băng thông, hỗ trợ 4K 60fps và HDR cho trải nghiệm mượt mà tuyệt đối.",
             UpdatedAtUtc = DateTime.UtcNow
@@ -83,11 +83,11 @@ public sealed class StreamPolicyService : IStreamPolicyService
             ServerType = StreamServerType.HydraCdn,
             IsActive = true,
             IsVipOnly = false,
-            MaxBandwidthKbps = 3500, // 3.5 Mbps cho luồng thường
+            MaxBandwidthKbps = 0, // 0 = Không bóp băng thông nhân tạo, đủ tải mượt 1080p FHD không ngắt quãng
             MaxQuality = "1080p FHD",
-            BufferInitialBurstKb = 2048, // 2 MB pre-buffer
+            BufferInitialBurstKb = 8192, // 8 MB pre-buffer chống cạn đệm
             Priority = 2,
-            Description = "Phân phối cho người dùng phổ thông qua mạng lưới Hydra Anycast CDN, giới hạn băng thông ~3.5 Mbps để tiết kiệm chi phí và duy trì tải ổn định.",
+            Description = "Phân phối cho người dùng phổ thông qua mạng lưới Hydra Anycast CDN với tốc độ ổn định, không bóp băng thông gây giật khung hình.",
             UpdatedAtUtc = DateTime.UtcNow
         },
         new StreamServerPolicyDto
@@ -98,11 +98,11 @@ public sealed class StreamPolicyService : IStreamPolicyService
             ServerType = StreamServerType.BackupStream,
             IsActive = true,
             IsVipOnly = false,
-            MaxBandwidthKbps = 1500, // 1.5 Mbps
+            MaxBandwidthKbps = 0, // 0 = Không bóp băng thông nhân tạo để phát mượt 720p/576p
             MaxQuality = "720p HD",
-            BufferInitialBurstKb = 1024, // 1 MB
+            BufferInitialBurstKb = 4096, // 4 MB pre-buffer
             Priority = 3,
-            Description = "Máy chủ dự phòng khi các cụm chính quá tải hoặc gặp sự cố, giới hạn băng thông 1.5 Mbps và trần chất lượng 720p HD.",
+            Description = "Máy chủ dự phòng khi các cụm chính quá tải hoặc gặp sự cố, đảm bảo phát mượt 720p HD / 480p SD không bị ngắt quãng.",
             UpdatedAtUtc = DateTime.UtcNow
         }
     ];

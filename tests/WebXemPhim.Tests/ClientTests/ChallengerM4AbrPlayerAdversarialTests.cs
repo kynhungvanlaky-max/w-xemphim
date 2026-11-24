@@ -46,7 +46,7 @@ public sealed class ChallengerM4AbrPlayerAdversarialTests
     }
 
     [Fact]
-    public void CinemaPlayer_HlsQualityLevels_DefaultToAuto_AndHandleDynamicSwitching()
+    public void CinemaPlayer_HlsQualityLevels_LockToHighestManualLevel_NeverAuto()
     {
         var player = CreatePlayerWithSuppressedRender();
 
@@ -66,43 +66,42 @@ public sealed class ChallengerM4AbrPlayerAdversarialTests
         Assert.NotNull(labelProp);
         Assert.NotNull(badgeProp);
 
-        // 1. Initial parsed state defaults to Auto ABR
-        Assert.Equal("Tự động (Auto ABR)", labelProp.GetValue(player));
-        Assert.Equal("AUTO", badgeProp.GetValue(player));
+        // 1. Initial parsed state locks to highest explicit manual resolution (no Auto ABR)
+        Assert.Equal("4K Ultra HD", labelProp.GetValue(player));
+        Assert.Equal("4K", badgeProp.GetValue(player));
 
-        // 2. Switch to 480p SD
+        // 2. Manual switch to 480p SD
         player.OnHlsLevelSwitched(0);
         Assert.Equal("480p SD", labelProp.GetValue(player));
         Assert.Equal("SD", badgeProp.GetValue(player));
 
-        // 3. Switch to 720p HD
+        // 3. Manual switch to 720p HD
         player.OnHlsLevelSwitched(1);
         Assert.Equal("720p HD", labelProp.GetValue(player));
         Assert.Equal("HD", badgeProp.GetValue(player));
 
-        // 4. Switch to 1080p FHD
+        // 4. Manual switch to 1080p FHD
         player.OnHlsLevelSwitched(2);
         Assert.Equal("1080p FHD", labelProp.GetValue(player));
         Assert.Equal("FHD", badgeProp.GetValue(player));
 
-        // 5. Switch to 4K Ultra HD
+        // 5. Manual switch to 4K Ultra HD
         player.OnHlsLevelSwitched(3);
         Assert.Equal("4K Ultra HD", labelProp.GetValue(player));
         Assert.Equal("4K", badgeProp.GetValue(player));
 
-        // 6. Switch back to auto (-1)
+        // 6. Out of range or negative level index must not throw and falls back to highest explicit level (never AUTO)
         player.OnHlsLevelSwitched(-1);
-        Assert.Equal("Tự động (Auto ABR)", labelProp.GetValue(player));
-        Assert.Equal("AUTO", badgeProp.GetValue(player));
+        Assert.Equal("4K Ultra HD", labelProp.GetValue(player));
+        Assert.Equal("4K", badgeProp.GetValue(player));
 
-        // 7. Out of range level index must not throw and fall back to Auto
         player.OnHlsLevelSwitched(999);
-        Assert.Equal("Tự động (Auto ABR)", labelProp.GetValue(player));
-        Assert.Equal("AUTO", badgeProp.GetValue(player));
+        Assert.Equal("4K Ultra HD", labelProp.GetValue(player));
+        Assert.Equal("4K", badgeProp.GetValue(player));
 
         player.OnHlsLevelSwitched(-5);
-        Assert.Equal("Tự động (Auto ABR)", labelProp.GetValue(player));
-        Assert.Equal("AUTO", badgeProp.GetValue(player));
+        Assert.Equal("4K Ultra HD", labelProp.GetValue(player));
+        Assert.Equal("4K", badgeProp.GetValue(player));
     }
 
     [Theory]
@@ -199,48 +198,59 @@ public sealed class ChallengerM4AbrPlayerAdversarialTests
         Assert.Contains("currentLevel", js);
         Assert.Contains("switchSource", js);
 
-        // 5. Hardware and buffer auto-downscale guard
-        Assert.Contains("getVideoPlaybackQuality", js);
-        Assert.Contains("triggerAutoDownscale", js);
-        Assert.Contains("runHardwareAndBufferGuard", js);
+        // 5. Auto quality switching must be completely removed; seamless live-cursor switching & freeze overlay present
+        Assert.DoesNotContain("abrGuardTimer", js);
+        Assert.DoesNotContain("runHardwareAndBufferGuard", js);
+        Assert.DoesNotContain("triggerAutoDownscale", js);
+        Assert.DoesNotContain("triggerAutoUpscale", js);
+        Assert.DoesNotContain("startLevel: -1", js);
+        Assert.Contains("lowLatencyMode: false", js);
+        Assert.Contains("showSwitchOverlay", js);
+        Assert.Contains("isSwitching", js);
     }
 
     [Fact]
-    public async Task CinemaPlayer_AutoDownscale_StepsDownQualityAndDispatchesCallback()
+    public void CinemaPlayer_AutoQualityMethodsAndMenuOptions_AreRemoved()
     {
-        var player = CreatePlayerWithSuppressedRender();
-        player.AvailableQualities = new List<string> { "4K Ultra HD", "1080p FHD", "720p HD", "480p SD" };
-        player.QualityLabel = "1080p FHD";
+        Assert.Null(typeof(CinemaPlayer).GetMethod("OnAutoDownscaleRequested", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance));
+        Assert.Null(typeof(CinemaPlayer).GetMethod("OnAutoUpscaleRequested", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance));
 
-        string? requestedQuality = null;
-        player.OnQualityChanged = new EventCallback<string>(null, new Action<string>(q => requestedQuality = q));
-
-        // Trigger auto downscale due to hardware overload
-        await player.OnAutoDownscaleRequested("hardware");
-
-        Assert.Equal("720p HD", requestedQuality);
-
-        var noticeField = typeof(CinemaPlayer).GetField("playerNotice", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(noticeField);
-        var notice = noticeField.GetValue(player) as string;
-        Assert.NotNull(notice);
-        Assert.Contains("giảm tải phần cứng", notice);
+        var razorPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Client", "WebXemPhim.Client", "Components", "Player", "CinemaPlayer.razor");
+        var razor = File.ReadAllText(razorPath);
+        Assert.DoesNotContain("Tự động (Auto ABR)", razor);
+        Assert.DoesNotContain("Thích ứng phần cứng", razor);
+        Assert.DoesNotContain("ChooseAutoQuality", razor);
+        Assert.Contains("preload=\"auto\"", razor);
     }
 
     [Fact]
-    public async Task CinemaPlayer_AutoDownscale_AtLowestQuality_DoesNotDownscaleFurther()
+    public void WatchRazor_PlayerKey_StaysStableAcrossQualityAndServerSwitches()
     {
-        var player = CreatePlayerWithSuppressedRender();
-        player.AvailableQualities = new List<string> { "1080p FHD", "720p HD", "480p SD" };
-        player.QualityLabel = "480p SD";
+        var watchPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Client", "WebXemPhim.Client", "Components", "Pages", "Watch.razor");
+        var watch = File.ReadAllText(watchPath);
+        Assert.Contains("private string PlayerKey => $\"ep-{playback.Current?.Id}\";", watch);
+        Assert.DoesNotContain("playback.Source?.Position}", watch);
+    }
 
-        string? requestedQuality = null;
-        player.OnQualityChanged = new EventCallback<string>(null, new Action<string>(q => requestedQuality = q));
+    [Fact]
+    public void DatabaseSeeder_GenerateMultiServerStreams_UsesUnifiedVideoAcrossAllQualitiesAndServers()
+    {
+        var streams = WebXemPhim.Server.Data.DatabaseSeeder.GenerateMultiServerStreams(3301);
 
-        await player.OnAutoDownscaleRequested("buffer");
+        Assert.Equal(12, streams.Count);
+        Assert.All(streams, s =>
+        {
+            Assert.Contains("View_From_A_Blue_Moon_Trailer-", s.StreamUrl, StringComparison.Ordinal);
+            Assert.DoesNotContain("oceans.mp4", s.StreamUrl, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("sintel", s.StreamUrl, StringComparison.OrdinalIgnoreCase);
+        });
 
-        // Already at lowest quality -> must not request anything
-        Assert.Null(requestedQuality);
+        Assert.All(streams.Where(s => s.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase) || s.Quality.Contains("1080p", StringComparison.OrdinalIgnoreCase)),
+            s => Assert.EndsWith("-1080p.mp4", s.StreamUrl, StringComparison.Ordinal));
+        Assert.All(streams.Where(s => s.Quality.Contains("720p", StringComparison.OrdinalIgnoreCase)),
+            s => Assert.EndsWith("-720p.mp4", s.StreamUrl, StringComparison.Ordinal));
+        Assert.All(streams.Where(s => s.Quality.Contains("480p", StringComparison.OrdinalIgnoreCase)),
+            s => Assert.EndsWith("-576p.mp4", s.StreamUrl, StringComparison.Ordinal));
     }
 
     [Fact]
