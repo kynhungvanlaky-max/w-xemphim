@@ -41,7 +41,8 @@ ENV LANG=en_US.UTF-8 \
 RUN sed -i 's/peer/trust/g' /etc/postgresql/*/main/pg_hba.conf && \
     sed -i 's/scram-sha-256/trust/g' /etc/postgresql/*/main/pg_hba.conf && \
     sed -i 's/md5/trust/g' /etc/postgresql/*/main/pg_hba.conf && \
-    mkdir -p /var/run/postgresql /var/log/postgresql /app/keys && \
+    mkdir -p /var/run/postgresql /var/log/postgresql /app/keys /app/data && \
+    chown -R $APP_UID:$APP_UID /app/keys /app/data && \
     chown -R postgres:postgres /var/run/postgresql /var/log/postgresql /var/lib/postgresql && \
     chmod 0775 /var/run/postgresql
 

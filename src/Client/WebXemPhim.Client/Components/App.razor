@@ -65,7 +65,7 @@
             ping('/api/health');
 
             // 2. Direct ping to Server REST API domain (trims any trailing slash to avoid 404 //api/health)
-            var apiBase = ('@rawApiBase').replace(/\/+$/, '');
+            var apiBase = (@((MarkupString)System.Text.Json.JsonSerializer.Serialize(rawApiBase))).replace(/\/+$/, '');
             if (apiBase && apiBase !== '' && apiBase !== '/' && apiBase !== window.location.origin) {
                 ping(apiBase + '/api/health');
                 ping(apiBase + '/health');

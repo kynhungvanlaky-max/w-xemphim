@@ -270,15 +270,20 @@ else
                             Trình duyệt của bạn không hỗ trợ phát video HTML5.
                         </video>
                     }
-                    else
+                    else if (!string.IsNullOrWhiteSpace(TrailerEmbedUrl))
                     {
                         <iframe class="trailer-media-element"
                                 src="@TrailerEmbedUrl"
                                 title="Trailer phim @DisplayTitle"
+                                sandbox="allow-scripts allow-same-origin allow-presentation"
                                 allowfullscreen
                                 referrerpolicy="strict-origin-when-cross-origin"
                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share">
                         </iframe>
+                    }
+                    else
+                    {
+                        <div class="trailer-sub-note" style="padding: 2rem; text-align: center;">Trailer hiện chưa khả dụng.</div>
                     }
                 </div>
 
@@ -406,11 +411,15 @@ else
     private static string TextOrPending(string? value) => string.IsNullOrWhiteSpace(value) ? "Đang cập nhật" : value;
     private static string CastImage(int index) => CastImages[index % CastImages.Length];
 
+    private static readonly System.Text.RegularExpressions.Regex SafeYouTubeIdRegex =
+        new("^[A-Za-z0-9_-]{11}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private bool IsDirectVideoTrailer =>
-        !string.IsNullOrWhiteSpace(movie?.TrailerUrl) &&
-        (movie.TrailerUrl.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ||
-         movie.TrailerUrl.EndsWith(".webm", StringComparison.OrdinalIgnoreCase) ||
-         movie.TrailerUrl.Contains(".mp4?", StringComparison.OrdinalIgnoreCase));
+        !string.IsNullOrWhiteSpace(movie?.TrailerUrl)
+        && Uri.TryCreate(movie.TrailerUrl.Trim(), UriKind.Absolute, out var directUri)
+        && directUri.Scheme == Uri.UriSchemeHttps
+        && (directUri.AbsolutePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
+            || directUri.AbsolutePath.EndsWith(".webm", StringComparison.OrdinalIgnoreCase));
 
     private string TrailerEmbedUrl
     {
@@ -422,31 +431,40 @@ else
                 return "https://www.youtube-nocookie.com/embed/Way9Dexny3w?rel=0";
             }
 
-            if (url.Contains("youtube.com/watch", StringComparison.OrdinalIgnoreCase))
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
             {
-                var queryIndex = url.IndexOf("v=", StringComparison.OrdinalIgnoreCase);
-                if (queryIndex >= 0)
-                {
-                    var id = url.Substring(queryIndex + 2);
-                    var ampIndex = id.IndexOf('&');
-                    if (ampIndex >= 0) id = id.Substring(0, ampIndex);
-                    return $"https://www.youtube-nocookie.com/embed/{id}?rel=0";
-                }
-            }
-            else if (url.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase))
-            {
-                var id = url.Substring(url.LastIndexOf('/') + 1);
-                var qIndex = id.IndexOf('?');
-                if (qIndex >= 0) id = id.Substring(0, qIndex);
-                return $"https://www.youtube-nocookie.com/embed/{id}?rel=0";
-            }
-            else if (url.Contains("youtube.com/embed/", StringComparison.OrdinalIgnoreCase) ||
-                     url.Contains("youtube-nocookie.com/embed/", StringComparison.OrdinalIgnoreCase))
-            {
-                return url.Contains('?') ? $"{url}&rel=0" : $"{url}?rel=0";
+                return string.Empty;
             }
 
-            return url;
+            var host = uri.DnsSafeHost.ToLowerInvariant();
+            string? videoId = null;
+
+            if (host is "youtube.com" or "www.youtube.com" or "m.youtube.com" or "youtube-nocookie.com" or "www.youtube-nocookie.com")
+            {
+                if (uri.AbsolutePath.StartsWith("/embed/", StringComparison.OrdinalIgnoreCase))
+                {
+                    videoId = uri.AbsolutePath["/embed/".Length..].Split('/')[0];
+                }
+                else if (uri.AbsolutePath.Equals("/watch", StringComparison.OrdinalIgnoreCase))
+                {
+                    var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+                    if (query.TryGetValue("v", out var vValues))
+                    {
+                        videoId = vValues.FirstOrDefault();
+                    }
+                }
+            }
+            else if (host is "youtu.be" or "www.youtu.be")
+            {
+                videoId = uri.AbsolutePath.Trim('/').Split('/')[0];
+            }
+
+            if (!string.IsNullOrWhiteSpace(videoId) && SafeYouTubeIdRegex.IsMatch(videoId))
+            {
+                return $"https://www.youtube-nocookie.com/embed/{videoId}?rel=0";
+            }
+
+            return string.Empty;
         }
     }
 

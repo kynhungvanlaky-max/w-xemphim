@@ -499,8 +499,9 @@ public sealed class AdminEpisodesController(
             return NotFound(ApiResponse<VideoIngestResultDto>.Fail("Không tìm thấy tập phim."));
         }
 
+        var ct = HttpContext?.RequestAborted ?? CancellationToken.None;
         var maxQuality = string.IsNullOrWhiteSpace(masterMaxQuality) ? "1080p FHD" : masterMaxQuality.Trim();
-        var createdFiles = await storage.SaveMasterAndRenditionsAsync(episodeId, extension, stream, maxQuality);
+        var createdFiles = await storage.SaveMasterAndRenditionsAsync(episodeId, extension, stream, maxQuality, ct);
 
         var storageMode = "Local Disk";
         var masterStreamUrl = $"local://ep-{episodeId}-master{extension}";
@@ -516,16 +517,21 @@ public sealed class AdminEpisodesController(
                     var localPath = Path.Combine(storage.RootPath, fileName);
                     if (System.IO.File.Exists(localPath))
                     {
-                        await using var fs = System.IO.File.OpenRead(localPath);
-                        var r2Key = $"episodes/{episodeId}/{fileName}";
-                        var contentType = EpisodeVideoStorage.ResolveContentType(extension) ?? "video/mp4";
-                        var uploadedUrl = await cloudStorage.UploadFileAsync(fs, r2Key, contentType);
+                        string uploadedUrl;
+                        await using (var fs = System.IO.File.OpenRead(localPath))
+                        {
+                            var r2Key = $"episodes/{episodeId}/{fileName}";
+                            var contentType = EpisodeVideoStorage.ResolveContentType(extension) ?? "video/mp4";
+                            uploadedUrl = await cloudStorage.UploadFileAsync(fs, r2Key, contentType, ct);
+                        }
                         if (!string.IsNullOrWhiteSpace(uploadedUrl))
                         {
                             var slug = EpisodeVideoStorage.ExtractSlugFromFileName(fileName, episodeId);
                             renditionUrls[slug] = uploadedUrl;
                             storageMode = "Cloudflare R2";
                             if (slug == "master") masterStreamUrl = uploadedUrl;
+                            // Giải phóng tệp tạm cục bộ sau khi đã tải thành công lên Cloudflare R2
+                            try { System.IO.File.Delete(localPath); } catch { }
                         }
                     }
                 }

@@ -13,6 +13,7 @@ namespace WebXemPhim.Server.Hubs;
 public class CinemaHub : Hub
 {
     private readonly IStreamSessionService? _streamSessionService;
+    private readonly IAuthService? _authService;
     private readonly ILogger<CinemaHub>? _logger;
 
     public CinemaHub()
@@ -25,10 +26,27 @@ public class CinemaHub : Hub
     [ActivatorUtilitiesConstructor]
     public CinemaHub(
         IStreamSessionService streamSessionService,
+        IAuthService? authService = null,
         ILogger<CinemaHub>? logger = null)
     {
         _streamSessionService = streamSessionService;
+        _authService = authService;
         _logger = logger;
+    }
+
+    private async Task<bool> EnsureActiveSessionAsync()
+    {
+        if (_authService is null) return true;
+        var tokenHash = Context.User?.FindFirst("token_hash")?.Value;
+        if (string.IsNullOrWhiteSpace(tokenHash)) return true;
+
+        var active = await _authService.IsTokenHashActiveAsync(tokenHash);
+        if (!active)
+        {
+            Context.Abort();
+            return false;
+        }
+        return true;
     }
 
     public override async Task OnConnectedAsync()
@@ -89,6 +107,15 @@ public class CinemaHub : Hub
             };
         }
 
+        if (!await EnsureActiveSessionAsync())
+        {
+            return new StreamLeaseResultDto
+            {
+                Success = false,
+                ErrorMessage = "Phiên đăng nhập đã bị thu hồi hoặc tài khoản đang bị khóa."
+            };
+        }
+
         string ipAddress = "127.0.0.1";
         try
         {
@@ -123,6 +150,7 @@ public class CinemaHub : Hub
 
         var userIdStr = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (!Guid.TryParse(userIdStr, out var userId)) return false;
+        if (!await EnsureActiveSessionAsync()) return false;
 
         return await _streamSessionService.RecordHeartbeatAsync(
             userId,

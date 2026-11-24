@@ -62,12 +62,12 @@ public class DatabaseRegistrationTests
     [Fact]
     public void NormalizePostgresConnectionString_WithSupabaseDirectHost_RoutesToPoolerAndScopesUsername()
     {
-        var uri = "postgresql://postgres:Hoangky123%40@db.qczivykdsiuhbmxcvbyl.supabase.co:5432/postgres";
+        var uri = "postgresql://postgres:DummyPass123%40@db.demoprojectref.supabase.co:5432/postgres";
         var result = DatabaseRegistration.NormalizePostgresConnectionString(uri);
 
         Assert.Contains("Host=aws-0-ap-south-1.pooler.supabase.com", result);
-        Assert.Contains("Username=postgres.qczivykdsiuhbmxcvbyl", result);
-        Assert.Contains("Password=Hoangky123@", result);
+        Assert.Contains("Username=postgres.demoprojectref", result);
+        Assert.Contains("Password=DummyPass123@", result);
         Assert.Contains("SSL Mode=Require", result);
         Assert.Contains("Search Path=public,webxemphim", result);
     }
@@ -75,11 +75,11 @@ public class DatabaseRegistrationTests
     [Fact]
     public void NormalizePostgresConnectionString_WithSupabaseKeyValue_RoutesToPoolerAndRequiresSsl()
     {
-        var standard = "Host=db.qczivykdsiuhbmxcvbyl.supabase.co;Port=5432;Database=postgres;Username=postgres;Password=Hoangky123@;";
+        var standard = "Host=db.demoprojectref.supabase.co;Port=5432;Database=postgres;Username=postgres;Password=DummyPass123@;";
         var result = DatabaseRegistration.NormalizePostgresConnectionString(standard);
 
         Assert.Contains("Host=aws-0-ap-south-1.pooler.supabase.com", result);
-        Assert.Contains("Username=postgres.qczivykdsiuhbmxcvbyl", result);
+        Assert.Contains("Username=postgres.demoprojectref", result);
         Assert.Contains("SSL Mode=Require", result);
         Assert.Contains("Search Path=public,webxemphim", result);
     }

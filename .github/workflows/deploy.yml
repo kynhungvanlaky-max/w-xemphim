@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   # ============================================================
@@ -21,6 +20,13 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Static Secret Guard
+        run: |
+          if git grep -nE "sb_secret_[A-Za-z0-9_-]{16,}|BasicAWSCredentials\("[a-f0-9]{20,}"" -- ':!.gitleaks.toml' ':!.github/workflows/deploy.yml'; then
+            echo "::error::Potential live secret detected in repository!"
+            exit 1
+          fi
 
       - name: Setup .NET 10 SDK
         uses: actions/setup-dotnet@v4
@@ -49,6 +55,9 @@ jobs:
   build-and-push:
     name: Build & Push Images to GHCR
     needs: test
+    permissions:
+      contents: read
+      packages: write
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
@@ -140,6 +149,7 @@ jobs:
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           IMAGE_REPO: ${{ steps.repo.outputs.NAME }}
+          IMAGE_SHA: ${{ github.sha }}
           SERVER_DOMAIN: ${{ vars.DOMAIN || 'localhost' }}
           SERVER_EMAIL: ${{ vars.ACME_EMAIL || 'admin@cinemaflow.vn' }}
         with:
@@ -147,12 +157,14 @@ jobs:
           username: ${{ secrets.SERVER_USER || 'root' }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
-          envs: GHCR_USER,GHCR_TOKEN,IMAGE_REPO,SERVER_DOMAIN,SERVER_EMAIL
+          envs: GHCR_USER,GHCR_TOKEN,IMAGE_REPO,IMAGE_SHA,SERVER_DOMAIN,SERVER_EMAIL
           script: |
             set -e
+            umask 077
             cd ~/cinemaflow
 
-            # Authenticate with GHCR to pull private/public container images
+            # Authenticate with GHCR and always revoke credentials on exit
+            trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
             # Ensure production .env exists and keep dynamic domain/repo variables up to date
@@ -161,6 +173,7 @@ jobs:
               POSTGRES_PW=$(openssl rand -hex 16)
               SIGNING_KEY=$(openssl rand -hex 32)
               WEBHOOK_KEY=$(openssl rand -hex 32)
+              PROXY_SECRET=$(openssl rand -hex 32)
               ALLOWED_HOSTS_VALUE="$SERVER_DOMAIN;www.$SERVER_DOMAIN;localhost;127.0.0.1;[::1]"
               cat << EOF > .env
 DOMAIN=$SERVER_DOMAIN
@@ -170,23 +183,30 @@ POSTGRES_PASSWORD=$POSTGRES_PW
 POSTGRES_DB=webxemphim
 STREAM_SIGNING_KEY=$SIGNING_KEY
 PAYMENT_WEBHOOK_SECRET=$WEBHOOK_KEY
+INTERNAL_PROXY_SECRET=$PROXY_SECRET
 ALLOWED_HOSTS=$ALLOWED_HOSTS_VALUE
 IMAGE_REPO=$IMAGE_REPO
-IMAGE_TAG=latest
+IMAGE_TAG=$IMAGE_SHA
 PUBLIC_API_BASE_URL=https://$SERVER_DOMAIN
 EOF
+              chmod 600 .env
             else
               echo "Updating existing .env with latest domain and image configuration..."
               ALLOWED_HOSTS_VALUE="$SERVER_DOMAIN;www.$SERVER_DOMAIN;localhost;127.0.0.1;[::1]"
               grep -q "^DOMAIN=" .env && sed -i "s|^DOMAIN=.*|DOMAIN=$SERVER_DOMAIN|" .env || echo "DOMAIN=$SERVER_DOMAIN" >> .env
               grep -q "^ACME_EMAIL=" .env && sed -i "s|^ACME_EMAIL=.*|ACME_EMAIL=$SERVER_EMAIL|" .env || echo "ACME_EMAIL=$SERVER_EMAIL" >> .env
               grep -q "^IMAGE_REPO=" .env && sed -i "s|^IMAGE_REPO=.*|IMAGE_REPO=$IMAGE_REPO|" .env || echo "IMAGE_REPO=$IMAGE_REPO" >> .env
+              grep -q "^IMAGE_TAG=" .env && sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=$IMAGE_SHA|" .env || echo "IMAGE_TAG=$IMAGE_SHA" >> .env
               grep -q "^PUBLIC_API_BASE_URL=" .env && sed -i "s|^PUBLIC_API_BASE_URL=.*|PUBLIC_API_BASE_URL=https://$SERVER_DOMAIN|" .env || echo "PUBLIC_API_BASE_URL=https://$SERVER_DOMAIN" >> .env
               grep -q "^ALLOWED_HOSTS=" .env && sed -i "s|^ALLOWED_HOSTS=.*|ALLOWED_HOSTS=$ALLOWED_HOSTS_VALUE|" .env || echo "ALLOWED_HOSTS=$ALLOWED_HOSTS_VALUE" >> .env
+              if ! grep -q "^INTERNAL_PROXY_SECRET=" .env; then
+                echo "INTERNAL_PROXY_SECRET=$(openssl rand -hex 32)" >> .env
+              fi
+              chmod 600 .env
             fi
 
             export IMAGE_REPO="$IMAGE_REPO"
-            export IMAGE_TAG="latest"
+            export IMAGE_TAG="$IMAGE_SHA"
 
             # Pull newest images from GHCR
             docker compose -f docker-compose.prod.yml pull

@@ -2252,8 +2252,9 @@ public static class DatabaseSeeder
                 var (saltAdmin, hashAdmin) = HashPassword(bootstrapAdminPassword);
                 var adminUser = new UserEntity
                 {
-                    Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                    Id = Guid.NewGuid(),
                     FullName = "Quản Trị Viên",
+                    SearchNameLower = "quản trị viên",
                     Email = bootstrapEmail,
                     NormalizedEmail = bootstrapEmail,
                     EmailLookupHash = FieldEncryptor.Current.ComputeLookupHash(bootstrapEmail),
@@ -2269,9 +2270,6 @@ public static class DatabaseSeeder
                 await context.SaveChangesAsync(cancellationToken);
             }
         }
-
-        await RepairUnreadableDemoIdentitiesAsync(context, cancellationToken);
-        await RepairCloudStreamSourcesAsync(context, cancellationToken);
     }
 
     public static async Task SeedAsync(AppDbContext context, TimeProvider? timeProvider = null, CancellationToken cancellationToken = default)

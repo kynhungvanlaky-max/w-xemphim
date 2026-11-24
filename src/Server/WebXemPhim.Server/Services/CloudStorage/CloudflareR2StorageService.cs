@@ -1,6 +1,7 @@
 using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 
 namespace WebXemPhim.Server.Services.CloudStorage;
@@ -10,6 +11,7 @@ public sealed class CloudflareR2StorageService : ICloudStorageService, IDisposab
     private readonly CloudStorageOptions _options;
     private readonly ILogger<CloudflareR2StorageService> _logger;
     private readonly IAmazonS3? _s3Client;
+    private static readonly Regex SafeFolderRegex = new("^[a-z0-9_-]{1,32}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public CloudflareR2StorageService(
         IOptions<CloudStorageOptions> options,
@@ -147,15 +149,22 @@ public sealed class CloudflareR2StorageService : ICloudStorageService, IDisposab
             key = url;
         }
 
+        string normalized;
         try
         {
-            var unescaped = Uri.UnescapeDataString(key);
-            return unescaped.Normalize(System.Text.NormalizationForm.FormC);
+            normalized = Uri.UnescapeDataString(key).Normalize(System.Text.NormalizationForm.FormC);
         }
         catch
         {
-            return key.Normalize(System.Text.NormalizationForm.FormC);
+            normalized = key.Normalize(System.Text.NormalizationForm.FormC);
         }
+
+        if (normalized.Contains('\\') || normalized.Split('/').Any(seg => seg == ".."))
+        {
+            return string.Empty;
+        }
+
+        return normalized;
     }
 
     public Task<string?> ResolvePlaybackUrlAsync(
@@ -320,11 +329,17 @@ public sealed class CloudflareR2StorageService : ICloudStorageService, IDisposab
         }
 
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        var resolvedContentType = string.IsNullOrWhiteSpace(contentType)
-            ? GetMediaContentType(ext)
-            : contentType;
+        var resolvedContentType = GetMediaContentType(ext);
+        if (string.IsNullOrWhiteSpace(resolvedContentType))
+        {
+            return Task.FromResult<WebXemPhim.Shared.Models.CloudStoragePresignedUploadDto?>(null);
+        }
 
-        var safeFolder = string.IsNullOrWhiteSpace(folder) ? "episodes" : folder.Trim().Trim('/').Replace("\\", "/");
+        var safeFolder = string.IsNullOrWhiteSpace(folder) ? "episodes" : folder.Trim();
+        if (!SafeFolderRegex.IsMatch(safeFolder))
+        {
+            return Task.FromResult<WebXemPhim.Shared.Models.CloudStoragePresignedUploadDto?>(null);
+        }
         var objectKey = $"{safeFolder}/{DateTime.UtcNow:yyyyMM}/{Guid.NewGuid():N}{ext}";
 
         var duration = expiry ?? TimeSpan.FromMinutes(_options.PresignedUrlExpirationMinutes > 0 ? _options.PresignedUrlExpirationMinutes : 120);
@@ -364,9 +379,14 @@ public sealed class CloudflareR2StorageService : ICloudStorageService, IDisposab
             ".mkv" => "video/x-matroska",
             ".mov" => "video/quicktime",
             ".m3u8" => "application/vnd.apple.mpegurl",
+            ".m4v" => "video/mp4",
             ".ts" => "video/mp2t",
             ".m4s" => "video/iso.segment",
-            _ => "video/mp4"
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            ".avif" => "image/avif",
+            _ => string.Empty
         };
     }
 

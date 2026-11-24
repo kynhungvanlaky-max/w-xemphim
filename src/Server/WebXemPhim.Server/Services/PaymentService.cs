@@ -30,7 +30,9 @@ public sealed class PaymentService(
     IHostEnvironment environment,
     IConfiguration configuration,
     IPaymentWebhookVerifier? webhookVerifier = null,
-    IHubContext<CinemaHub>? hubContext = null) : IPaymentService
+    IHubContext<CinemaHub>? hubContext = null,
+    IAuthSessionCache? sessionCache = null,
+    IMemoryCache? memoryCache = null) : IPaymentService
 {
     private readonly IPaymentWebhookVerifier _webhookVerifier =
         webhookVerifier ?? new PaymentWebhookVerifier(configuration, timeProvider, environment);
@@ -210,6 +212,19 @@ public sealed class PaymentService(
         decimal discountAmount;
         decimal discountPercent;
 
+        if (coupon.DiscountValue <= 0m
+            || (coupon.DiscountType.Equals("percent", StringComparison.OrdinalIgnoreCase) && coupon.DiscountValue > 100m))
+        {
+            return new CouponValidationResultDto
+            {
+                IsValid = false,
+                CouponCode = code,
+                OriginalPrice = originalPrice,
+                FinalPrice = originalPrice,
+                Message = "Mã giảm giá có cấu hình mức giảm không hợp lệ."
+            };
+        }
+
         if (coupon.DiscountType.Equals("percent", StringComparison.OrdinalIgnoreCase))
         {
             discountPercent = coupon.DiscountValue;
@@ -253,19 +268,30 @@ public sealed class PaymentService(
 
         var amount = plan.PriceVnd;
         string? note = null;
+        string? appliedCouponCode = null;
 
         if (!string.IsNullOrWhiteSpace(request.CouponCode))
         {
-            var coupon = await ValidateCouponAsync(new ApplyCouponRequest
-            {
-                PlanId = plan.Id,
-                CouponCode = request.CouponCode
-            });
+            var normalizedCode = request.CouponCode.Trim().ToUpperInvariant();
+            var alreadyUsedByUser = await context.Payments.AnyAsync(p =>
+                p.UserId == userId
+                && p.Status == PaymentStatus.Completed
+                && p.CouponCode == normalizedCode);
 
-            if (coupon.IsValid)
+            if (!alreadyUsedByUser)
             {
-                amount = coupon.FinalPrice;
-                note = $"Áp dụng mã giảm giá {coupon.CouponCode} (-{coupon.DiscountAmount:N0}đ)";
+                var coupon = await ValidateCouponAsync(new ApplyCouponRequest
+                {
+                    PlanId = plan.Id,
+                    CouponCode = normalizedCode
+                });
+
+                if (coupon.IsValid)
+                {
+                    amount = coupon.FinalPrice;
+                    appliedCouponCode = coupon.CouponCode;
+                    note = $"Áp dụng mã giảm giá {coupon.CouponCode} (-{coupon.DiscountAmount:N0}đ)";
+                }
             }
         }
 
@@ -293,6 +319,7 @@ public sealed class PaymentService(
             CreatedAtUtc = now,
             PaidAtUtc = demo ? now : null,
             VipExpiresAtUtc = demo ? user.VipExpiresAtUtc : null,
+            CouponCode = appliedCouponCode,
             Note = note
         };
 
@@ -370,7 +397,7 @@ public sealed class PaymentService(
             }
         }
 
-        if (request.Amount > 0 && Math.Abs(payment.Amount - request.Amount) > 0.01m)
+        if (request.Amount < 0 || Math.Abs(payment.Amount - request.Amount) > 0.01m)
         {
             return PaymentWebhookResult.AmountMismatch("Số tiền thanh toán không khớp với giá trị đơn hàng.");
         }
@@ -451,9 +478,21 @@ public sealed class PaymentService(
             }
             throw;
         }
+        catch (DbUpdateException) when (!string.IsNullOrWhiteSpace(request.TransactionReference))
+        {
+            if (tx != null) await tx.RollbackAsync();
+            return PaymentWebhookResult.DuplicateTransaction("Mã giao dịch ngân hàng đã được sử dụng cho đơn hàng khác.");
+        }
         finally
         {
             if (tx != null) await tx.DisposeAsync();
+        }
+
+        if (user is not null)
+        {
+            memoryCache?.Remove($"vip_status_{user.Id}");
+            memoryCache?.Remove($"isvip:{user.Id}");
+            sessionCache?.InvalidateUser(user.Id);
         }
 
         if (hubContext != null && user != null && notification != null)

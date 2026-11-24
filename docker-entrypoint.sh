@@ -36,16 +36,17 @@ export Security__DataProtectionKeyPath=${Security__DataProtectionKeyPath:-/app/k
 export Security__BehindReverseProxy=${Security__BehindReverseProxy:-true}
 export ApiBaseUrl="http://127.0.0.1:5085"
 
-# Never fall back to a public HMAC key or a wildcard host allowlist in Production.
-# If not explicitly provided in environment variables, auto-derive safe values for Render/Cloud.
+# Never fall back to a public or silently ephemeral HMAC key in Production.
 if [ "$ASPNETCORE_ENVIRONMENT" = "Production" ]; then
-    if [ -z "$Security__StreamSigningKey" ] || [ "${#Security__StreamSigningKey}" -lt 32 ]; then
-        export Security__StreamSigningKey=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 48)
-        echo "Notice: Auto-generated 48-char Security__StreamSigningKey for Production."
+    STREAM_KEY_EFF="${Security__StreamSigningKey:-$STREAM_SIGNING_KEY}"
+    WEBHOOK_KEY_EFF="${Payment__WebhookSecret:-${Security__PaymentWebhookSecret:-$PAYMENT_WEBHOOK_SECRET}}"
+    if [ -z "$STREAM_KEY_EFF" ] || [ "${#STREAM_KEY_EFF}" -lt 32 ]; then
+        echo "ERROR: Security__StreamSigningKey (or STREAM_SIGNING_KEY) must be configured (>= 32 chars) in Production." >&2
+        exit 1
     fi
-    if [ -z "$Payment__WebhookSecret" ] || [ "${#Payment__WebhookSecret}" -lt 32 ]; then
-        export Payment__WebhookSecret=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 48)
-        echo "Notice: Auto-generated 48-char Payment__WebhookSecret for Production."
+    if [ -z "$WEBHOOK_KEY_EFF" ] || [ "${#WEBHOOK_KEY_EFF}" -lt 32 ]; then
+        echo "ERROR: Payment__WebhookSecret (or PAYMENT_WEBHOOK_SECRET) must be configured (>= 32 chars) in Production." >&2
+        exit 1
     fi
     if [ -z "$AllowedHosts" ] || [ "$AllowedHosts" = "*" ]; then
         if [ -n "$RENDER_EXTERNAL_HOSTNAME" ]; then
@@ -90,7 +91,7 @@ if [ "$USE_LOCAL_PG" = "true" ]; then
     elif command -v service >/dev/null 2>&1; then
         service postgresql start || true
     elif [ -n "$PG_DIR" ] && [ -n "$DATA_DIR" ]; then
-        su - postgres -c "$PG_DIR/bin/pg_ctl -D $DATA_DIR -l /var/log/postgresql/pg.log -o \"-c listen_addresses='*'\" start" || true
+        su - postgres -c "$PG_DIR/bin/pg_ctl -D $DATA_DIR -l /var/log/postgresql/pg.log -o \"-c listen_addresses='127.0.0.1'\" start" || true
     fi
 
     # Wait for PostgreSQL to become ready

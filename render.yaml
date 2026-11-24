@@ -33,6 +33,10 @@ services:
         generateValue: true
       - key: Payment__WebhookSecret
         generateValue: true
+      - key: Security__InternalProxySecret
+        sync: false
+      - key: Security__DataProtectionMasterKey
+        sync: false
       - key: Security__BehindReverseProxy
         value: "true"
       - key: Security__KnownProxyNetworks__0
@@ -99,3 +103,5 @@ services:
         value: "w-phim-client.onrender.com;localhost;127.0.0.1;[::1]"
       - key: ApiBaseUrl
         value: "https://w-phim-api.onrender.com"
+      - key: Security__InternalProxySecret
+        sync: false

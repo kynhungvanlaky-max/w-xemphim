@@ -44,17 +44,9 @@ public sealed class PublicUrlResolver(IConfiguration configuration)
 
         if (request is not null && request.Host.HasValue)
         {
-            var fProto = request.Headers["X-Forwarded-Proto"].ToString();
-            var fHost = request.Headers["X-Forwarded-Host"].ToString();
-
-            if (!string.IsNullOrWhiteSpace(fHost))
-            {
-                var proto = !string.IsNullOrWhiteSpace(fProto) ? fProto : request.Scheme;
-                return $"{proto}://{fHost}";
-            }
-
-            var scheme = !string.IsNullOrWhiteSpace(fProto) ? fProto : request.Scheme;
-            return $"{scheme}://{request.Host}";
+            // Tin cậy Scheme và Host đã được chuẩn hoá qua UseForwardedHeaders + AllowedHosts,
+            // tuyệt đối không đọc trực tiếp X-Forwarded-Host/Proto thô để tránh host header poisoning.
+            return $"{request.Scheme}://{request.Host}";
         }
 
         return "http://localhost";

@@ -84,7 +84,7 @@
                     }
                     else
                     {
-                        <div class="wv-no-stream"><img src="@PlayerPoster" alt="" onerror="this.onerror=null; this.src='@FallbackBackdrop';" /><div><CinemaIcon Name="CinemaIconName.Film" Size="32" /><h2>@(loading || (playback.Source is not null && string.IsNullOrEmpty(playback.Source.StreamUrl)) ? "Đang chuẩn bị luồng phát..." : "Chưa có nguồn phát")</h2><p>@(loading || (playback.Source is not null && string.IsNullOrEmpty(playback.Source.StreamUrl)) ? "Đang thiết lập phiên phát bảo mật, vui lòng chờ trong giây lát." : playback.Current is null ? "Phim chưa có tập được phát hành." : "Tập này chưa có nguồn phát khả dụng. Bạn có thể chọn tập khác.")</p></div></div>
+                        <div class="wv-no-stream"><img src="@PlayerPoster" alt="" data-fallback-src="@FallbackBackdrop" /><div><CinemaIcon Name="CinemaIconName.Film" Size="32" /><h2>@(loading || (playback.Source is not null && string.IsNullOrEmpty(playback.Source.StreamUrl)) ? "Đang chuẩn bị luồng phát..." : "Chưa có nguồn phát")</h2><p>@(loading || (playback.Source is not null && string.IsNullOrEmpty(playback.Source.StreamUrl)) ? "Đang thiết lập phiên phát bảo mật, vui lòng chờ trong giây lát." : playback.Current is null ? "Phim chưa có tập được phát hành." : "Tập này chưa có nguồn phát khả dụng. Bạn có thể chọn tập khác.")</p></div></div>
                     }
                 </section>
                 <!-- Thanh chọn nguồn phát siêu gọn tối giản (Minimalist Stream Bar) -->
@@ -175,7 +175,7 @@
                             var active = episode == playback.Current;
                             <button class="wv-episode @(active ? "active" : "")" aria-current="@(active ? "true" : null)" @onclick="() => GoTo(episode)">
                                 <div class="wv-episode-image">
-                                    <img src="@(string.IsNullOrWhiteSpace(episode.ThumbnailUrl) ? FallbackBackdrop : episode.ThumbnailUrl)" alt="" decoding="async" onerror="this.onerror=null; this.src='@FallbackBackdrop';" />
+                                    <img src="@(string.IsNullOrWhiteSpace(episode.ThumbnailUrl) ? FallbackBackdrop : episode.ThumbnailUrl)" alt="" decoding="async" data-fallback-src="@FallbackBackdrop" />
                                     <span>@episode.DurationMinutes phút</span>
                                     <div class="wv-episode-overlay" aria-hidden="true">
                                         <CinemaIcon Name="CinemaIconName.Play" Size="16" Filled="true" />

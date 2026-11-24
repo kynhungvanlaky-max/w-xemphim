@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using WebXemPhim.Shared.Models;
 using WebXemPhim.Shared.Requests;
 using WebXemPhim.Shared.Responses;
+using WebXemPhim.Shared.Security;
 
 namespace WebXemPhim.Client.Services;
 
@@ -48,7 +49,7 @@ public interface IAccountApiClient
     Task<bool> SaveWatchProgressAsync(UpdateWatchProgressRequest request);
 }
 
-public sealed class AccountApiClient(HttpClient httpClient, ILogger<AccountApiClient> logger) : IAccountApiClient
+public sealed class AccountApiClient(HttpClient httpClient, ILogger<AccountApiClient> logger, ICircuitClientIpProvider? circuitIpProvider = null) : IAccountApiClient
 {
     private string? _accessToken;
 
@@ -139,6 +140,9 @@ public sealed class AccountApiClient(HttpClient httpClient, ILogger<AccountApiCl
         try
         {
             using var request = new HttpRequestMessage(method, uri);
+            var clientIp = circuitIpProvider?.ClientIp;
+            if (!string.IsNullOrWhiteSpace(clientIp))
+                request.Options.Set(SignedClientIpHeader.OptionKey, clientIp);
             if (!string.IsNullOrWhiteSpace(_accessToken))
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
             if (body is not null) request.Content = JsonContent.Create(body);

@@ -17,15 +17,16 @@ export Security__KnownProxyNetworks__2=${Security__KnownProxyNetworks__2:-192.16
 export Security__KnownProxyNetworks__3=${Security__KnownProxyNetworks__3:-127.0.0.0/8}
 
 # Never fall back to a public HMAC key or a wildcard host allowlist in Production.
-# If not explicitly provided in environment variables, auto-derive safe values for Render/Cloud.
 if [ "$ASPNETCORE_ENVIRONMENT" = "Production" ]; then
-    if [ -z "$Security__StreamSigningKey" ] || [ "${#Security__StreamSigningKey}" -lt 32 ]; then
-        export Security__StreamSigningKey="CinemaFlow_Render_Production_Permanent_Stream_Signing_Secret_Key_2026_AtLeast64BytesLong!"
-        echo "Notice: Configured default stable Production Security__StreamSigningKey."
+    STREAM_KEY_EFF="${Security__StreamSigningKey:-$STREAM_SIGNING_KEY}"
+    WEBHOOK_KEY_EFF="${Payment__WebhookSecret:-${Security__PaymentWebhookSecret:-$PAYMENT_WEBHOOK_SECRET}}"
+    if [ -z "$STREAM_KEY_EFF" ] || [ "${#STREAM_KEY_EFF}" -lt 32 ]; then
+        echo "ERROR: Security__StreamSigningKey (or STREAM_SIGNING_KEY) must be configured (>= 32 chars) in Production." >&2
+        exit 1
     fi
-    if [ -z "$Payment__WebhookSecret" ] || [ "${#Payment__WebhookSecret}" -lt 32 ]; then
-        export Payment__WebhookSecret="CinemaFlow_Render_Production_Webhook_Secret_Key_2026_AtLeast64BytesLong!"
-        echo "Notice: Configured default stable Production Payment__WebhookSecret."
+    if [ -z "$WEBHOOK_KEY_EFF" ] || [ "${#WEBHOOK_KEY_EFF}" -lt 32 ]; then
+        echo "ERROR: Payment__WebhookSecret (or PAYMENT_WEBHOOK_SECRET) must be configured (>= 32 chars) in Production." >&2
+        exit 1
     fi
     if [ -z "$AllowedHosts" ] || [ "$AllowedHosts" = "*" ]; then
         if [ -n "$RENDER_EXTERNAL_HOSTNAME" ]; then
@@ -92,7 +93,7 @@ if [ "$USE_LOCAL_PG" = "true" ]; then
     elif command -v service >/dev/null 2>&1; then
         service postgresql start || true
     elif [ -n "$PG_DIR" ] && [ -n "$DATA_DIR" ]; then
-        su - postgres -c "$PG_DIR/bin/pg_ctl -D $DATA_DIR -l /var/log/postgresql/pg.log -o \"-c listen_addresses='*'\" start" || true
+        su - postgres -c "$PG_DIR/bin/pg_ctl -D $DATA_DIR -l /var/log/postgresql/pg.log -o \"-c listen_addresses='127.0.0.1'\" start" || true
     fi
 
     for i in $(seq 1 30); do
@@ -118,7 +119,13 @@ else
 fi
 
 echo "=== Launching CinemaFlow REST API Server (0.0.0.0:$PORT) ==="
-dotnet WebXemPhim.Server.dll --urls "http://0.0.0.0:${PORT}" &
+mkdir -p /app/keys /app/data
+if [ "$(id -u)" = "0" ] && command -v setpriv >/dev/null 2>&1 && id app >/dev/null 2>&1; then
+    chown -R app:app /app/keys /app/data 2>/dev/null || true
+    setpriv --reuid=app --regid=app --init-groups dotnet WebXemPhim.Server.dll --urls "http://0.0.0.0:${PORT}" &
+else
+    dotnet WebXemPhim.Server.dll --urls "http://0.0.0.0:${PORT}" &
+fi
 SERVER_PID=$!
 echo "Server PID: $SERVER_PID"
 

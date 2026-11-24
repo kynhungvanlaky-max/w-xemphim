@@ -75,3 +75,15 @@ public sealed class AuthSessionCache : IAuthSessionCache
         _tokenOwners.TryRemove(tokenHash, out _);
     }
 }
+
+/// <summary>
+/// No-op cache used in the Testing environment so integration tests that mutate the database
+/// directly observe changes immediately without 30s TTL lag.
+/// </summary>
+public sealed class NoOpAuthSessionCache : IAuthSessionCache
+{
+    public bool TryGet(string tokenHash, out UserDto? user) { user = null; return false; }
+    public void Set(string tokenHash, UserDto user) { }
+    public void InvalidateToken(string tokenHash) { }
+    public void InvalidateUser(Guid userId) { }
+}

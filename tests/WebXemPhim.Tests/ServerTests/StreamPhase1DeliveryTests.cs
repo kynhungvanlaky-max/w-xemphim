@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text;
@@ -755,8 +755,18 @@ public sealed class StreamPhase1TelemetryIntegrationTests(TestApiFactory factory
                 .Build();
 
             var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"webxemphim-phase1-{Guid.NewGuid():N}").Options;
+            var vipUserId = Guid.NewGuid();
             await using (var seedDb = new AppDbContext(options))
             {
+                seedDb.Users.Add(new UserEntity
+                {
+                    Id = vipUserId,
+                    Email = "vip-head@cinema.test",
+                    NormalizedEmail = "VIP-HEAD@CINEMA.TEST",
+                    FullName = "VIP Head Tester",
+                    Membership = WebXemPhim.Shared.Enums.MembershipTier.Vip,
+                    VipExpiresAtUtc = DateTime.UtcNow.AddDays(30)
+                });
                 seedDb.StreamSources.Add(new StreamSourceEntity
                 {
                     EpisodeId = 998,
@@ -776,6 +786,7 @@ public sealed class StreamPhase1TelemetryIntegrationTests(TestApiFactory factory
                 .ReturnsAsync(new ActiveStreamDto
                 {
                     EpisodeId = 998,
+                    UserId = vipUserId,
                     SessionId = sessionId,
                     IsActive = true
                 });

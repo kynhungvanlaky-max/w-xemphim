@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using WebXemPhim.Shared.Enums;
 using WebXemPhim.Shared.Models;
 using WebXemPhim.Shared.Responses;
+using WebXemPhim.Shared.Security;
 
 namespace WebXemPhim.Client.Services;
 
@@ -125,8 +126,29 @@ public interface IAdminApiClient
 public sealed class AdminApiClient(
     HttpClient httpClient,
     AuthState authState,
-    ILogger<AdminApiClient> logger) : IAdminApiClient
+    ILogger<AdminApiClient> logger,
+    ICircuitClientIpProvider? circuitIpProvider = null) : IAdminApiClient
 {
+    private void AttachClientIp(HttpRequestMessage request)
+    {
+        var ip = circuitIpProvider?.ClientIp;
+        if (!string.IsNullOrWhiteSpace(ip))
+        {
+            request.Options.Set(SignedClientIpHeader.OptionKey, ip);
+        }
+    }
+
+    private void HandleAuthFailure(System.Net.HttpStatusCode statusCode)
+    {
+        if (statusCode == System.Net.HttpStatusCode.Unauthorized && authState.HasSession)
+        {
+            authState.Logout();
+        }
+        else if (statusCode == System.Net.HttpStatusCode.Forbidden && authState.IsAuthenticated)
+        {
+            _ = authState.RefreshAsync();
+        }
+    }
     public async Task<AdminDashboardDto?> GetStatsAsync() =>
         (await SendAsync<AdminDashboardDto>(HttpMethod.Get, "api/admin/stats"))?.Data;
 
@@ -215,6 +237,7 @@ public sealed class AdminApiClient(
             {
                 Content = content
             };
+            AttachClientIp(request);
             if (!string.IsNullOrWhiteSpace(authState.AccessToken))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authState.AccessToken);
@@ -222,6 +245,7 @@ public sealed class AdminApiClient(
 
             using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             progress?.Report(100.0);
+            HandleAuthFailure(response.StatusCode);
             return await ReadApiResponseAsync<VideoIngestResultDto>(response);
         }
         catch (Exception ex)
@@ -288,6 +312,7 @@ public sealed class AdminApiClient(
             {
                 Content = content
             };
+            AttachClientIp(request);
             if (!string.IsNullOrWhiteSpace(authState.AccessToken))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authState.AccessToken);
@@ -295,6 +320,7 @@ public sealed class AdminApiClient(
 
             using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             progress?.Report(100.0);
+            HandleAuthFailure(response.StatusCode);
             return await ReadApiResponseAsync<CloudStorageUploadResultDto>(response);
         }
         catch (Exception ex)
@@ -453,12 +479,14 @@ public sealed class AdminApiClient(
             {
                 Content = content
             };
+            AttachClientIp(request);
             if (!string.IsNullOrWhiteSpace(authState.AccessToken))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authState.AccessToken);
             }
 
             using var response = await httpClient.SendAsync(request);
+            HandleAuthFailure(response.StatusCode);
             return await ReadApiResponseAsync<EpisodeDto>(response);
         }
         catch (Exception ex)
@@ -556,6 +584,7 @@ public sealed class AdminApiClient(
             if (queryParams.Count > 0) url += "?" + string.Join("&", queryParams);
 
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            AttachClientIp(request);
             if (!string.IsNullOrWhiteSpace(authState.AccessToken))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authState.AccessToken);
@@ -564,6 +593,7 @@ public sealed class AdminApiClient(
             using var response = await httpClient.SendAsync(request);
             if (!response.IsSuccessStatusCode)
             {
+                HandleAuthFailure(response.StatusCode);
                 logger.LogWarning("Xuất CSV thanh toán thất bại: HTTP {Status}.", (int)response.StatusCode);
                 return null;
             }
@@ -612,6 +642,7 @@ public sealed class AdminApiClient(
         try
         {
             using var request = new HttpRequestMessage(method, uri);
+            AttachClientIp(request);
             if (!string.IsNullOrWhiteSpace(authState.AccessToken))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authState.AccessToken);
@@ -622,6 +653,7 @@ public sealed class AdminApiClient(
             }
 
             using var response = await httpClient.SendAsync(request);
+            HandleAuthFailure(response.StatusCode);
             return await ReadApiResponseAsync<T>(response);
         }
         catch (Exception exception)

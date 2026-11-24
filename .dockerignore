@@ -21,8 +21,11 @@ Dockerfile*
 docker-compose*.yml
 .env*
 **/appsettings.Development.json
+**/appsettings.Production.json
+**/appsettings.Staging.json
 **/appsettings.Local.json
 **/appsettings.*.local.json
+**/*dump*.sql
 **/keys
 README.md
 DEPLOY*.md

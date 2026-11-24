@@ -13,7 +13,12 @@
 **/appsettings.Local.json
 # Local development settings may contain real secrets: never commit them.
 **/appsettings.Development.json
+**/appsettings.Production.json
+**/appsettings.Staging.json
 !**/appsettings.Development.example.json
+**/*dump*.sql
+**/*.bak
+supabase/.temp/
 **/keys/
 **/*.pfx
 **/*.pem

@@ -21,7 +21,7 @@ WORKDIR /app
 
 # Ensure directories for persistent volumes (Data Protection keys).
 # The catalogue itself lives in PostgreSQL, the data volume is kept for compatibility.
-RUN mkdir -p /app/data /app/keys
+RUN mkdir -p /app/data /app/keys && chown -R $APP_UID:$APP_UID /app/data /app/keys
 
 COPY --from=build /app/publish .
 
@@ -31,5 +31,7 @@ ENV ASPNETCORE_URLS=http://+:8080 \
     Security__DataProtectionKeyPath=/app/keys
 
 EXPOSE 8080
+
+USER $APP_UID
 
 ENTRYPOINT ["dotnet", "WebXemPhim.Server.dll"]

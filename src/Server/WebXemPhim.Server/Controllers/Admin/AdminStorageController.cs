@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -21,6 +23,46 @@ public sealed class AdminStorageController(
     : AdminBaseController(contextFactory, timeProvider, env, httpClientFactory)
 {
     private readonly CloudStorageOptions _options = storageOptions.Value;
+
+    private static readonly Regex SafeFolderRegex = new("^[a-z0-9_-]{1,32}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Dictionary<string, string> AllowedMediaTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".mp4"] = "video/mp4",
+        [".m4v"] = "video/mp4",
+        [".webm"] = "video/webm",
+        [".mkv"] = "video/x-matroska",
+        [".mov"] = "video/quicktime",
+        [".m3u8"] = "application/vnd.apple.mpegurl",
+        [".ts"] = "video/mp2t",
+        [".m4s"] = "video/iso.segment",
+        [".jpg"] = "image/jpeg",
+        [".jpeg"] = "image/jpeg",
+        [".png"] = "image/png",
+        [".webp"] = "image/webp",
+        [".avif"] = "image/avif"
+    };
+
+    private static bool TryNormalizeSafeFolder(string? folder, out string safeFolder)
+    {
+        safeFolder = string.IsNullOrWhiteSpace(folder) ? "episodes" : folder.Trim();
+        return SafeFolderRegex.IsMatch(safeFolder);
+    }
+
+    private static async Task<bool> LooksLikeActiveWebMarkupAsync(Stream stream)
+    {
+        var buffer = new byte[128];
+        var read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length));
+        if (stream.CanSeek) stream.Position = 0;
+        if (read <= 0) return false;
+
+        var prefix = Encoding.UTF8.GetString(buffer, 0, read).TrimStart('\uFEFF', ' ', '\t', '\r', '\n');
+        return prefix.StartsWith("<!doctype", StringComparison.OrdinalIgnoreCase)
+            || prefix.StartsWith("<html", StringComparison.OrdinalIgnoreCase)
+            || prefix.StartsWith("<svg", StringComparison.OrdinalIgnoreCase)
+            || prefix.StartsWith("<script", StringComparison.OrdinalIgnoreCase)
+            || prefix.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase);
+    }
 
     [HttpGet("status")]
     public ActionResult<ApiResponse<CloudStorageStatusDto>> GetStatus()
@@ -50,9 +92,14 @@ public sealed class AdminStorageController(
         }
 
         var extension = Path.GetExtension(fileName).ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(extension))
+        if (string.IsNullOrWhiteSpace(extension) || !AllowedMediaTypes.TryGetValue(extension, out var safeContentType))
         {
-            return BadRequest(ApiResponse<CloudStoragePresignedUploadDto>.Fail("Tệp không có phần mở rộng hợp lệ."));
+            return BadRequest(ApiResponse<CloudStoragePresignedUploadDto>.Fail("Định dạng tệp không được hỗ trợ. Chỉ chấp nhận video hoặc ảnh đa phương tiện hợp lệ."));
+        }
+
+        if (!TryNormalizeSafeFolder(folder, out var safeFolder))
+        {
+            return BadRequest(ApiResponse<CloudStoragePresignedUploadDto>.Fail("Thư mục đích không hợp lệ."));
         }
 
         if (!cloudStorage.IsConfigured)
@@ -60,12 +107,16 @@ public sealed class AdminStorageController(
             return BadRequest(ApiResponse<CloudStoragePresignedUploadDto>.Fail("Cloudflare R2 chưa được kích hoạt trên hệ thống."));
         }
 
-        var result = await cloudStorage.GeneratePresignedUploadUrlAsync(fileName, contentType, folder ?? "episodes");
+        var result = await cloudStorage.GeneratePresignedUploadUrlAsync(fileName, safeContentType, safeFolder);
         if (result is null)
         {
             return StatusCode(StatusCodes.Status500InternalServerError,
                 ApiResponse<CloudStoragePresignedUploadDto>.Fail("Không thể tạo liên kết tải lên trước từ Cloudflare R2."));
         }
+
+        await using var auditContext = await ContextFactory.CreateDbContextAsync();
+        await LogAuditAsync(auditContext, "PRESIGNED_UPLOAD_R2", "Storage", result.ObjectKey,
+            $"Cấp liên kết tải lên R2 cho tệp '{Path.GetFileName(fileName)}' ({safeContentType}) vào thư mục '{safeFolder}'.");
 
         return Ok(ApiResponse<CloudStoragePresignedUploadDto>.Ok(result, "Tạo liên kết tải lên Cloudflare R2 thành công."));
     }
@@ -90,30 +141,22 @@ public sealed class AdminStorageController(
         }
 
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(extension))
+        if (string.IsNullOrWhiteSpace(extension) || !AllowedMediaTypes.TryGetValue(extension, out var contentType))
         {
-            return BadRequest(ApiResponse<CloudStorageUploadResultDto>.Fail("Tệp không có phần mở rộng hợp lệ."));
+            return BadRequest(ApiResponse<CloudStorageUploadResultDto>.Fail("Định dạng tệp không được hỗ trợ. Chỉ chấp nhận video hoặc ảnh đa phương tiện hợp lệ."));
         }
 
-        var safeFolder = string.IsNullOrWhiteSpace(folder) ? "episodes" : folder.Trim().Trim('/').Replace("\\", "/");
-        if (safeFolder.Contains(".."))
+        if (!TryNormalizeSafeFolder(folder, out var safeFolder))
         {
             return BadRequest(ApiResponse<CloudStorageUploadResultDto>.Fail("Thư mục đích không hợp lệ."));
         }
 
-        string? contentType = null;
-        try
+        await using (var probeStream = file.OpenReadStream())
         {
-            contentType = file.ContentType;
-        }
-        catch
-        {
-            // Ignore FormFile missing headers in test scenarios
-        }
-
-        if (string.IsNullOrWhiteSpace(contentType) || contentType == "application/octet-stream")
-        {
-            contentType = EpisodeVideoStorage.ResolveContentType(extension) ?? "video/mp4";
+            if (await LooksLikeActiveWebMarkupAsync(probeStream))
+            {
+                return BadRequest(ApiResponse<CloudStorageUploadResultDto>.Fail("Nội dung tệp không hợp lệ (phát hiện mã HTML/SVG/XML)."));
+            }
         }
 
         // 1. Nếu Cloudflare R2 đã cấu hình: Đẩy trực tiếp lên R2 Bucket

@@ -8,6 +8,7 @@ public sealed class FieldEncryptor : IFieldEncryptor
 {
     private const string Purpose = "WebXemPhim.CustomerData.v1";
     private readonly IDataProtector _protector;
+    private readonly byte[]? _blindIndexKey;
 
     private static IFieldEncryptor? _current;
     public static IFieldEncryptor Current
@@ -16,10 +17,14 @@ public sealed class FieldEncryptor : IFieldEncryptor
         set => _current = value;
     }
 
-    public FieldEncryptor(IDataProtectionProvider? provider = null)
+    public FieldEncryptor(IDataProtectionProvider? provider = null, string? blindIndexSecret = null)
     {
         var resolvedProvider = provider ?? CreateDefaultProvider();
         _protector = resolvedProvider.CreateProtector(Purpose);
+        if (!string.IsNullOrWhiteSpace(blindIndexSecret))
+        {
+            _blindIndexKey = SHA256.HashData(Encoding.UTF8.GetBytes($"CinemaFlow.BlindIndex.v1:{blindIndexSecret.Trim()}"));
+        }
     }
 
     private static IDataProtectionProvider CreateDefaultProvider()
@@ -69,7 +74,9 @@ public sealed class FieldEncryptor : IFieldEncryptor
         if (string.IsNullOrWhiteSpace(value)) return null;
         var normalized = value.Trim().ToLowerInvariant();
         var bytes = Encoding.UTF8.GetBytes(normalized);
-        var hash = SHA256.HashData(bytes);
+        var hash = _blindIndexKey is not null
+            ? HMACSHA256.HashData(_blindIndexKey, bytes)
+            : SHA256.HashData(bytes);
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }

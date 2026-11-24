@@ -23,16 +23,23 @@ public sealed class ReviewService(
     {
         await using var context = await contextFactory.CreateDbContextAsync();
         if (!await context.Movies.AnyAsync(movie => movie.Id == movieId)) return null;
-        var reviews = await context.Reviews.AsNoTracking()
+        var baseQuery = context.Reviews.AsNoTracking()
+            .Where(review => review.MovieId == movieId);
+        var totalReviews = await baseQuery.CountAsync();
+        var averageRating = totalReviews == 0
+            ? 0
+            : Math.Round(await baseQuery.AverageAsync(review => (double)review.Rating), 1);
+
+        var reviews = await baseQuery
             .Include(review => review.User)
-            .Where(review => review.MovieId == movieId)
             .OrderByDescending(review => review.UpdatedAtUtc)
+            .Take(100)
             .ToListAsync();
         return new MovieReviewsDto
         {
             MovieId = movieId,
-            TotalReviews = reviews.Count,
-            AverageRating = reviews.Count == 0 ? 0 : Math.Round(reviews.Average(review => review.Rating), 1),
+            TotalReviews = totalReviews,
+            AverageRating = averageRating,
             Reviews = reviews.Select(MapReview).ToList()
         };
     }
@@ -108,13 +115,12 @@ public sealed class ReviewService(
         var movie = await context.Movies.FindAsync(movieId);
         if (movie is null) return;
 
-        var movieReviews = await context.Reviews
-            .Where(r => r.MovieId == movieId)
-            .ToListAsync();
+        var baseQuery = context.Reviews.Where(r => r.MovieId == movieId);
+        var reviewCount = await baseQuery.CountAsync();
 
-        movie.VoteCount = movieReviews.Count;
-        movie.Rating = movieReviews.Count > 0
-            ? Math.Round(movieReviews.Average(r => (double)r.Rating), 1)
+        movie.VoteCount = reviewCount;
+        movie.Rating = reviewCount > 0
+            ? Math.Round(await baseQuery.AverageAsync(r => (double)r.Rating), 1)
             : 0;
 
         await context.SaveChangesAsync();

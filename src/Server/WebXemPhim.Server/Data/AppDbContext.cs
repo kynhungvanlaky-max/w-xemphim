@@ -182,6 +182,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(item => item.Method).HasConversion<int>();
             entity.Property(item => item.Status).HasConversion<int>().IsConcurrencyToken();
             entity.Property(item => item.TransactionReference).HasMaxLength(120);
+            entity.Property(item => item.CouponCode).HasMaxLength(32);
             entity.HasIndex(item => item.TransactionReference);
             // Trang thanh toán admin: sort/paginate theo CreatedAtUtc, lọc theo Status.
             entity.HasIndex(item => item.CreatedAtUtc);
@@ -472,6 +473,7 @@ public sealed class PaymentEntity
     public DateTime? PaidAtUtc { get; set; }
     public DateTime? VipExpiresAtUtc { get; set; }
     public string? TransactionReference { get; set; }
+    public string? CouponCode { get; set; }
     public string? Note { get; set; }
 }
 

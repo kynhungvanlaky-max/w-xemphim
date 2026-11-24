@@ -304,14 +304,17 @@ public static class WebSecurityExtensions
                 headers["X-Permitted-Cross-Domain-Policies"] = "none";
                 headers["X-Download-Options"] = "noopen";
                 headers["Cross-Origin-Opener-Policy"] = "same-origin";
-                headers["Content-Security-Policy"] = client
+                var isApiOrOpenApiPath = !client
+                    || context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)
+                    || context.Request.Path.StartsWithSegments("/openapi", StringComparison.OrdinalIgnoreCase);
+                headers["Content-Security-Policy"] = isApiOrOpenApiPath
+                    ? "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
                     // media-src và img-src phải cho phép http: ở chế độ phát triển: video và ảnh
                     // bìa được nạp từ API ở cổng khác (http://localhost:5085) nên nếu chỉ cho
                     // 'self' + https: thì trình duyệt chặn và báo
                     // "Media load rejected by URL safety check" — người xem chỉ thấy màn đen.
                     // Ở production API dùng https nên đã nằm trong https: của chính sách.
-                    ? $"default-src 'self'; script-src 'self' 'nonce-{nonce}'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:{(development ? " http:" : "")}; media-src 'self' https: blob:{(development ? " http:" : "")}; connect-src 'self' https: wss:{(development ? " http: ws:" : "")}; frame-src https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
-                    : "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+                    : $"default-src 'self'; script-src 'self' 'nonce-{nonce}'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:{(development ? " http:" : "")}; media-src 'self' https: blob:{(development ? " http:" : "")}; connect-src 'self' https: wss:{(development ? " http: ws:" : "")}; frame-src https://www.youtube.com https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
                 if ((client && context.Response.ContentType?.StartsWith("text/html", StringComparison.OrdinalIgnoreCase) == true) ||
                     context.Request.Headers.ContainsKey("Authorization") || context.Request.Path.StartsWithSegments("/api/auth") || context.Request.Path.StartsWithSegments("/api/admin") || context.Request.Path.StartsWithSegments("/api/payments/history"))
                     headers.CacheControl = "no-store";
@@ -330,12 +333,13 @@ public static class WebSecurityExtensions
 
                 if (!isAllowed)
                 {
-                    // Check effective scheme & host if behind reverse proxy / tunnel / SSL offloader
-                    var effectiveScheme = context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var fProto) && !string.IsNullOrWhiteSpace(fProto)
+                    // Trong Production tuyệt đối không tin các header X-Forwarded-Host/X-Original-Host thô chưa qua middleware
+                    // UseForwardedHeaders (tránh giả mạo Origin cho kết nối WebSocket /_blazor).
+                    var effectiveScheme = development && context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var fProto) && !string.IsNullOrWhiteSpace(fProto)
                         ? fProto.ToString()
                         : context.Request.Scheme;
 
-                    var effectiveHost = context.Request.Headers.TryGetValue("X-Forwarded-Host", out var fHost) && !string.IsNullOrWhiteSpace(fHost)
+                    var effectiveHost = development && context.Request.Headers.TryGetValue("X-Forwarded-Host", out var fHost) && !string.IsNullOrWhiteSpace(fHost)
                         ? fHost.ToString()
                         : context.Request.Host.Value;
 
@@ -346,17 +350,17 @@ public static class WebSecurityExtensions
                     }
                     else if (Uri.TryCreate(originStr, UriKind.Absolute, out var originUri))
                     {
-                        // Check if origin host matches either request host or forwarded host (e.g. reverse proxy offloading TLS)
+                        // Check if origin host matches request host (and forwarded host only in Development)
                         var reqHost = context.Request.Host.Host;
                         var hostMatches = originUri.Host.Equals(reqHost, StringComparison.OrdinalIgnoreCase);
 
-                        if (!hostMatches && !string.IsNullOrWhiteSpace(effectiveHost))
+                        if (development && !hostMatches && !string.IsNullOrWhiteSpace(effectiveHost))
                         {
                             var fHostOnly = effectiveHost.Split(':')[0];
                             hostMatches = originUri.Host.Equals(fHostOnly, StringComparison.OrdinalIgnoreCase);
                         }
 
-                        if (!hostMatches && context.Request.Headers.TryGetValue("X-Original-Host", out var origHost) && !string.IsNullOrWhiteSpace(origHost))
+                        if (development && !hostMatches && context.Request.Headers.TryGetValue("X-Original-Host", out var origHost) && !string.IsNullOrWhiteSpace(origHost))
                         {
                             var oHostOnly = origHost.ToString().Split(':')[0];
                             hostMatches = originUri.Host.Equals(oHostOnly, StringComparison.OrdinalIgnoreCase);
@@ -364,10 +368,10 @@ public static class WebSecurityExtensions
 
                         if (hostMatches)
                         {
-                            var hasForwardedHeader = context.Request.Headers.ContainsKey("X-Forwarded-Proto")
+                            var hasForwardedHeader = development && (context.Request.Headers.ContainsKey("X-Forwarded-Proto")
                                 || context.Request.Headers.ContainsKey("X-Forwarded-For")
                                 || context.Request.Headers.ContainsKey("X-Forwarded-Host")
-                                || context.Request.Headers.ContainsKey("X-Original-Host");
+                                || context.Request.Headers.ContainsKey("X-Original-Host"));
 
                             var originPort = originUri.Port;
                             var reqPort = context.Request.Host.Port;

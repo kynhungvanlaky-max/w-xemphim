@@ -27,6 +27,11 @@ public sealed class PaymentWebhookVerifier : IPaymentWebhookVerifier
         _environment = environment;
     }
 
+    private bool IsStrictEnvironment =>
+        _environment is not null
+        && !_environment.IsDevelopment()
+        && !_environment.IsEnvironment("Testing");
+
     public string GetSecretKeyForGateway(string? gateway)
     {
         if (!string.IsNullOrWhiteSpace(gateway))
@@ -58,7 +63,7 @@ public sealed class PaymentWebhookVerifier : IPaymentWebhookVerifier
 
             if (!string.IsNullOrWhiteSpace(gatewayKey))
             {
-                if (_environment?.IsProduction() == true)
+                if (IsStrictEnvironment)
                 {
                     if (string.Equals(gatewayKey, DefaultWebhookSecret, StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(gatewayKey, DefaultPayOSSecret, StringComparison.OrdinalIgnoreCase) ||
@@ -98,7 +103,7 @@ public sealed class PaymentWebhookVerifier : IPaymentWebhookVerifier
 
         if (!string.IsNullOrWhiteSpace(masterKey))
         {
-            if (_environment?.IsProduction() == true)
+            if (IsStrictEnvironment)
             {
                 if (string.Equals(masterKey, DefaultWebhookSecret, StringComparison.OrdinalIgnoreCase))
                 {
@@ -112,7 +117,7 @@ public sealed class PaymentWebhookVerifier : IPaymentWebhookVerifier
             return masterKey;
         }
 
-        if (_environment?.IsProduction() == true)
+        if (IsStrictEnvironment)
         {
             throw new InvalidOperationException("Payment webhook secret key is not configured in Production.");
         }
@@ -180,9 +185,24 @@ public sealed class PaymentWebhookVerifier : IPaymentWebhookVerifier
             return WebhookVerificationResult.Fail(WebhookVerificationStatus.InvalidSignature, "Chữ ký xác thực webhook không hợp lệ (403 Forbidden).");
         }
 
+        // Trong môi trường Production/Staging, bắt buộc có dấu thời gian và mã giao dịch ngân hàng để chống replay.
+        if (IsStrictEnvironment)
+        {
+            if (!request.Timestamp.HasValue)
+            {
+                return WebhookVerificationResult.Fail(
+                    WebhookVerificationStatus.TimestampExpired,
+                    "Thiếu dấu thời gian bắt buộc trên webhook thanh toán.");
+            }
+            if (string.IsNullOrWhiteSpace(request.TransactionReference))
+            {
+                return WebhookVerificationResult.Fail(
+                    WebhookVerificationStatus.MalformedPayload,
+                    "Thiếu mã tham chiếu giao dịch (TransactionReference) trên webhook thanh toán.");
+            }
+        }
+
         // Chống replay: nếu gateway gửi timestamp, nó phải nằm trong cửa sổ thời gian cho phép.
-        // Timestamp bị bỏ trống vẫn được chấp nhận để tương thích với các gateway cũ; khi đó
-        // tính idempotent của trạng thái thanh toán là lớp bảo vệ chính.
         if (request.Timestamp is { } timestamp)
         {
             var now = _timeProvider.GetUtcNow().ToUnixTimeSeconds();

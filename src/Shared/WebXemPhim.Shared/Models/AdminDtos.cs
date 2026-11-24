@@ -170,7 +170,7 @@ public class UpsertStreamSourceRequest
 
 public class ProbeStreamRequest
 {
-    [Required, StringLength(600), SafeResourceUrl]
+    [Required, StringLength(600)]
     public string StreamUrl { get; set; } = string.Empty;
 }
 
@@ -329,7 +329,7 @@ public class UpsertVipPlanRequest
     [Range(1, 3650)]
     public int DurationDays { get; set; } = 30;
 
-    [Range(0, 100000000)]
+    [Range(1000, 100000000)]
     public decimal Price { get; set; }
 
     [Range(0, 100000000)]

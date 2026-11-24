@@ -44,6 +44,7 @@ services:
       - Database__BootstrapAdminEmail=${BOOTSTRAP_ADMIN_EMAIL:-}
       - Database__BootstrapAdminPassword=${BOOTSTRAP_ADMIN_PASSWORD:-}
       - Security__DataProtectionKeyPath=/app/keys
+      - Security__InternalProxySecret=${INTERNAL_PROXY_SECRET:-}
       # Required: there is deliberately no public fallback key in this file.
       - Security__StreamSigningKey=${STREAM_SIGNING_KEY:?STREAM_SIGNING_KEY_REQUIRED}
       - Security__StreamTtlMinutes=${STREAM_TTL_MINUTES:-10}
@@ -56,7 +57,7 @@ services:
       - Security__KnownProxyNetworks__0=172.16.0.0/12
       - Security__KnownProxyNetworks__1=10.0.0.0/8
       - Security__KnownProxyNetworks__2=192.168.0.0/16
-      - Security__KnownProxyNetworks__3=127.0.0.1/8
+      - Security__KnownProxyNetworks__3=127.0.0.0/8
       - AllowedHosts=${ALLOWED_HOSTS:?ALLOWED_HOSTS_REQUIRED}
       # Optional Cloudflare R2 / S3 configuration (local fallback is used when empty).
       - CloudStorage__Provider=${CLOUD_STORAGE_PROVIDER:-CloudflareR2}
@@ -92,10 +93,11 @@ services:
       - ApiBaseUrl=http://server:8080
       - Security__BehindReverseProxy=true
       - Security__DataProtectionKeyPath=/app/keys
+      - Security__InternalProxySecret=${INTERNAL_PROXY_SECRET:-}
       - Security__KnownProxyNetworks__0=172.16.0.0/12
       - Security__KnownProxyNetworks__1=10.0.0.0/8
       - Security__KnownProxyNetworks__2=192.168.0.0/16
-      - Security__KnownProxyNetworks__3=127.0.0.1/8
+      - Security__KnownProxyNetworks__3=127.0.0.0/8
       - AllowedHosts=${ALLOWED_HOSTS:?ALLOWED_HOSTS_REQUIRED}
     volumes:
       - client_keys:/app/keys

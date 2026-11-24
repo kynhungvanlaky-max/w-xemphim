@@ -33,7 +33,10 @@ public abstract class AdminBaseController(
         }
     }
 
-    protected string CallerAdminEmail => User?.Identity?.Name ?? "admin@cinemaflow.local";
+    protected string CallerAdminEmail =>
+        User?.FindFirst(ClaimTypes.Email)?.Value
+        ?? User?.Identity?.Name
+        ?? "admin@cinemaflow.local";
 
     protected async Task LogAuditAsync(AppDbContext context, string action, string entityType, string entityId, string summary, string? detailsJson = null)
     {
@@ -42,6 +45,7 @@ public abstract class AdminBaseController(
             context.AuditLogs.Add(new AuditLogEntity
             {
                 TimestampUtc = UtcNow,
+                AdminUserId = CallerUserId,
                 AdminEmail = CallerAdminEmail,
                 Action = action,
                 EntityType = entityType,
@@ -51,9 +55,10 @@ public abstract class AdminBaseController(
             });
             await context.SaveChangesAsync();
         }
-        catch
+        catch (Exception ex)
         {
-            // Logging audit failures should not fail the primary business operation
+            var logger = HttpContext?.RequestServices?.GetService<ILoggerFactory>()?.CreateLogger(GetType());
+            logger?.LogWarning(ex, "Failed to persist admin audit log {Action} for {EntityType}:{EntityId}.", action, entityType, entityId);
         }
     }
 

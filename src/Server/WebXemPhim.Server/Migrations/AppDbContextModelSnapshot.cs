@@ -133,6 +133,9 @@ namespace WebXemPhim.Server.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<Guid?>("AdminUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("DetailsJson")
                         .HasColumnType("text");
 
@@ -555,6 +558,10 @@ namespace WebXemPhim.Server.Migrations
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
 
+                    b.Property<string>("CouponCode")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -909,6 +916,9 @@ namespace WebXemPhim.Server.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<DateTime?>("LockedUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LoginCooldownUntilUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("PasswordIterations")

@@ -251,12 +251,20 @@ public sealed class AdminUsersController(
         var now = UtcNow;
         var count = 0;
 
-        // Gom token/MFA cần thu hồi vào 1 query thay vì N query trong vòng lặp.
-        var tokensToRevoke = action == "lock"
-            ? await context.AccessTokens.Where(t => ids.Contains(t.UserId)).ToListAsync()
+        // Không bao giờ thu hồi phiên của chính Admin gọi hoặc khóa hàng loạt tài khoản Admin khác
+        var lockTargetIds = action == "lock"
+            ? users
+                .Where(u => (!CallerUserId.HasValue || CallerUserId.Value != u.Id)
+                            && !(securities.TryGetValue(u.Id, out var s) && s.IsAdmin))
+                .Select(u => u.Id)
+                .ToList()
+            : new List<Guid>();
+
+        var tokensToRevoke = lockTargetIds.Count > 0
+            ? await context.AccessTokens.Where(t => lockTargetIds.Contains(t.UserId)).ToListAsync()
             : new List<AccessTokenEntity>();
-        var mfaToRevoke = action == "lock"
-            ? await context.MfaVerifiedSessions.Where(t => ids.Contains(t.UserId)).ToListAsync()
+        var mfaToRevoke = lockTargetIds.Count > 0
+            ? await context.MfaVerifiedSessions.Where(t => lockTargetIds.Contains(t.UserId)).ToListAsync()
             : new List<MfaVerifiedSessionEntity>();
 
         Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? tx = null;
@@ -271,12 +279,11 @@ public sealed class AdminUsersController(
                 case "lock":
                     context.AccessTokens.RemoveRange(tokensToRevoke);
                     context.MfaVerifiedSessions.RemoveRange(mfaToRevoke);
-                    foreach (var user in users)
+                    foreach (var targetId in lockTargetIds)
                     {
-                        if (CallerUserId.HasValue && CallerUserId.Value == user.Id) continue;
-                        if (!securities.TryGetValue(user.Id, out var sec))
+                        if (!securities.TryGetValue(targetId, out var sec))
                         {
-                            sec = new UserSecurityEntity { UserId = user.Id, PasswordIterations = 100000 };
+                            sec = new UserSecurityEntity { UserId = targetId, PasswordIterations = 100000 };
                             context.Set<UserSecurityEntity>().Add(sec);
                         }
                         sec.LockedUntilUtc = now.AddMinutes(Math.Max(15, request.LockMinutes));
@@ -328,14 +335,20 @@ public sealed class AdminUsersController(
             await LogAuditAsync(context, $"BULK_USER_{action.ToUpperInvariant()}", "User", string.Join(",", ids), $"Thao tác '{action}' trên {count} người dùng.");
             if (tx != null) await tx.CommitAsync();
 
-            foreach (var id in ids)
+            var affectedIds = action == "lock" ? lockTargetIds : ids;
+            foreach (var id in affectedIds)
             {
                 _sessionCache?.InvalidateUser(id);
+                if (action is "lock" or "grant_vip" or "revoke_vip")
+                {
+                    memoryCache?.Remove($"vip_status_{id}");
+                    memoryCache?.Remove($"isvip:{id}");
+                }
             }
 
             if (action is "lock" or "revoke_vip" && streamSessionService is not null)
             {
-                foreach (var id in ids)
+                foreach (var id in affectedIds)
                 {
                     try { await streamSessionService.RevokeUserStreamsAsync(id); }
                     catch { /* best-effort */ }
@@ -566,44 +579,46 @@ public sealed class AdminUsersController(
             return BadRequest(ApiResponse<bool>.Fail("Bạn không thể tự hạ quyền quản trị của chính mình."));
         }
 
-        var security = await context.Set<UserSecurityEntity>().FirstOrDefaultAsync(s => s.UserId == id);
-        if (security is null)
-        {
-            security = new UserSecurityEntity
-            {
-                UserId = id,
-                IsAdmin = request.IsAdmin,
-                PasswordIterations = 100000,
-                FailedLoginAttempts = 0
-            };
-            context.Set<UserSecurityEntity>().Add(security);
-        }
-        else
-        {
-            if (security.IsAdmin && !request.IsAdmin)
-            {
-                var activeAdminCount = await context.Set<UserSecurityEntity>()
-                    .CountAsync(s => s.IsAdmin && (s.LockedUntilUtc == null || s.LockedUntilUtc <= UtcNow));
-                if (activeAdminCount <= 1)
-                {
-                    return BadRequest(ApiResponse<bool>.Fail("Không thể hạ quyền quản trị viên duy nhất còn lại trong hệ thống."));
-                }
-
-                var tokens = await context.AccessTokens.Where(t => t.UserId == id).ToListAsync();
-                context.AccessTokens.RemoveRange(tokens);
-                var mfaSessions = await context.MfaVerifiedSessions.Where(t => t.UserId == id).ToListAsync();
-                context.MfaVerifiedSessions.RemoveRange(mfaSessions);
-            }
-            security.IsAdmin = request.IsAdmin;
-        }
-
         Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? tx = null;
         if (context.Database.IsRelational())
         {
-            tx = await context.Database.BeginTransactionAsync();
+            tx = await context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
         }
+        UserSecurityEntity? security;
         try
         {
+            security = await context.Set<UserSecurityEntity>().FirstOrDefaultAsync(s => s.UserId == id);
+            if (security is null)
+            {
+                security = new UserSecurityEntity
+                {
+                    UserId = id,
+                    IsAdmin = request.IsAdmin,
+                    PasswordIterations = 100000,
+                    FailedLoginAttempts = 0
+                };
+                context.Set<UserSecurityEntity>().Add(security);
+            }
+            else
+            {
+                if (security.IsAdmin && !request.IsAdmin)
+                {
+                    var activeAdminCount = await context.Set<UserSecurityEntity>()
+                        .CountAsync(s => s.IsAdmin && (s.LockedUntilUtc == null || s.LockedUntilUtc <= UtcNow));
+                    if (activeAdminCount <= 1)
+                    {
+                        if (tx != null) await tx.RollbackAsync();
+                        return BadRequest(ApiResponse<bool>.Fail("Không thể hạ quyền quản trị viên duy nhất còn lại trong hệ thống."));
+                    }
+
+                    var tokens = await context.AccessTokens.Where(t => t.UserId == id).ToListAsync();
+                    context.AccessTokens.RemoveRange(tokens);
+                    var mfaSessions = await context.MfaVerifiedSessions.Where(t => t.UserId == id).ToListAsync();
+                    context.MfaVerifiedSessions.RemoveRange(mfaSessions);
+                }
+                security.IsAdmin = request.IsAdmin;
+            }
+
             await context.SaveChangesAsync();
             await LogAuditAsync(context, "UPDATE_ADMIN_ROLE", "User", id.ToString(), $"Đổi quyền Quản trị của '{user.Email}' thành: {request.IsAdmin}.");
             if (tx != null) await tx.CommitAsync();
@@ -635,51 +650,54 @@ public sealed class AdminUsersController(
             return BadRequest(ApiResponse<bool>.Fail("Bạn không thể tự khóa tài khoản quản trị của chính mình."));
         }
 
-        var security = await context.Set<UserSecurityEntity>().FirstOrDefaultAsync(s => s.UserId == id);
-        if (security is null)
-        {
-            security = new UserSecurityEntity
-            {
-                UserId = id,
-                IsAdmin = false,
-                PasswordIterations = 100000,
-                FailedLoginAttempts = 0
-            };
-            context.Set<UserSecurityEntity>().Add(security);
-        }
-
-        if (request.IsLocked)
-        {
-            if (security.IsAdmin)
-            {
-                var otherActiveAdminCount = await context.Set<UserSecurityEntity>()
-                    .CountAsync(s => s.IsAdmin && s.UserId != id && (s.LockedUntilUtc == null || s.LockedUntilUtc <= UtcNow));
-                if (otherActiveAdminCount == 0)
-                {
-                    return BadRequest(ApiResponse<bool>.Fail("Không thể khóa quản trị viên duy nhất còn lại trong hệ thống."));
-                }
-            }
-
-            security.LockedUntilUtc = UtcNow.AddMinutes(Math.Max(15, request.LockMinutes));
-
-            var tokens = await context.AccessTokens.Where(t => t.UserId == id).ToListAsync();
-            context.AccessTokens.RemoveRange(tokens);
-            var mfaSessions = await context.MfaVerifiedSessions.Where(t => t.UserId == id).ToListAsync();
-            context.MfaVerifiedSessions.RemoveRange(mfaSessions);
-        }
-        else
-        {
-            security.LockedUntilUtc = null;
-            security.FailedLoginAttempts = 0;
-        }
-
         Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? tx = null;
         if (context.Database.IsRelational())
         {
-            tx = await context.Database.BeginTransactionAsync();
+            tx = await context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
         }
+        UserSecurityEntity? security;
         try
         {
+            security = await context.Set<UserSecurityEntity>().FirstOrDefaultAsync(s => s.UserId == id);
+            if (security is null)
+            {
+                security = new UserSecurityEntity
+                {
+                    UserId = id,
+                    IsAdmin = false,
+                    PasswordIterations = 100000,
+                    FailedLoginAttempts = 0
+                };
+                context.Set<UserSecurityEntity>().Add(security);
+            }
+
+            if (request.IsLocked)
+            {
+                if (security.IsAdmin)
+                {
+                    var otherActiveAdminCount = await context.Set<UserSecurityEntity>()
+                        .CountAsync(s => s.IsAdmin && s.UserId != id && (s.LockedUntilUtc == null || s.LockedUntilUtc <= UtcNow));
+                    if (otherActiveAdminCount == 0)
+                    {
+                        if (tx != null) await tx.RollbackAsync();
+                        return BadRequest(ApiResponse<bool>.Fail("Không thể khóa quản trị viên duy nhất còn lại trong hệ thống."));
+                    }
+                }
+
+                security.LockedUntilUtc = UtcNow.AddMinutes(Math.Max(15, request.LockMinutes));
+
+                var tokens = await context.AccessTokens.Where(t => t.UserId == id).ToListAsync();
+                context.AccessTokens.RemoveRange(tokens);
+                var mfaSessions = await context.MfaVerifiedSessions.Where(t => t.UserId == id).ToListAsync();
+                context.MfaVerifiedSessions.RemoveRange(mfaSessions);
+            }
+            else
+            {
+                security.LockedUntilUtc = null;
+                security.LoginCooldownUntilUtc = null;
+                security.FailedLoginAttempts = 0;
+            }
+
             await context.SaveChangesAsync();
             var isLockedNow = security.LockedUntilUtc.HasValue && security.LockedUntilUtc.Value > UtcNow;
             await LogAuditAsync(context, "UPDATE_LOCK_STATUS", "User", id.ToString(), $"Cập nhật trạng thái khóa của '{user.Email}': {(isLockedNow ? "Khóa" : "Mở khóa")}.");

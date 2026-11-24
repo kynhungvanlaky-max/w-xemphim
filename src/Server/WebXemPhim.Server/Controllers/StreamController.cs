@@ -102,9 +102,7 @@ public class StreamController(
             }
         }
 
-        var isVipStream = stream.ServerType == StreamServerType.VipFastServer ||
-                          (policy?.IsVipOnly == true) ||
-                          (!string.IsNullOrEmpty(stream.Quality) && stream.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase));
+        var isVipStream = IsVipRequired(stream, policy);
         if (isVipStream && !isVip)
         {
             return StatusCode(StatusCodes.Status403Forbidden,
@@ -249,9 +247,7 @@ public class StreamController(
             }
         }
 
-        var isVipStream = stream.ServerType == StreamServerType.VipFastServer ||
-                          (policy?.IsVipOnly == true) ||
-                          (!string.IsNullOrEmpty(stream.Quality) && stream.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase));
+        var isVipStream = IsVipRequired(stream, policy);
         if (isVipStream && !isVip)
         {
             return StatusCode(StatusCodes.Status403Forbidden,
@@ -366,111 +362,6 @@ public class StreamController(
         {
             validation = StreamValidationResult.Success();
         }
-        else if (!validation.IsValid
-            && validation.Status == StreamValidationStatus.IpMismatch)
-        {
-            if (!string.IsNullOrWhiteSpace(sid) && string.Equals(scope, PlaybackScope, StringComparison.Ordinal))
-            {
-                var lease = await streamSessionService.GetActiveLeaseAsync(sid, cancellationToken);
-                if (lease != null && lease.EpisodeId == episodeId)
-                {
-                    // Kiểm tra xem chữ ký có hợp lệ với:
-                    // 1. IP đã lưu trong phiên lease (được gán lúc client tạo lease)
-                    // 2. IP thực tế của client (clientIp)
-                    // 3. Hoặc Loopback 127.0.0.1 / ::1 / WildcardIp
-                    var leaseIp = lease.IpAddress ?? string.Empty;
-                    var leaseIpValid = !string.IsNullOrWhiteSpace(leaseIp) && urlSigner.Validate(
-                        episodeId,
-                        pos,
-                        exp,
-                        ip ?? string.Empty,
-                        sig ?? string.Empty,
-                        leaseIp,
-                        sessionId: sid,
-                        scope: scope,
-                        keyId: kid).IsValid;
-
-                    var clientIpValid = leaseIpValid || urlSigner.Validate(
-                        episodeId,
-                        pos,
-                        exp,
-                        ip ?? string.Empty,
-                        sig ?? string.Empty,
-                        clientIp,
-                        sessionId: sid,
-                        scope: scope,
-                        keyId: kid).IsValid;
-
-                    var loopbackV4Valid = clientIpValid || urlSigner.Validate(
-                        episodeId,
-                        pos,
-                        exp,
-                        ip ?? string.Empty,
-                        sig ?? string.Empty,
-                        "127.0.0.1",
-                        sessionId: sid,
-                        scope: scope,
-                        keyId: kid).IsValid;
-
-                    var loopbackV6Valid = loopbackV4Valid || urlSigner.Validate(
-                        episodeId,
-                        pos,
-                        exp,
-                        ip ?? string.Empty,
-                        sig ?? string.Empty,
-                        "::1",
-                        sessionId: sid,
-                        scope: scope,
-                        keyId: kid).IsValid;
-
-                    var wildcardValid = loopbackV6Valid || urlSigner.Validate(
-                        episodeId,
-                        pos,
-                        exp,
-                        ip ?? string.Empty,
-                        sig ?? string.Empty,
-                        StreamUrlSigner.WildcardIp,
-                        sessionId: sid,
-                        scope: scope,
-                        keyId: kid).IsValid;
-
-                    if (leaseIpValid || clientIpValid || loopbackV4Valid || loopbackV6Valid || wildcardValid)
-                    {
-                        validation = StreamValidationResult.Success();
-                    }
-                }
-            }
-            else if (string.IsNullOrWhiteSpace(sid))
-            {
-                // Nguồn catalog công khai không có sid: kiểm tra nếu URL hợp lệ với WildcardIp hoặc loopback
-                var wildcardValid = urlSigner.Validate(
-                    episodeId,
-                    pos,
-                    exp,
-                    ip ?? string.Empty,
-                    sig ?? string.Empty,
-                    StreamUrlSigner.WildcardIp,
-                    sessionId: sid,
-                    scope: scope,
-                    keyId: kid).IsValid;
-
-                var loopbackValid = wildcardValid || urlSigner.Validate(
-                    episodeId,
-                    pos,
-                    exp,
-                    ip ?? string.Empty,
-                    sig ?? string.Empty,
-                    "127.0.0.1",
-                    sessionId: sid,
-                    scope: scope,
-                    keyId: kid).IsValid;
-
-                if (wildcardValid || loopbackValid)
-                {
-                    validation = StreamValidationResult.Success();
-                }
-            }
-        }
 
         if (!validation.IsValid)
         {
@@ -491,8 +382,14 @@ public class StreamController(
                 return NotFound(ApiResponse<string>.Fail("Không tìm thấy nguồn phát video được chỉ định."));
             }
 
-            var isHeadVipStream = headStream.ServerType == StreamServerType.VipFastServer ||
-                                  (!string.IsNullOrEmpty(headStream.Quality) && headStream.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase));
+            var headPolicy = streamPolicyService?.GetPolicyForStream(headStream.ServerName, headStream.ServerType);
+            if (headPolicy is not null && !headPolicy.IsActive)
+            {
+                return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                    ApiResponse<string>.Fail($"Máy chủ '{headPolicy.DisplayName}' đang tạm dừng bảo trì. Vui lòng chọn nguồn phát khác."));
+            }
+
+            var isHeadVipStream = IsVipRequired(headStream, headPolicy);
             if (isHeadVipStream && string.IsNullOrWhiteSpace(sid))
             {
                 return StatusCode(StatusCodes.Status403Forbidden,
@@ -512,6 +409,12 @@ public class StreamController(
                 {
                     return StatusCode(StatusCodes.Status403Forbidden,
                         ApiResponse<string>.Fail("Phiên phát đã hết hạn hoặc đã bị thu hồi."));
+                }
+
+                if (isHeadVipStream && !await IsUserVipAsync(headDb, headLease.UserId))
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        ApiResponse<string>.Fail("Yêu cầu gói thành viên VIP để xem nguồn phát này."));
                 }
             }
 
@@ -612,9 +515,7 @@ public class StreamController(
                 ApiResponse<string>.Fail($"Máy chủ '{policy.DisplayName}' đang tạm dừng bảo trì. Vui lòng chọn nguồn phát khác."));
         }
 
-        var isVipStream = stream.ServerType == StreamServerType.VipFastServer ||
-                          (policy?.IsVipOnly == true) ||
-                          (!string.IsNullOrEmpty(stream.Quality) && stream.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase));
+        var isVipStream = IsVipRequired(stream, policy);
 
         if (isVipStream && string.IsNullOrWhiteSpace(sid))
         {
@@ -847,7 +748,27 @@ public class StreamController(
             var read = _segmentTokens.Read(token, kind);
             var sidQuery = query.TryGetValue("sid", out var sidValues) ? sidValues.FirstOrDefault() : null;
             var error = await ValidateHlsTokenAsync(read, sidQuery, clientIp, cancellationToken);
-            return error ?? NoContent();
+            if (error is not null) return error;
+
+            var payload = read.Payload!;
+            await using var hlsDb = await contextFactory.CreateDbContextAsync(cancellationToken);
+            var hlsSource = await FindStreamSourceAsync(hlsDb, payload.EpisodeId, payload.Position);
+            if (hlsSource is not null)
+            {
+                var hlsPolicy = streamPolicyService?.GetPolicyForStream(hlsSource.ServerName, hlsSource.ServerType);
+                if (hlsPolicy is not null && !hlsPolicy.IsActive) return Unauthorized();
+                if (IsVipRequired(hlsSource, hlsPolicy))
+                {
+                    if (string.IsNullOrWhiteSpace(payload.SessionId)) return Unauthorized();
+                    var hlsLease = await streamSessionService.GetActiveLeaseAsync(payload.SessionId, cancellationToken);
+                    if (hlsLease is null || hlsLease.UserId == Guid.Empty || !await IsUserVipAsync(hlsDb, hlsLease.UserId))
+                    {
+                        return Unauthorized();
+                    }
+                }
+            }
+
+            return NoContent();
         }
 
         var episodeId = ParseInt(query.TryGetValue("episodeId", out var episodeValues) ? episodeValues.FirstOrDefault() : null);
@@ -886,10 +807,28 @@ public class StreamController(
 
         if (!validation.IsValid) return Unauthorized();
 
+        WebXemPhim.Shared.Models.ActiveStreamDto? edgeLease = null;
         if (!string.IsNullOrWhiteSpace(sid))
         {
-            var lease = await streamSessionService.GetActiveLeaseAsync(sid, cancellationToken);
-            if (lease is null || lease.EpisodeId != episodeId) return Unauthorized();
+            edgeLease = await streamSessionService.GetActiveLeaseAsync(sid, cancellationToken);
+            if (edgeLease is null || edgeLease.EpisodeId != episodeId) return Unauthorized();
+        }
+
+        await using var edgeDb = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var edgeSource = await edgeDb.StreamSources
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.EpisodeId == episodeId && s.Position == position, cancellationToken);
+        if (edgeSource is not null)
+        {
+            var edgePolicy = streamPolicyService?.GetPolicyForStream(edgeSource.ServerName, edgeSource.ServerType);
+            if (edgePolicy is not null && !edgePolicy.IsActive) return Unauthorized();
+            if (IsVipRequired(edgeSource, edgePolicy))
+            {
+                if (edgeLease is null || edgeLease.UserId == Guid.Empty || !await IsUserVipAsync(edgeDb, edgeLease.UserId))
+                {
+                    return Unauthorized();
+                }
+            }
         }
 
         return NoContent();
@@ -1121,6 +1060,13 @@ public class StreamController(
         string? sessionId,
         string clientIp)
     {
+        var (isSafe, _, _) = SafeStreamUrlValidator.ValidateUrlAsync(upstreamUri.ToString(), resolveDns: false)
+            .GetAwaiter().GetResult();
+        if (!isSafe)
+        {
+            throw new InvalidOperationException("Playlist HLS chứa URI không an toàn.");
+        }
+
         var token = _segmentTokens.Create(
             episodeId,
             position,
@@ -1435,7 +1381,7 @@ public class StreamController(
     {
         if (!string.IsNullOrWhiteSpace(probe.ContentType))
         {
-            Response.ContentType = probe.ContentType;
+            Response.ContentType = SanitizeMediaContentType(probe.ContentType);
         }
 
         if (probe.ContentLength is >= 0)
@@ -1599,11 +1545,38 @@ public class StreamController(
         var value = values.ToArray();
         if (string.Equals(name, "Content-Type", StringComparison.OrdinalIgnoreCase))
         {
-            Response.ContentType = value.FirstOrDefault();
+            Response.ContentType = SanitizeMediaContentType(value.FirstOrDefault());
             return;
         }
         Response.Headers[name] = value;
     }
+
+    private static string SanitizeMediaContentType(string? rawContentType)
+    {
+        if (string.IsNullOrWhiteSpace(rawContentType)) return "application/octet-stream";
+        var mediaType = rawContentType.Split(';', 2)[0].Trim().ToLowerInvariant();
+        if (mediaType.StartsWith("video/", StringComparison.Ordinal)
+            || mediaType.StartsWith("audio/", StringComparison.Ordinal)
+            || mediaType is "application/vnd.apple.mpegurl"
+                or "application/x-mpegurl"
+                or "application/octet-stream"
+                or "binary/octet-stream"
+                or "application/mp4"
+                or "application/dash+xml")
+        {
+            return mediaType;
+        }
+
+        return "application/octet-stream";
+    }
+
+    private static bool IsVipRequired(StreamSourceEntity stream, StreamServerPolicyDto? policy) =>
+        stream.ServerType == StreamServerType.VipFastServer
+        || (policy?.IsVipOnly == true)
+        || (!string.IsNullOrEmpty(stream.Quality)
+            && (stream.Quality.Contains("4K", StringComparison.OrdinalIgnoreCase)
+                || stream.Quality.Contains("2160p", StringComparison.OrdinalIgnoreCase)
+                || stream.Quality.Contains("UHD", StringComparison.OrdinalIgnoreCase)));
 
     private void CopyResponseHeaders(HttpResponseMessage upstream, bool includeContentLength)
     {
@@ -1616,7 +1589,6 @@ public class StreamController(
         CopyUpstreamHeader(upstream, "Accept-Ranges");
         CopyUpstreamHeader(upstream, "ETag");
         CopyUpstreamHeader(upstream, "Last-Modified");
-        CopyUpstreamHeader(upstream, "Content-Disposition");
     }
 
     private async Task<bool> IsUserVipAsync(AppDbContext db, Guid userId)
@@ -1666,11 +1638,16 @@ public class StreamController(
     {
         if (uri.Port != 80 && uri.Port != 443) return false;
         var host = uri.DnsSafeHost;
-        return host.Contains("phim1280.tv", StringComparison.OrdinalIgnoreCase)
-            || host.Contains("phimmoi", StringComparison.OrdinalIgnoreCase)
-            || host.Contains("ophim", StringComparison.OrdinalIgnoreCase)
-            || host.Contains("kkphim", StringComparison.OrdinalIgnoreCase);
+        return IsDomainOrSubdomain(host, "phim1280.tv")
+            || IsDomainOrSubdomain(host, "ophim1.com")
+            || IsDomainOrSubdomain(host, "ophim17.cc")
+            || IsDomainOrSubdomain(host, "kkphim.com")
+            || IsDomainOrSubdomain(host, "phimapi.com");
     }
+
+    private static bool IsDomainOrSubdomain(string host, string allowedDomain) =>
+        host.Equals(allowedDomain, StringComparison.OrdinalIgnoreCase)
+        || host.EndsWith("." + allowedDomain, StringComparison.OrdinalIgnoreCase);
 
     private static string ResolveCloudFallbackMedia(string? localUrl, string? quality = null)
     {

@@ -171,6 +171,14 @@ public static class SafeStreamUrlValidator
             if (bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x0D && bytes[3] == 0xB8) return true;
             if (bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x00 && bytes[3] == 0x00) return true;
 
+            // IPv4-compatible IPv6 (::/96, deprecated RFC 4291) embeds an IPv4 address in bytes 12..16.
+            if (bytes[0] == 0 && bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0 &&
+                bytes[4] == 0 && bytes[5] == 0 && bytes[6] == 0 && bytes[7] == 0 &&
+                bytes[8] == 0 && bytes[9] == 0 && bytes[10] == 0 && bytes[11] == 0)
+            {
+                return IsInternalOrRestrictedIp(new IPAddress(bytes[12..16]));
+            }
+
             // 64:ff9b::/96 (NAT64 well-known prefix) embeds an IPv4 address in the last 4 bytes.
             if (bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xFF && bytes[3] == 0x9B &&
                 bytes[4] == 0x00 && bytes[5] == 0x00 && bytes[6] == 0x00 && bytes[7] == 0x00 &&

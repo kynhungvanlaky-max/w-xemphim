@@ -18,7 +18,11 @@ public sealed class StreamSessionService : IStreamSessionService
     private readonly TimeProvider _timeProvider;
     private readonly IConfiguration? _configuration;
     private readonly ILogger<StreamSessionService>? _logger;
-    private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _userLocks = new();
+    private static readonly SemaphoreSlim[] UserLocks =
+        Enumerable.Range(0, 256).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+
+    private static SemaphoreSlim GetUserLock(Guid userId) =>
+        UserLocks[(userId.GetHashCode() & 0x7FFFFFFF) % UserLocks.Length];
 
     public StreamSessionService(
         IDbContextFactory<AppDbContext> contextFactory,
@@ -62,7 +66,7 @@ public sealed class StreamSessionService : IStreamSessionService
         string? ipAddress = null,
         CancellationToken cancellationToken = default)
     {
-        var userLock = _userLocks.GetOrAdd(userId, _ => new SemaphoreSlim(1, 1));
+        var userLock = GetUserLock(userId);
         await userLock.WaitAsync(cancellationToken);
         try
         {

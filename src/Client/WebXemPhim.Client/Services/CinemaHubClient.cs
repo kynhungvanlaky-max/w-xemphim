@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using WebXemPhim.Shared.Models;
+using WebXemPhim.Shared.Security;
 
 namespace WebXemPhim.Client.Services;
 
@@ -9,6 +10,7 @@ public sealed class CinemaHubClient : IAsyncDisposable
 {
     private readonly AuthState _auth;
     private readonly string _hubUrl;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<CinemaHubClient> _logger;
     private readonly ICircuitClientIpProvider? _circuitIpProvider;
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
@@ -26,6 +28,7 @@ public sealed class CinemaHubClient : IAsyncDisposable
         ICircuitClientIpProvider? circuitIpProvider = null)
     {
         _auth = auth;
+        _configuration = configuration;
         _logger = logger;
         _circuitIpProvider = circuitIpProvider;
         var baseUrl = configuration["ApiBaseUrl"] ?? "http://localhost:5085";
@@ -57,8 +60,8 @@ public sealed class CinemaHubClient : IAsyncDisposable
                     var clientIp = _circuitIpProvider?.ClientIp;
                     if (!string.IsNullOrWhiteSpace(clientIp))
                     {
-                        options.Headers.Add("X-Forwarded-For", clientIp);
-                        options.Headers.Add("X-Client-IP", clientIp);
+                        var secret = SignedClientIpHeader.ResolveSecret(_configuration);
+                        SignedClientIpHeader.AttachSignedHeaders(options.Headers, clientIp, secret, DateTimeOffset.UtcNow);
                     }
                 })
                 .WithAutomaticReconnect()

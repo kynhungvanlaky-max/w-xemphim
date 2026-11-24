@@ -361,7 +361,7 @@
                                 <div class="ep-table-thumb-frame" @onclick="() => OpenThumbnailModal(ep)" title="Bấm để đổi ảnh nền tập #@ep.EpisodeNumber">
                                     @if (!string.IsNullOrEmpty(ep.ThumbnailUrl))
                                     {
-                                        <img src="@ep.ThumbnailUrl" alt="Tập @ep.EpisodeNumber" loading="lazy" onerror="this.onerror=null; this.src='@FallbackBackdrop';" />
+                                        <img src="@ep.ThumbnailUrl" alt="Tập @ep.EpisodeNumber" loading="lazy" data-fallback-src="@FallbackBackdrop" />
                                     }
                                     else if (!string.IsNullOrEmpty(SelectedMovie?.BackdropUrl) || !string.IsNullOrEmpty(SelectedMovie?.PosterUrl))
                                     {
@@ -627,7 +627,7 @@
                         }
                         else if (!string.IsNullOrEmpty(thumbEpisode.ThumbnailUrl))
                         {
-                            <img src="@thumbEpisode.ThumbnailUrl" alt="Ảnh nền tập @thumbEpisode.EpisodeNumber" onerror="this.onerror=null; this.src='@FallbackBackdrop';" />
+                            <img src="@thumbEpisode.ThumbnailUrl" alt="Ảnh nền tập @thumbEpisode.EpisodeNumber" data-fallback-src="@FallbackBackdrop" />
                         }
                         else
                         {

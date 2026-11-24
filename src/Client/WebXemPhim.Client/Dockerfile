@@ -20,7 +20,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
 # Ensure directory for persistent Data Protection keys
-RUN mkdir -p /app/keys
+RUN mkdir -p /app/keys && chown -R $APP_UID:$APP_UID /app/keys
 
 COPY --from=build /app/publish .
 
@@ -30,5 +30,7 @@ ENV ASPNETCORE_URLS=http://+:8080 \
     Security__DataProtectionKeyPath=/app/keys
 
 EXPOSE 8080
+
+USER $APP_UID
 
 ENTRYPOINT ["dotnet", "WebXemPhim.Client.dll"]

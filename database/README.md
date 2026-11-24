@@ -11,13 +11,13 @@
 
 ```json
 "ConnectionStrings": {
-  "Default": "postgresql://postgres.qczivykdsiuhbmxcvbyl:Hoangky123%40@aws-0-ap-south-1.pooler.supabase.com:5432/postgres"
+  "Default": "postgresql://postgres.<project_ref>:<url_encoded_password>@aws-0-ap-south-1.pooler.supabase.com:5432/postgres"
 },
 "Supabase": {
-  "Url": "https://qczivykdsiuhbmxcvbyl.supabase.co",
-  "PublishableKey": "sb_publishable_hyt65wxuj4HI8bCL87Wguw_Ao1qXWlC",
+  "Url": "https://<project_ref>.supabase.co",
+  "PublishableKey": "<your_supabase_publishable_key>",
   "SecretKey": "",
-  "JwksUrl": "https://qczivykdsiuhbmxcvbyl.supabase.co/auth/v1/.well-known/jwks.json"
+  "JwksUrl": "https://<project_ref>.supabase.co/auth/v1/.well-known/jwks.json"
 }
 ```
 

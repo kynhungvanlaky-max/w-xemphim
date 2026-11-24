@@ -1,10 +1,12 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using WebXemPhim.Shared.Models;
 using WebXemPhim.Shared.Requests;
 using WebXemPhim.Shared.Responses;
+using WebXemPhim.Shared.Security;
 
 namespace WebXemPhim.Client.Services;
 
@@ -12,15 +14,17 @@ public sealed class WatchApiClient(
     IHttpClientFactory factory,
     AuthState auth,
     ICircuitClientIpProvider? circuitIpProvider = null,
-    ILogger<WatchApiClient>? logger = null)
+    ILogger<WatchApiClient>? logger = null,
+    IConfiguration? configuration = null)
 {
     private void AttachClientIp(HttpRequestMessage request)
     {
         var clientIp = circuitIpProvider?.ClientIp;
         if (!string.IsNullOrWhiteSpace(clientIp))
         {
-            request.Headers.Remove("X-Forwarded-For");
-            request.Headers.TryAddWithoutValidation("X-Forwarded-For", clientIp);
+            request.Options.Set(SignedClientIpHeader.OptionKey, clientIp);
+            var secret = SignedClientIpHeader.ResolveSecret(configuration);
+            SignedClientIpHeader.AttachSignedHeaders(request.Headers, clientIp, secret, DateTimeOffset.UtcNow);
         }
     }
     public static string NormalizeStreamUrl(string? url)
@@ -164,6 +168,7 @@ public sealed class WatchApiClient(
             {
                 Content = JsonContent.Create(request)
             };
+            AttachClientIp(message);
             message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
 
             using var response = await client.SendAsync(message, cancellationToken);
@@ -189,6 +194,7 @@ public sealed class WatchApiClient(
             using var request = new HttpRequestMessage(
                 HttpMethod.Post,
                 $"api/stream/sessions/{Uri.EscapeDataString(sessionId)}/revoke");
+            AttachClientIp(request);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
 
             using var response = await client.SendAsync(request, cancellationToken);
@@ -248,7 +254,9 @@ public sealed class WatchApiClient(
         try
         {
             using var client = factory.CreateClient("AccountApi");
-            using var response = await client.PostAsync($"api/movies/{movieId}/view", null);
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"api/movies/{movieId}/view");
+            AttachClientIp(request);
+            using var response = await client.SendAsync(request);
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)

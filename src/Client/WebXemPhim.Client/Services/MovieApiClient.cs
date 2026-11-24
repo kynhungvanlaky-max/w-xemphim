@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using WebXemPhim.Shared.Models;
 using WebXemPhim.Shared.Requests;
 using WebXemPhim.Shared.Responses;
+using WebXemPhim.Shared.Security;
 
 namespace WebXemPhim.Client.Services;
 
@@ -24,17 +25,45 @@ public interface IMovieApiClient
     Task<HomeAggregateDto?> GetHomeAggregateAsync();
 }
 
-public class MovieApiClient(HttpClient httpClient, ILogger<MovieApiClient> logger, AuthState? auth = null) : IMovieApiClient
+public class MovieApiClient(
+    HttpClient httpClient,
+    ILogger<MovieApiClient> logger,
+    AuthState? auth = null,
+    ICircuitClientIpProvider? circuitIpProvider = null) : IMovieApiClient
 {
+    private void AttachClientIp(HttpRequestMessage request)
+    {
+        var ip = circuitIpProvider?.ClientIp;
+        if (!string.IsNullOrWhiteSpace(ip))
+        {
+            request.Options.Set(SignedClientIpHeader.OptionKey, ip);
+        }
+    }
+
+    private async Task<HttpResponseMessage> GetWithClientIpAsync(string uri)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        AttachClientIp(request);
+        return await httpClient.SendAsync(request);
+    }
+
+    private async Task<T?> GetFromJsonWithClientIpAsync<T>(string uri)
+    {
+        using var response = await GetWithClientIpAsync(uri);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<T>();
+    }
+
     public async Task<MovieFilterOptionsDto> GetFilterOptionsAsync()
     {
-        var response = await httpClient.GetFromJsonAsync<ApiResponse<MovieFilterOptionsDto>>("api/movies/filter-options");
+        var response = await GetFromJsonWithClientIpAsync<ApiResponse<MovieFilterOptionsDto>>("api/movies/filter-options");
         return response?.Data ?? new();
     }
     private async Task<ApiResponse<T>?> LibraryRequest<T>(HttpMethod method, string suffix = "")
     {
         if (auth?.IsAuthenticated != true) return null;
         using var request = new HttpRequestMessage(method, "api/library" + suffix);
+        AttachClientIp(request);
         if (auth?.IsAuthenticated == true)
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", auth.AccessToken);
         using var response = await httpClient.SendAsync(request);
@@ -45,7 +74,7 @@ public class MovieApiClient(HttpClient httpClient, ILogger<MovieApiClient> logge
     {
         try
         {
-            using var response = await httpClient.GetAsync("api/home");
+            using var response = await GetWithClientIpAsync("api/home");
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
             response.EnsureSuccessStatusCode();
             var res = await response.Content.ReadFromJsonAsync<ApiResponse<HomeAggregateDto>>();
@@ -66,7 +95,7 @@ public class MovieApiClient(HttpClient httpClient, ILogger<MovieApiClient> logge
     {
         try
         {
-            using var response = await httpClient.GetAsync("api/movies/featured");
+            using var response = await GetWithClientIpAsync("api/movies/featured");
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
             response.EnsureSuccessStatusCode();
             var res = await response.Content.ReadFromJsonAsync<ApiResponse<MovieDto>>();
@@ -87,7 +116,7 @@ public class MovieApiClient(HttpClient httpClient, ILogger<MovieApiClient> logge
     {
         try
         {
-            var res = await httpClient.GetFromJsonAsync<ApiResponse<List<MovieDto>>>($"api/movies/trending?count={count}");
+            var res = await GetFromJsonWithClientIpAsync<ApiResponse<List<MovieDto>>>($"api/movies/trending?count={count}");
             return res?.Data ?? [];
         }
         catch (Exception ex)
@@ -101,7 +130,7 @@ public class MovieApiClient(HttpClient httpClient, ILogger<MovieApiClient> logge
     {
         try
         {
-            var res = await httpClient.GetFromJsonAsync<ApiResponse<List<MovieDto>>>($"api/movies/top-series?count={count}");
+            var res = await GetFromJsonWithClientIpAsync<ApiResponse<List<MovieDto>>>($"api/movies/top-series?count={count}");
             return res?.Data ?? [];
         }
         catch (Exception ex)
@@ -115,7 +144,7 @@ public class MovieApiClient(HttpClient httpClient, ILogger<MovieApiClient> logge
     {
         try
         {
-            var res = await httpClient.GetFromJsonAsync<ApiResponse<List<MovieDto>>>($"api/movies/latest?count={count}");
+            var res = await GetFromJsonWithClientIpAsync<ApiResponse<List<MovieDto>>>($"api/movies/latest?count={count}");
             return res?.Data ?? [];
         }
         catch (Exception ex)
@@ -129,7 +158,7 @@ public class MovieApiClient(HttpClient httpClient, ILogger<MovieApiClient> logge
     {
         try
         {
-            using var response = await httpClient.GetAsync($"api/movies/{id}");
+            using var response = await GetWithClientIpAsync($"api/movies/{id}");
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
             response.EnsureSuccessStatusCode();
             var res = await response.Content.ReadFromJsonAsync<ApiResponse<MovieDetailDto>>();
@@ -150,7 +179,7 @@ public class MovieApiClient(HttpClient httpClient, ILogger<MovieApiClient> logge
     {
         try
         {
-            using var response = await httpClient.GetAsync($"api/movies/slug/{Uri.EscapeDataString(slug)}");
+            using var response = await GetWithClientIpAsync($"api/movies/slug/{Uri.EscapeDataString(slug)}");
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
             response.EnsureSuccessStatusCode();
             var res = await response.Content.ReadFromJsonAsync<ApiResponse<MovieDetailDto>>();
@@ -176,7 +205,7 @@ public class MovieApiClient(HttpClient httpClient, ILogger<MovieApiClient> logge
             foreach (var value in request.Countries) query += "&countries=" + Uri.EscapeDataString(value);
             foreach (var value in request.Years) query += "&years=" + value;
             foreach (var value in request.Types) query += "&types=" + (int)value;
-            var res = await httpClient.GetFromJsonAsync<ApiResponse<PagedResult<MovieDto>>>($"api/movies{query}");
+            var res = await GetFromJsonWithClientIpAsync<ApiResponse<PagedResult<MovieDto>>>($"api/movies{query}");
             return res?.Data ?? new PagedResult<MovieDto>();
         }
         catch (Exception ex)
@@ -190,7 +219,7 @@ public class MovieApiClient(HttpClient httpClient, ILogger<MovieApiClient> logge
     {
         try
         {
-            var res = await httpClient.GetFromJsonAsync<ApiResponse<List<MovieDto>>>($"api/movies/{movieId}/similar?count={count}");
+            var res = await GetFromJsonWithClientIpAsync<ApiResponse<List<MovieDto>>>($"api/movies/{movieId}/similar?count={count}");
             return res?.Data ?? [];
         }
         catch (Exception ex)
@@ -261,7 +290,7 @@ public class MovieApiClient(HttpClient httpClient, ILogger<MovieApiClient> logge
     {
         try
         {
-            var res = await httpClient.GetFromJsonAsync<ApiResponse<List<GenreDto>>>("api/genres");
+            var res = await GetFromJsonWithClientIpAsync<ApiResponse<List<GenreDto>>>("api/genres");
             return res?.Data ?? [];
         }
         catch (Exception ex)

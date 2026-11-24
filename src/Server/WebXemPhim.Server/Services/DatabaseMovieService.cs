@@ -610,7 +610,8 @@ SELECT m.""Id""
   FROM movies m
   CROSS JOIN to_tsquery('simple', @query) q
  WHERE m.""search_vector"" @@ q
- ORDER BY ts_rank_cd(m.""search_vector"", q) DESC, m.""Id"" ASC;";
+ ORDER BY ts_rank_cd(m.""search_vector"", q) DESC, m.""Id"" ASC
+ LIMIT 500;";
             var pQuery = cmd.CreateParameter();
             pQuery.ParameterName = "@query";
             pQuery.Value = tsQuery;

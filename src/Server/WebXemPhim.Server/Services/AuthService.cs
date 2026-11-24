@@ -37,7 +37,9 @@ public interface IAuthService
     Task<AuthResult> VerifyMfaLoginAsync(VerifyMfaLoginRequest request);
     Task<PasswordResetResult> CreatePasswordResetAsync(string email);
     Task<bool> ResetPasswordAsync(ResetPasswordRequest request);
+    Task<Guid?> ResetPasswordWithUserIdAsync(ResetPasswordRequest request) => ResetPasswordAsync(request).ContinueWith(t => t.Result ? (Guid?)Guid.Empty : null);
     Task<UserDto?> ValidateAccessTokenAsync(string token);
+    Task<bool> IsTokenHashActiveAsync(string tokenHash) => Task.FromResult(true);
     Task RevokeAccessTokenAsync(string token);
     Task<UserDto?> GetUserAsync(Guid userId);
     Task<UserDto?> ActivateVipAsync(Guid userId, int durationDays);
@@ -55,12 +57,12 @@ public sealed class AuthService(
     IDbContextFactory<AppDbContext> contextFactory,
     TimeProvider timeProvider,
     IDataProtectionProvider dataProtectionProvider,
-    AuthSessionCache? sessionCache = null,
+    IAuthSessionCache? sessionCache = null,
     ILogger<AuthService>? logger = null) : IAuthService
 {
     private readonly IDataProtector mfaProtector = dataProtectionProvider.CreateProtector("CinemaFlow.MfaSecret.v1");
     private readonly ILogger<AuthService>? _logger = logger;
-    private readonly AuthSessionCache? _sessionCache = sessionCache;
+    private readonly IAuthSessionCache? _sessionCache = sessionCache;
 
     public AuthService(IDbContextFactory<AppDbContext> contextFactory, TimeProvider timeProvider)
         : this(contextFactory, timeProvider, new EphemeralDataProtectionProvider()) { }
@@ -151,8 +153,8 @@ public sealed class AuthService(
 
         var security = await context.UserSecurity.SingleOrDefaultAsync(item => item.UserId == user.Id);
         if (security is null) { security = new UserSecurityEntity { UserId = user.Id }; context.UserSecurity.Add(security); }
-        if (security.LockedUntilUtc > UtcNow) return new AuthResult(null, AuthFailure.InvalidCredentials);
-        if (security.LockedUntilUtc is not null) { security.LockedUntilUtc = null; security.FailedLoginAttempts = 0; }
+        if (security.LockedUntilUtc > UtcNow || security.LoginCooldownUntilUtc > UtcNow) return new AuthResult(null, AuthFailure.InvalidCredentials);
+        if (security.LoginCooldownUntilUtc is not null) { security.LoginCooldownUntilUtc = null; security.FailedLoginAttempts = 0; }
         var valid = CredentialSecurity.Verify(request.Password, user.PasswordSalt, user.PasswordHash, security.PasswordIterations);
         security.Version++;
 
@@ -160,9 +162,8 @@ public sealed class AuthService(
         {
             if (++security.FailedLoginAttempts >= 5)
             {
-                security.LockedUntilUtc = UtcNow.AddMinutes(15);
-                // Tài khoản vừa bị khóa: chặn ngay các token còn cache để Khoá có hiệu lực lập tức.
-                _sessionCache?.InvalidateUser(user.Id);
+                // Chỉ kích hoạt cooldown đăng nhập mới — không hủy phiên Bearer đang hoạt động của Admin/User
+                security.LoginCooldownUntilUtc = UtcNow.AddMinutes(15);
             }
             await context.SaveChangesAsync();
             return new AuthResult(null, AuthFailure.InvalidCredentials);
@@ -209,7 +210,7 @@ public sealed class AuthService(
             security = new UserSecurityEntity { UserId = challenge.UserId };
             context.UserSecurity.Add(security);
         }
-        if (security.LockedUntilUtc > UtcNow)
+        if (security.LockedUntilUtc > UtcNow || security.LoginCooldownUntilUtc > UtcNow)
         {
             context.MfaChallenges.Remove(challenge);
             await context.SaveChangesAsync();
@@ -227,7 +228,7 @@ public sealed class AuthService(
             security.Version++;
             if (++security.FailedLoginAttempts >= 5)
             {
-                security.LockedUntilUtc = UtcNow.AddMinutes(15);
+                security.LoginCooldownUntilUtc = UtcNow.AddMinutes(15);
                 context.MfaChallenges.Remove(challenge);
             }
             else if (challenge.FailedAttempts >= 5)
@@ -239,7 +240,7 @@ public sealed class AuthService(
         }
 
         security.FailedLoginAttempts = 0;
-        security.LockedUntilUtc = null;
+        security.LoginCooldownUntilUtc = null;
         security.Version++;
         context.MfaChallenges.RemoveRange(await context.MfaChallenges.Where(item => item.UserId == challenge.UserId).ToListAsync());
         await context.SaveChangesAsync();
@@ -258,6 +259,21 @@ public sealed class AuthService(
             return new PasswordResetResult(null, AuthFailure.UserNotFound);
         }
 
+        // Cooldown chống spam email đặt lại mật khẩu (tối đa 1 token mới / 2 phút mỗi tài khoản)
+        var recentCutoff = UtcNow.AddMinutes(13);
+        var hasRecentReset = await context.PasswordResetTokens.AnyAsync(item =>
+            item.UserId == user.Id && item.UsedAtUtc == null && item.ExpiresAtUtc > recentCutoff);
+        if (hasRecentReset)
+        {
+            return new PasswordResetResult(null, AuthFailure.TemporarilyUnavailable);
+        }
+
+        // Vô hiệu hóa mọi token đặt lại mật khẩu cũ chưa dùng trước khi cấp token mới
+        var staleResets = await context.PasswordResetTokens
+            .Where(item => item.UserId == user.Id && item.UsedAtUtc == null)
+            .ToListAsync();
+        foreach (var stale in staleResets) stale.UsedAtUtc = UtcNow;
+
         var token = CredentialSecurity.CreateToken();
         var reset = new PasswordResetTokenEntity
         {
@@ -274,10 +290,13 @@ public sealed class AuthService(
         });
     }
 
-    public async Task<bool> ResetPasswordAsync(ResetPasswordRequest request)
+    public async Task<bool> ResetPasswordAsync(ResetPasswordRequest request) =>
+        (await ResetPasswordWithUserIdAsync(request)).HasValue;
+
+    public async Task<Guid?> ResetPasswordWithUserIdAsync(ResetPasswordRequest request)
     {
-        if (!CredentialSecurity.IsToken(request.Token)) return false;
-        if (PasswordPolicyValidator.IsCommonOrWeak(request.NewPassword)) return false;
+        if (!CredentialSecurity.IsToken(request.Token)) return null;
+        if (PasswordPolicyValidator.IsCommonOrWeak(request.NewPassword)) return null;
         var tokenHash = CredentialSecurity.TokenHash(request.Token);
         await using var context = await contextFactory.CreateDbContextAsync();
         var reset = await context.PasswordResetTokens
@@ -285,7 +304,7 @@ public sealed class AuthService(
             .SingleOrDefaultAsync(item => item.Token == tokenHash);
         if (reset is null || reset.UsedAtUtc is not null || reset.ExpiresAtUtc <= UtcNow)
         {
-            return false;
+            return null;
         }
 
         var salt = RandomNumberGenerator.GetBytes(16);
@@ -296,7 +315,7 @@ public sealed class AuthService(
         if (security is null) { security = new UserSecurityEntity { UserId = reset.UserId }; context.UserSecurity.Add(security); }
         security.PasswordIterations = CredentialSecurity.PasswordIterations;
         security.FailedLoginAttempts = 0;
-        security.LockedUntilUtc = null;
+        security.LoginCooldownUntilUtc = null;
         security.Version++;
         var otherResets = await context.PasswordResetTokens.Where(item => item.UserId == reset.UserId && item.Token != tokenHash && item.UsedAtUtc == null).ToListAsync();
         foreach (var item in otherResets) item.UsedAtUtc = UtcNow;
@@ -308,8 +327,8 @@ public sealed class AuthService(
         context.MfaVerifiedSessions.RemoveRange(await context.MfaVerifiedSessions.Where(item => item.UserId == reset.UserId).ToListAsync());
         _sessionCache?.InvalidateUser(reset.UserId);
         try { await context.SaveChangesAsync(); }
-        catch (DbUpdateConcurrencyException) { return false; }
-        return true;
+        catch (DbUpdateConcurrencyException) { return null; }
+        return reset.UserId;
     }
 
     public async Task<bool> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, string currentAccessToken = "")
@@ -329,7 +348,7 @@ public sealed class AuthService(
 
         var security = await context.UserSecurity.SingleOrDefaultAsync(item => item.UserId == userId);
         if (security is null) { security = new UserSecurityEntity { UserId = userId }; context.UserSecurity.Add(security); }
-        if (security.LockedUntilUtc > UtcNow) return false;
+        if (security.LockedUntilUtc > UtcNow || security.LoginCooldownUntilUtc > UtcNow) return false;
 
         var valid = CredentialSecurity.Verify(request.CurrentPassword, user.PasswordSalt, user.PasswordHash, security.PasswordIterations);
         if (!valid)
@@ -337,7 +356,7 @@ public sealed class AuthService(
             security.FailedLoginAttempts++;
             if (security.FailedLoginAttempts >= 5)
             {
-                security.LockedUntilUtc = UtcNow.AddMinutes(15);
+                security.LoginCooldownUntilUtc = UtcNow.AddMinutes(15);
             }
             await context.SaveChangesAsync();
             return false;
@@ -348,7 +367,7 @@ public sealed class AuthService(
         user.PasswordHash = CredentialSecurity.PasswordHash(request.NewPassword, salt);
         security.PasswordIterations = CredentialSecurity.PasswordIterations;
         security.FailedLoginAttempts = 0;
-        security.LockedUntilUtc = null;
+        security.LoginCooldownUntilUtc = null;
         security.Version++;
 
         // Revoke all other access tokens except the current one (if provided)
@@ -414,9 +433,42 @@ public sealed class AuthService(
         if (user is not null)
         {
             user.MfaSessionVerified = !user.MfaEnabled || await context.MfaVerifiedSessions.AsNoTracking().AnyAsync(item => item.TokenHash == tokenHash && item.UserId == user.Id);
+            if (user.MfaEnabled && !user.MfaSessionVerified)
+            {
+                return null;
+            }
             _sessionCache?.Set(tokenHash, user);
         }
         return user;
+    }
+
+    public async Task<bool> IsTokenHashActiveAsync(string tokenHash)
+    {
+        if (string.IsNullOrWhiteSpace(tokenHash)) return false;
+        if (_sessionCache?.TryGet(tokenHash, out var cachedUser) == true && cachedUser is not null)
+        {
+            return true;
+        }
+
+        await using var context = await contextFactory.CreateDbContextAsync();
+        var access = await context.AccessTokens.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Token == tokenHash);
+        if (access is null || access.ExpiresAtUtc <= UtcNow) return false;
+
+        var security = await context.UserSecurity.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.UserId == access.UserId);
+        if (security?.LockedUntilUtc > UtcNow) return false;
+
+        var mfaEnabled = await context.MfaCredentials.AsNoTracking()
+            .AnyAsync(item => item.UserId == access.UserId && item.Enabled);
+        if (mfaEnabled)
+        {
+            var mfaVerified = await context.MfaVerifiedSessions.AsNoTracking()
+                .AnyAsync(item => item.TokenHash == tokenHash && item.UserId == access.UserId);
+            if (!mfaVerified) return false;
+        }
+
+        return true;
     }
 
     public async Task RevokeAccessTokenAsync(string token)
@@ -633,8 +685,22 @@ public sealed class AuthService(
         credential.EnabledAtUtc = UtcNow;
         var currentTokenHash = CredentialSecurity.IsToken(currentAccessToken) ? CredentialSecurity.TokenHash(currentAccessToken) : string.Empty;
         if (!string.IsNullOrEmpty(currentTokenHash) && await context.AccessTokens.AnyAsync(item => item.Token == currentTokenHash && item.UserId == userId))
-            context.MfaVerifiedSessions.Add(new MfaVerifiedSessionEntity { TokenHash = currentTokenHash, UserId = userId, VerifiedAtUtc = UtcNow });
+        {
+            var alreadyVerified = await context.MfaVerifiedSessions.AnyAsync(item => item.TokenHash == currentTokenHash && item.UserId == userId);
+            if (!alreadyVerified)
+            {
+                context.MfaVerifiedSessions.Add(new MfaVerifiedSessionEntity { TokenHash = currentTokenHash, UserId = userId, VerifiedAtUtc = UtcNow });
+            }
+        }
+
+        // Thu hồi toàn bộ các phiên trước khi bật MFA ở các thiết bị khác
+        var otherTokens = await context.AccessTokens
+            .Where(item => item.UserId == userId && (string.IsNullOrEmpty(currentTokenHash) || item.Token != currentTokenHash))
+            .ToListAsync();
+        context.AccessTokens.RemoveRange(otherTokens);
+
         await context.SaveChangesAsync();
+        _sessionCache?.InvalidateUser(userId);
         return new MfaRecoveryCodesDto { RecoveryCodes = codes };
     }
 
@@ -645,13 +711,13 @@ public sealed class AuthService(
         var security = await context.UserSecurity.SingleOrDefaultAsync(item => item.UserId == userId);
         var credential = await context.MfaCredentials.SingleOrDefaultAsync(item => item.UserId == userId && item.Enabled);
         if (user is null || security is null || credential is null) return false;
-        if (security.LockedUntilUtc > UtcNow) return false;
+        if (security.LockedUntilUtc > UtcNow || security.LoginCooldownUntilUtc > UtcNow) return false;
 
         var passwordValid = CredentialSecurity.Verify(currentPassword, user.PasswordSalt, user.PasswordHash, security.PasswordIterations);
         if (!passwordValid)
         {
             security.Version++;
-            if (++security.FailedLoginAttempts >= 5) security.LockedUntilUtc = UtcNow.AddMinutes(15);
+            if (++security.FailedLoginAttempts >= 5) security.LoginCooldownUntilUtc = UtcNow.AddMinutes(15);
             await context.SaveChangesAsync();
             return false;
         }
@@ -660,18 +726,19 @@ public sealed class AuthService(
         if (!mfaValid)
         {
             security.Version++;
-            if (++security.FailedLoginAttempts >= 5) security.LockedUntilUtc = UtcNow.AddMinutes(15);
+            if (++security.FailedLoginAttempts >= 5) security.LoginCooldownUntilUtc = UtcNow.AddMinutes(15);
             await context.SaveChangesAsync();
             return false;
         }
 
         security.FailedLoginAttempts = 0;
-        security.LockedUntilUtc = null;
+        security.LoginCooldownUntilUtc = null;
         context.MfaCredentials.Remove(credential);
         context.MfaChallenges.RemoveRange(await context.MfaChallenges.Where(item => item.UserId == userId).ToListAsync());
         context.MfaVerifiedSessions.RemoveRange(await context.MfaVerifiedSessions.Where(item => item.UserId == userId).ToListAsync());
         security.Version++;
         await context.SaveChangesAsync();
+        _sessionCache?.InvalidateUser(userId);
         return true;
     }
 

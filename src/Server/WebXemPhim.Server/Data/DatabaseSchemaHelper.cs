@@ -167,7 +167,25 @@ public static class DatabaseSchemaHelper
         await EnsureColumnExistsAsync(db, isPostgres, "reviews", "IsReported", "boolean NOT NULL DEFAULT false", "tinyint(1) NOT NULL DEFAULT 0", cancellationToken);
 
         await EnsureColumnExistsAsync(db, isPostgres, "payments", "TransactionReference", "varchar(120) NULL", "varchar(120) NULL", cancellationToken);
+        await EnsureColumnExistsAsync(db, isPostgres, "payments", "CouponCode", "varchar(32) NULL", "varchar(32) NULL", cancellationToken);
         await EnsureColumnExistsAsync(db, isPostgres, "payments", "Note", "text NULL", "varchar(500) NULL", cancellationToken);
+
+        await EnsureColumnExistsAsync(db, isPostgres, "user_security", "LoginCooldownUntilUtc", "timestamptz NULL", "datetime(6) NULL", cancellationToken);
+        await EnsureColumnExistsAsync(db, isPostgres, "audit_logs", "AdminUserId", "uuid NULL", "char(36) NULL", cancellationToken);
+
+        if (isPostgres)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE IF NOT EXISTS data_protection_keys (
+                    "Id" serial PRIMARY KEY,
+                    "FriendlyName" varchar(200) NOT NULL,
+                    "Xml" text NOT NULL,
+                    "CreatedAtUtc" timestamptz NOT NULL DEFAULT NOW()
+                );
+                """,
+                cancellationToken);
+        }
 
         await EnsureColumnExistsAsync(db, isPostgres, "users", "EmailLookupHash", "varchar(64) NULL", "varchar(64) NULL", cancellationToken);
 
@@ -205,6 +223,13 @@ public static class DatabaseSchemaHelper
                     ? "CREATE INDEX IF NOT EXISTS \"IX_payments_TransactionReference\" ON payments (\"TransactionReference\");"
                     : "CREATE INDEX IF NOT EXISTS IX_payments_TransactionReference ON payments (TransactionReference);",
                 cancellationToken);
+            if (isPostgres)
+            {
+                await SafeCreateIndexAsync(
+                    db,
+                    "CREATE UNIQUE INDEX IF NOT EXISTS \"UX_payments_Completed_TransactionReference\" ON payments (\"TransactionReference\") WHERE \"TransactionReference\" IS NOT NULL AND \"Status\" = 1;",
+                    cancellationToken);
+            }
         }
         try
         {
@@ -361,7 +386,7 @@ END $$;", cancellationToken);
         }
 
         await db.Database.ExecuteSqlRawAsync(@"CREATE OR REPLACE FUNCTION webxemphim_normalize(p_text text)
-RETURNS text LANGUAGE plpgsql STABLE PARALLEL SAFE AS $$
+RETURNS text LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = public, pg_catalog AS $$
 DECLARE
   v_text text;
   v_unaccent_schema text;
@@ -383,7 +408,7 @@ END;
 $$;", cancellationToken);
 
         await db.Database.ExecuteSqlRawAsync(@"CREATE OR REPLACE FUNCTION webxemphim_movie_search_vector(p_movie_id integer)
-RETURNS tsvector LANGUAGE plpgsql STABLE AS $$
+RETURNS tsvector LANGUAGE plpgsql STABLE SET search_path = public, pg_catalog AS $$
 DECLARE
   v_title text;
   v_original_title text;
@@ -413,7 +438,7 @@ END;
 $$;", cancellationToken);
 
         await db.Database.ExecuteSqlRawAsync(@"CREATE OR REPLACE FUNCTION webxemphim_refresh_movie_search_vector()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger LANGUAGE plpgsql SET search_path = public, pg_catalog AS $$
 BEGIN
   UPDATE movies m
      SET ""search_vector"" = webxemphim_movie_search_vector(m.""Id"")
@@ -423,7 +448,7 @@ END;
 $$;", cancellationToken);
 
         await db.Database.ExecuteSqlRawAsync(@"CREATE OR REPLACE FUNCTION webxemphim_refresh_movie_search_vector_for_cast()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger LANGUAGE plpgsql SET search_path = public, pg_catalog AS $$
 DECLARE
   v_movie_id integer;
 BEGIN
@@ -817,22 +842,39 @@ $$;", cancellationToken);
         const int batchSize = 500;
         try
         {
+            Guid? lastId = null;
             while (true)
             {
-                var batch = await db.Users
-                    .Where(u => u.SearchNameLower == string.Empty)
-                    .OrderBy(u => u.CreatedAtUtc)
+                var query = db.Users.Where(u => u.SearchNameLower == string.Empty);
+                if (lastId.HasValue)
+                {
+                    var cursor = lastId.Value;
+                    query = query.Where(u => u.Id.CompareTo(cursor) > 0);
+                }
+
+                var batch = await query
+                    .OrderBy(u => u.Id)
                     .Take(batchSize)
                     .ToListAsync(cancellationToken);
 
                 if (batch.Count == 0) break;
+                lastId = batch[^1].Id;
 
+                var dirty = false;
                 foreach (var user in batch)
                 {
-                    user.SearchNameLower = (user.FullName ?? string.Empty).Trim().ToLowerInvariant();
+                    var computed = (user.FullName ?? string.Empty).Trim().ToLowerInvariant();
+                    if (!string.IsNullOrEmpty(computed))
+                    {
+                        user.SearchNameLower = computed;
+                        dirty = true;
+                    }
                 }
 
-                await db.SaveChangesAsync(cancellationToken);
+                if (dirty)
+                {
+                    await db.SaveChangesAsync(cancellationToken);
+                }
                 db.ChangeTracker.Clear();
 
                 if (batch.Count < batchSize) break;
@@ -845,6 +887,56 @@ $$;", cancellationToken);
     }
 
     /// <summary>
+    /// Hardens Supabase/PostgreSQL public schema tables by revoking broad privileges from
+    /// PostgREST roles (anon, authenticated) when present and enabling Row-Level Security (RLS)
+    /// with default-deny on all application tables. The server's own DB owner role continues
+    /// operating normally via EF Core.
+    /// </summary>
+    public static async Task EnsurePostgresRlsAndPrivilegeHardeningAsync(AppDbContext db, CancellationToken cancellationToken = default)
+    {
+        if (!db.Database.IsNpgsql()) return;
+        try
+        {
+            const string sql = """
+                DO $$
+                DECLARE
+                    tbl record;
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+                        EXECUTE 'REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon';
+                        EXECUTE 'REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon';
+                        EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon';
+                        EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon';
+                    END IF;
+
+                    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+                        EXECUTE 'REVOKE ALL ON ALL TABLES IN SCHEMA public FROM authenticated';
+                        EXECUTE 'REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM authenticated';
+                        EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM authenticated';
+                        EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM authenticated';
+                    END IF;
+
+                    FOR tbl IN
+                        SELECT schemaname, tablename
+                        FROM pg_tables
+                        WHERE schemaname IN ('public', 'webxemphim')
+                          AND tablename NOT LIKE 'pg_%'
+                          AND tablename NOT LIKE 'sql_%'
+                    LOOP
+                        EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', tbl.schemaname, tbl.tablename);
+                    END LOOP;
+                END
+                $$;
+                """;
+            await db.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+        }
+        catch
+        {
+            // Non-fatal if DB user lacks ALTER TABLE/REVOKE permissions on a restricted host.
+        }
+    }
+
+    /// <summary>
     /// Installs optional pg_trgm GIN indexes for admin text search (normalized email, search name,
     /// audit summary). Degraded gracefully when the extension is unavailable on a managed instance.
     /// </summary>
@@ -853,13 +945,31 @@ $$;", cancellationToken);
         if (!db.Database.IsNpgsql()) return;
         try
         {
-            await db.Database.ExecuteSqlRawAsync("CREATE EXTENSION IF NOT EXISTS pg_trgm;", cancellationToken);
-            await db.Database.ExecuteSqlRawAsync(
-                "CREATE INDEX IF NOT EXISTS \"IX_users_NormalizedEmail_trgm\" ON users USING GIN (\"NormalizedEmail\" gin_trgm_ops);", cancellationToken);
-            await db.Database.ExecuteSqlRawAsync(
-                "CREATE INDEX IF NOT EXISTS \"IX_users_SearchNameLower_trgm\" ON users USING GIN (\"SearchNameLower\" gin_trgm_ops);", cancellationToken);
-            await db.Database.ExecuteSqlRawAsync(
-                "CREATE INDEX IF NOT EXISTS \"IX_audit_logs_Summary_trgm\" ON audit_logs USING GIN (\"Summary\" gin_trgm_ops);", cancellationToken);
+            await db.Database.ExecuteSqlRawAsync(@"
+                DO $$
+                DECLARE
+                    trgm_schema text;
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm') THEN
+                        IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'extensions') THEN
+                            CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA extensions;
+                        ELSE
+                            CREATE EXTENSION IF NOT EXISTS pg_trgm;
+                        END IF;
+                    END IF;
+
+                    SELECT n.nspname INTO trgm_schema
+                      FROM pg_extension e
+                      JOIN pg_namespace n ON n.oid = e.extnamespace
+                     WHERE e.extname = 'pg_trgm';
+
+                    IF trgm_schema IS NOT NULL THEN
+                        EXECUTE format('CREATE INDEX IF NOT EXISTS ""IX_users_NormalizedEmail_trgm"" ON users USING GIN (""NormalizedEmail"" %I.gin_trgm_ops)', trgm_schema);
+                        EXECUTE format('CREATE INDEX IF NOT EXISTS ""IX_users_SearchNameLower_trgm"" ON users USING GIN (""SearchNameLower"" %I.gin_trgm_ops)', trgm_schema);
+                        EXECUTE format('CREATE INDEX IF NOT EXISTS ""IX_audit_logs_Summary_trgm"" ON audit_logs USING GIN (""Summary"" %I.gin_trgm_ops)', trgm_schema);
+                    END IF;
+                END
+                $$;", cancellationToken);
         }
         catch
         {

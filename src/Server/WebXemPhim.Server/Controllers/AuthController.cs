@@ -82,6 +82,13 @@ public class AuthController(
             try { await emailSender.SendAsync(request.Email.Trim(), result.Data.ResetToken); }
             catch (Exception) { logger.LogError("Password reset delivery failed; inspect the mail service configuration."); }
         }
+        else if (HttpContext?.RequestServices?.GetService<IWebHostEnvironment>()?.IsEnvironment("Testing") != true)
+        {
+            // Giảm rò rỉ timing side-channel giữa email tồn tại và không tồn tại
+            await Task.Delay(System.Security.Cryptography.RandomNumberGenerator.GetInt32(80, 180));
+        }
+
+        await Audit(null, "password.forgot_requested", true, "Password reset requested");
         return Ok(ApiResponse<PasswordResetDto?>.Ok(
             null,
             "Nếu email tồn tại, bạn sẽ nhận được hướng dẫn đặt lại mật khẩu."));
@@ -91,8 +98,18 @@ public class AuthController(
     [EnableRateLimiting("Authentication")]
     public async Task<ActionResult<ApiResponse<bool>>> ResetPassword(ResetPasswordRequest request)
     {
-        if (!await authService.ResetPasswordAsync(request))
+        var resetUserId = await authService.ResetPasswordWithUserIdAsync(request);
+        var ok = resetUserId.HasValue;
+        await Audit(resetUserId, "password.reset", ok);
+        if (!ok)
             return BadRequest(ApiResponse<bool>.Fail("Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn."));
+
+        var streamService = streamSessionService ?? HttpContext?.RequestServices?.GetService<IStreamSessionService>();
+        if (streamService is not null)
+        {
+            try { await streamService.RevokeUserStreamsAsync(resetUserId!.Value, "Mật khẩu đã được đặt lại."); }
+            catch (Exception ex) { logger.LogWarning(ex, "Failed to revoke streams on password reset."); }
+        }
 
         return Ok(ApiResponse<bool>.Ok(true, "Mật khẩu đã được cập nhật."));
     }
@@ -107,6 +124,12 @@ public class AuthController(
         if (success)
         {
             await Audit(CurrentUserId, "session.revoke_all", true, "Password changed");
+            var streamService = streamSessionService ?? HttpContext?.RequestServices?.GetService<IStreamSessionService>();
+            if (streamService is not null)
+            {
+                try { await streamService.RevokeUserStreamsAsync(CurrentUserId, "Mật khẩu tài khoản vừa được thay đổi."); }
+                catch (Exception ex) { logger.LogWarning(ex, "Failed to revoke streams on password change."); }
+            }
         }
         return success
             ? Ok(ApiResponse<bool>.Ok(true, "Mật khẩu đã được thay đổi thành công. Các phiên đăng nhập trên thiết bị khác đã được đăng xuất để bảo vệ bạn."))

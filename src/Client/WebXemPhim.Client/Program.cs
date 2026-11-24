@@ -8,7 +8,9 @@ using System.Net.Http;
 using Microsoft.Extensions.Http.Resilience;
 using Polly;
 using WebXemPhim.Shared.Security;
+using Microsoft.AspNetCore.Http.Features;
 using Yarp.ReverseProxy.Configuration;
+using Yarp.ReverseProxy.Transforms;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,7 +27,7 @@ if (string.IsNullOrWhiteSpace(rawClientHosts) || rawClientHosts.Trim() == "*")
 
 WebSecurityExtensions.ApplyDevelopmentDefaults(builder.Configuration, builder.Environment, client: true);
 WebSecurityExtensions.ValidateProduction(builder.Configuration, builder.Environment, client: true);
-builder.WebHost.ConfigureKestrel(options => { options.AddServerHeader = false; options.Limits.MaxRequestBodySize = 4L * 1024 * 1024 * 1024; });
+builder.WebHost.ConfigureKestrel(options => { options.AddServerHeader = false; options.Limits.MaxRequestBodySize = 10L * 1024 * 1024; });
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Services.AddSiteDataProtection(builder.Configuration, "WebXemPhim.Client");
@@ -35,12 +37,15 @@ builder.Services.AddTransient<ForwardedClientIpHandler>();
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents(options =>
+    {
+        options.DisconnectedCircuitMaxRetained = 30;
+        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromSeconds(30);
+    });
 
-// Blazor Server chuyển tệp người dùng chọn qua SignalR. Mặc định mỗi tin nhắn chỉ được
-// 32 KB nên ảnh nền tập (tối đa 2 MB) sẽ bị chặn giữa chừng. Nới riêng giới hạn này —
-// các endpoint HTTP của web client vẫn giữ mức 64 KB.
-builder.Services.AddSignalR(options => options.MaximumReceiveMessageSize = 4 * 1024 * 1024);
+// Giới hạn kích thước frame SignalR ở mức 128 KB (đủ cho phân đoạn 32 KB của Blazor InputFile)
+// để ngăn tấn công cạn kiệt bộ nhớ qua kết nối WebSocket chưa xác thực.
+builder.Services.AddSignalR(options => options.MaximumReceiveMessageSize = 128 * 1024);
 
 // Standard resilience handler for public consumer APIs with cold-start tolerance for Render
 Action<HttpStandardResilienceOptions> standardResilience = options =>
@@ -59,7 +64,6 @@ Action<HttpStandardResilienceOptions> standardResilience = options =>
         .Handle<TaskCanceledException>()
         .Handle<TimeoutException>()
         .HandleResult(response => response.StatusCode is HttpStatusCode.RequestTimeout
-            || response.StatusCode == HttpStatusCode.TooManyRequests
             || response.StatusCode == HttpStatusCode.BadGateway
             || response.StatusCode == HttpStatusCode.ServiceUnavailable
             || response.StatusCode == HttpStatusCode.GatewayTimeout
@@ -162,12 +166,31 @@ builder.Services.AddReverseProxy()
                     ActivityTimeout = TimeSpan.FromHours(2)
                 }
             }
-        ]);
+        ])
+    .AddTransforms(builderContext =>
+    {
+        var proxySecret = SignedClientIpHeader.ResolveSecret(builder.Configuration);
+        builderContext.AddRequestTransform(transformContext =>
+        {
+            var remoteIp = transformContext.HttpContext.Connection.RemoteIpAddress;
+            if (remoteIp is not null)
+            {
+                var clientIp = SignedClientIpHeader.NormalizeIp(remoteIp);
+                SignedClientIpHeader.AttachSignedHeaders(
+                    transformContext.ProxyRequest.Headers,
+                    clientIp,
+                    proxySecret,
+                    DateTimeOffset.UtcNow);
+            }
+            return ValueTask.CompletedTask;
+        });
+    });
 
 // Register reactive state
 builder.Services.AddScoped<IAccountApiClient>(services => new AccountApiClient(
     services.GetRequiredService<IHttpClientFactory>().CreateClient("AccountApi"),
-    services.GetRequiredService<ILogger<AccountApiClient>>()));
+    services.GetRequiredService<ILogger<AccountApiClient>>(),
+    services.GetRequiredService<ICircuitClientIpProvider>()));
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedSessionStorage>();
 builder.Services.AddScoped<IAuthSessionStore, AuthSessionStore>();
 builder.Services.AddScoped<WatchlistState>();
@@ -183,8 +206,16 @@ var app = builder.Build();
 var forwardedHeadersOptions = new ForwardedHeadersOptions
 {
     ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedHost,
-    ForwardLimit = null
+    ForwardLimit = 1
 };
+var clientAllowedHosts = (app.Configuration["AllowedHosts"] ?? string.Empty)
+    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    .Where(h => !h.Contains('*'))
+    .ToList();
+if (clientAllowedHosts.Count > 0)
+{
+    forwardedHeadersOptions.AllowedHosts = clientAllowedHosts;
+}
 forwardedHeadersOptions.KnownIPNetworks.Clear();
 forwardedHeadersOptions.KnownProxies.Clear();
 forwardedHeadersOptions.KnownProxies.Add(IPAddress.Loopback);
@@ -244,6 +275,23 @@ app.Use(async (context, next) =>
         if (ipProvider != null)
         {
             ipProvider.ClientIp = clientIp.ToString();
+        }
+    }
+
+    // Chỉ nới trần kích thước body lên 4 GB cho 2 endpoint upload video quản trị có Bearer token
+    if (HttpMethods.IsPost(context.Request.Method)
+        && context.Request.Headers.Authorization.ToString().StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+    {
+        var reqPath = context.Request.Path.Value ?? string.Empty;
+        if (reqPath.Equals("/api/admin/storage/upload-r2", StringComparison.OrdinalIgnoreCase)
+            || (reqPath.StartsWith("/api/admin/episodes/", StringComparison.OrdinalIgnoreCase)
+                && reqPath.EndsWith("/video", StringComparison.OrdinalIgnoreCase)))
+        {
+            var bodySizeFeature = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (bodySizeFeature is { IsReadOnly: false })
+            {
+                bodySizeFeature.MaxRequestBodySize = 4L * 1024 * 1024 * 1024;
+            }
         }
     }
 

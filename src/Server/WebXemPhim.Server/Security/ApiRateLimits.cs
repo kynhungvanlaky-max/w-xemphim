@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
+using WebXemPhim.Shared.Security;
 
 namespace WebXemPhim.Server.Security;
 
@@ -14,6 +15,10 @@ public static class ApiRateLimits
     };
 
     private static readonly List<System.Net.IPNetwork> s_trustedProxyNetworks = [];
+    private static volatile string? s_internalProxySecret;
+
+    public static void SetInternalProxySecret(string? secret) =>
+        s_internalProxySecret = string.IsNullOrWhiteSpace(secret) ? null : secret.Trim();
 
     public static void AddTrustedProxy(string ipOrHost)
     {
@@ -63,6 +68,13 @@ public static class ApiRateLimits
 
     public static string GetClientIpAddress(HttpContext context)
     {
+        // Ưu tiên xác thực chữ ký HMAC-SHA256 nội bộ từ Blazor Client/YARP khi đi qua NAT động.
+        if (SignedClientIpHeader.TryVerifySignedIp(context.Request.Headers, s_internalProxySecret, DateTimeOffset.UtcNow, out var verifiedIp)
+            && !string.IsNullOrWhiteSpace(verifiedIp))
+        {
+            return verifiedIp;
+        }
+
         var remoteIp = context.Connection.RemoteIpAddress;
 
         // If the direct connection is from an untrusted remote IP, ignore client-supplied forwarding headers
@@ -142,6 +154,7 @@ public static class ApiRateLimits
 
     public static IServiceCollection AddApiRateLimits(this IServiceCollection services, IConfiguration config)
     {
+        SetInternalProxySecret(SignedClientIpHeader.ResolveSecret(config));
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

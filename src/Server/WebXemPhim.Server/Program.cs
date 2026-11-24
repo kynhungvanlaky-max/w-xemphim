@@ -30,10 +30,52 @@ WebSecurityExtensions.ValidateProduction(builder.Configuration, builder.Environm
 // Giới hạn mặc định 64 KB cho mọi API. Riêng endpoint tải ảnh nền hoặc video tập dùng giới hạn
 // riêng (RequestSizeLimit trên action) nên Kestrel phải cho phép mức trần nhận tệp (4 GB) — giới hạn
 // của action vẫn được áp dụng, các endpoint khác vẫn được bảo vệ bởi global filter 64 KB.
-builder.WebHost.ConfigureKestrel(options => { options.AddServerHeader = false; options.Limits.MaxRequestBodySize = 4L * 1024 * 1024 * 1024; });
+builder.WebHost.ConfigureKestrel(options => { options.AddServerHeader = false; options.Limits.MaxRequestBodySize = 64 * 1024; });
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
-builder.Services.AddSiteDataProtection(builder.Configuration, "WebXemPhim.Server");
+if (!builder.Environment.IsEnvironment("Testing") &&
+    (builder.Configuration["Database:Provider"] ?? "PostgreSql").StartsWith("Postgres", StringComparison.OrdinalIgnoreCase))
+{
+    var dpConnRaw = new[]
+    {
+        builder.Configuration.GetConnectionString("Default"),
+        builder.Configuration.GetConnectionString("PostgreSql"),
+        builder.Configuration.GetConnectionString("Supabase"),
+        builder.Configuration["DATABASE_URL"],
+        builder.Configuration["DATABASE_CONNECTION_STRING"],
+        builder.Configuration["SUPABASE_DB_URL"],
+        builder.Configuration["SUPABASE_CONNECTION_STRING"]
+    }.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s));
+
+    if (!string.IsNullOrWhiteSpace(dpConnRaw))
+    {
+        var dpConnNormalized = DatabaseRegistration.NormalizePostgresConnectionString(dpConnRaw);
+        var dpMasterSecret = builder.Configuration["Security:DataProtectionMasterKey"]
+            ?? builder.Configuration["DATA_PROTECTION_MASTER_KEY"]
+            ?? builder.Configuration["Security:StreamSigningKey"]
+            ?? builder.Configuration["STREAM_SIGNING_KEY"];
+        var dpFallbackPath = builder.Configuration["Security:DataProtectionKeyPath"]
+            ?? Path.Combine(Path.GetTempPath(), "WebXemPhim.Keys");
+
+        builder.Services.AddDataProtection()
+            .SetApplicationName("WebXemPhim.Server")
+            .AddKeyManagementOptions(opts =>
+            {
+                opts.XmlRepository = new DatabaseXmlRepository(
+                    dpConnNormalized,
+                    dpMasterSecret,
+                    new DirectoryInfo(dpFallbackPath));
+            });
+    }
+    else
+    {
+        builder.Services.AddSiteDataProtection(builder.Configuration, "WebXemPhim.Server");
+    }
+}
+else
+{
+    builder.Services.AddSiteDataProtection(builder.Configuration, "WebXemPhim.Server");
+}
 
 // Add services to the container.
 builder.Services.AddControllers(options => options.Filters.Add(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(64 * 1024)));
@@ -112,7 +154,14 @@ builder.Services.AddHttpClient("StreamProbe", client =>
 builder.Services.AddScoped<IMovieService, DatabaseMovieService>();
 builder.Services.AddScoped<IGenreService, DatabaseGenreService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddSingleton<IAuthSessionCache, AuthSessionCache>();
+if (builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddSingleton<IAuthSessionCache, NoOpAuthSessionCache>();
+}
+else
+{
+    builder.Services.AddSingleton<IAuthSessionCache, AuthSessionCache>();
+}
 builder.Services.AddScoped<IPasswordResetEmailSender, PasswordResetEmailSender>();
 builder.Services.AddScoped<ISecurityAuditService, SecurityAuditService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
@@ -159,7 +208,11 @@ var app = builder.Build();
 // Without this the static accessor falls back to a key folder in the process temp path,
 // which is wiped whenever the container is rebuilt — every already encrypted user name and
 // e-mail would then be unreadable and the cockpit would render raw ciphertext.
-FieldEncryptor.Current = new FieldEncryptor(app.Services.GetRequiredService<IDataProtectionProvider>());
+var blindIndexSecret = app.Configuration["Security:BlindIndexKey"]
+    ?? app.Configuration["BLIND_INDEX_KEY"];
+FieldEncryptor.Current = new FieldEncryptor(
+    app.Services.GetRequiredService<IDataProtectionProvider>(),
+    blindIndexSecret);
 
 // Deployment sanity checks: a mis-configured reverse proxy silently breaks the client IP
 // resolution (and therefore the rate limiting), so make it visible at startup.
@@ -198,8 +251,16 @@ if (app.Environment.IsDevelopment())
 var forwardedHeadersOptions = new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
-    ForwardLimit = null
+    ForwardLimit = 1
 };
+var serverAllowedHosts = (app.Configuration["AllowedHosts"] ?? string.Empty)
+    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    .Where(h => !h.Contains('*'))
+    .ToList();
+if (serverAllowedHosts.Count > 0)
+{
+    forwardedHeadersOptions.AllowedHosts = serverAllowedHosts;
+}
 
 // Never trust forwarding headers from arbitrary peers. The default ASP.NET Core trust list is
 // cleared and only loopback plus explicitly configured proxies/networks are trusted. In a
@@ -304,6 +365,10 @@ static async Task InitializeDatabaseAsync(WebApplication app)
             await db.Database.EnsureCreatedAsync();
         }
         await DatabaseSchemaHelper.EnsureTablesCreatedAsync(db);
+        if (db.Database.IsNpgsql())
+        {
+            await DatabaseSchemaHelper.EnsurePostgresRlsAndPrivilegeHardeningAsync(db);
+        }
 
         // Revoke historical plaintext/predictable tokens; never migrate them into valid sessions.
         const string legacyTokenCleanupFlag = "legacy-plaintext-tokens-revoked";

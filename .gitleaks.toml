@@ -1,0 +1,31 @@
+title = "CinemaFlow (WebXemPhim) Gitleaks Security Policy"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "supabase-secret-key"
+description = "Supabase privileged backend secret key (sb_secret_*)"
+regex = '''sb_secret_[A-Za-z0-9_-]{16,}'''
+tags = ["key", "supabase"]
+
+[[rules]]
+id = "postgres-connection-uri-with-password"
+description = "PostgreSQL connection URI containing embedded non-placeholder password"
+regex = '''(?i)postgres(?:ql)?://[^/\s:@]+:[^/\s@<]{6,}@[^/\s]+\.(?:supabase\.co|supabase\.com|render\.com)'''
+tags = ["secret", "database", "postgres"]
+
+[[rules]]
+id = "hardcoded-aws-r2-basic-credentials"
+description = "Hardcoded AWS/Cloudflare R2 BasicAWSCredentials literal"
+regex = '''BasicAWSCredentials\s*\(\s*"[a-fA-F0-9]{20,}"\s*,\s*"[a-fA-F0-9]{32,}"\s*\)'''
+tags = ["secret", "cloudflare-r2", "aws"]
+
+[allowlist]
+description = "Allow test fixtures with explicit dummy markers"
+regexes = [
+  '''DummyPass123''',
+  '''dummy_password''',
+  '''<url_encoded_password>''',
+  '''demo_password'''
+]

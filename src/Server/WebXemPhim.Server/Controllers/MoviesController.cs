@@ -98,7 +98,7 @@ public class MoviesController(
     [HttpPost("{id:int}/view")]
     public async Task<ActionResult<ApiResponse<bool>>> IncrementView(int id)
     {
-        var clientIp = HttpContext?.Connection?.RemoteIpAddress?.ToString();
+        var clientIp = HttpContext is null ? null : ApiRateLimits.GetClientIpAddress(HttpContext);
         var success = await movieService.IncrementViewCountAsync(id, clientIp);
         if (!success)
         {

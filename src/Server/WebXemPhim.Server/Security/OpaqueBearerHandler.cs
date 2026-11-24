@@ -39,7 +39,8 @@ public sealed class OpaqueBearerHandler(
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, user.FullName),
             new Claim(ClaimTypes.Email, user.Email),
-            new Claim("membership", user.Membership.ToString())
+            new Claim("membership", user.Membership.ToString()),
+            new Claim("token_hash", CredentialSecurity.TokenHash(token))
         };
         if (user.IsAdmin && (!user.MfaEnabled || user.MfaSessionVerified)) claims.Add(new Claim(ClaimTypes.Role, "Admin"));
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name));

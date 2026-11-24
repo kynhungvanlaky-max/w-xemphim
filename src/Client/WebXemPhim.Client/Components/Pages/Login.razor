@@ -1,6 +1,7 @@
 @page "/login"
 @inject AuthState Auth
 @inject NavigationManager Nav
+@inject IWebHostEnvironment HostEnv
 @using WebXemPhim.Client.Components.Common
 
 <CinemaPageTitle>Đăng nhập - CinemaFlow</CinemaPageTitle>
@@ -42,7 +43,7 @@
                 <DataAnnotationsValidator />
                 <div class="form-field">
                     <label for="login-email">Email hoặc Tên đăng nhập</label>
-                    <InputText id="login-email" type="text" autocomplete="username" @bind-Value="model.Email" placeholder="Email của bạn hoặc 'admin' / 'vip'" maxlength="160" />
+                    <InputText id="login-email" type="text" autocomplete="username" @bind-Value="model.Email" placeholder="@(HostEnv.IsDevelopment() ? "Email của bạn hoặc 'admin' / 'vip'" : "Email của bạn")" maxlength="160" />
                     <ValidationMessage For="() => model.Email" />
                 </div>
                 <div class="form-field">
@@ -65,13 +66,16 @@
                     <span class="auth-quick-pwd">Pass: <code>Password123!</code></span>
                 </div>
                 <div class="auth-quick-buttons">
-                    <button type="button" class="quick-chip admin" @onclick='() => QuickLogin("admin@cinemaflow.vn", "Password123!")' disabled="@submitting" title="Đăng nhập ngay với quyền Quản trị viên">
-                        <div class="quick-chip-head">
-                            <span class="quick-chip-badge"><CinemaIcon Name="CinemaIconName.Shield" Size="14" /> Admin</span>
-                            <span class="quick-chip-action">@(submitting && activeDemoAccount == "admin@cinemaflow.vn" ? "Đang vào..." : "Vào ngay ➜")</span>
-                        </div>
-                        <span class="quick-chip-email">admin@cinemaflow.vn</span>
-                    </button>
+                    @if (HostEnv.IsDevelopment())
+                    {
+                        <button type="button" class="quick-chip admin" @onclick='() => QuickLogin("admin@cinemaflow.vn", "Password123!")' disabled="@submitting" title="Đăng nhập ngay với quyền Quản trị viên (chỉ bật ở môi trường phát triển)">
+                            <div class="quick-chip-head">
+                                <span class="quick-chip-badge"><CinemaIcon Name="CinemaIconName.Shield" Size="14" /> Admin</span>
+                                <span class="quick-chip-action">@(submitting && activeDemoAccount == "admin@cinemaflow.vn" ? "Đang vào..." : "Vào ngay ➜")</span>
+                            </div>
+                            <span class="quick-chip-email">admin@cinemaflow.vn</span>
+                        </button>
+                    }
                     <button type="button" class="quick-chip vip" @onclick='() => QuickLogin("vip@cinemaflow.vn", "Password123!")' disabled="@submitting" title="Đăng nhập ngay với quyền Khách VIP">
                         <div class="quick-chip-head">
                             <span class="quick-chip-badge"><CinemaIcon Name="CinemaIconName.Crown" Size="14" /> Khách VIP</span>
@@ -125,7 +129,7 @@
         submitting = true;
         error = null;
         var emailInput = model.Email?.Trim() ?? string.Empty;
-        if (emailInput.Equals("admin", StringComparison.OrdinalIgnoreCase))
+        if (HostEnv.IsDevelopment() && emailInput.Equals("admin", StringComparison.OrdinalIgnoreCase))
         {
             model.Email = "admin@cinemaflow.vn";
         }

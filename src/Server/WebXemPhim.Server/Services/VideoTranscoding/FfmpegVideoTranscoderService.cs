@@ -178,7 +178,6 @@ public sealed class FfmpegVideoTranscoderService : IVideoTranscoderService
         }
 
         var filter = $"scale='min({maxTargetWidth},iw)':-2";
-        var arguments = $"-y -i \"{inputPath}\" -vf \"{filter}\" -c:v libx264 -preset veryfast -crf {crf} -maxrate {targetBitrateKbps}k -bufsize {targetBitrateKbps * 2}k -pix_fmt yuv420p -c:a aac -b:a {audioBitrateKbps}k -movflags +faststart \"{outputPath}\"";
 
         _logger.LogInformation("Bắt đầu hạ chuẩn video bằng FFmpeg: {Input} -> {Output} (Mục tiêu: {Height}p, {Bitrate}kbps)",
             Path.GetFileName(inputPath), Path.GetFileName(outputPath), targetHeight, targetBitrateKbps);
@@ -187,36 +186,71 @@ public sealed class FfmpegVideoTranscoderService : IVideoTranscoderService
 
         try
         {
-            using var process = new Process
+            var startInfo = new ProcessStartInfo
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = ffmpegExe,
-                    Arguments = arguments,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
+                FileName = ffmpegExe,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
             };
+            startInfo.ArgumentList.Add("-nostdin");
+            startInfo.ArgumentList.Add("-y");
+            startInfo.ArgumentList.Add("-protocol_whitelist");
+            startInfo.ArgumentList.Add("file");
+            startInfo.ArgumentList.Add("-i");
+            startInfo.ArgumentList.Add(inputPath);
+            startInfo.ArgumentList.Add("-vf");
+            startInfo.ArgumentList.Add(filter);
+            startInfo.ArgumentList.Add("-c:v");
+            startInfo.ArgumentList.Add("libx264");
+            startInfo.ArgumentList.Add("-preset");
+            startInfo.ArgumentList.Add("veryfast");
+            startInfo.ArgumentList.Add("-crf");
+            startInfo.ArgumentList.Add(crf.ToString());
+            startInfo.ArgumentList.Add("-maxrate");
+            startInfo.ArgumentList.Add($"{targetBitrateKbps}k");
+            startInfo.ArgumentList.Add("-bufsize");
+            startInfo.ArgumentList.Add($"{targetBitrateKbps * 2}k");
+            startInfo.ArgumentList.Add("-pix_fmt");
+            startInfo.ArgumentList.Add("yuv420p");
+            startInfo.ArgumentList.Add("-c:a");
+            startInfo.ArgumentList.Add("aac");
+            startInfo.ArgumentList.Add("-b:a");
+            startInfo.ArgumentList.Add($"{audioBitrateKbps}k");
+            startInfo.ArgumentList.Add("-movflags");
+            startInfo.ArgumentList.Add("+faststart");
+            startInfo.ArgumentList.Add(outputPath);
+
+            using var process = new Process { StartInfo = startInfo };
 
             var errorOutput = new System.Text.StringBuilder();
+            process.OutputDataReceived += (_, _) => { };
             process.ErrorDataReceived += (_, e) =>
             {
-                if (!string.IsNullOrWhiteSpace(e.Data))
+                if (!string.IsNullOrWhiteSpace(e.Data) && errorOutput.Length < 16384)
                 {
                     errorOutput.AppendLine(e.Data);
                 }
             };
 
             process.Start();
+            process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
             // Cho phép hạ chuẩn tối đa 10 phút mỗi file
             using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-            await process.WaitForExitAsync(linkedCts.Token);
+            try
+            {
+                await process.WaitForExitAsync(linkedCts.Token);
+            }
+            catch
+            {
+                try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+                throw;
+            }
             stopwatch.Stop();
 
             if (process.ExitCode == 0 && File.Exists(outputPath))
@@ -272,28 +306,48 @@ public sealed class FfmpegVideoTranscoderService : IVideoTranscoderService
             try { File.Delete(outputPath); } catch { }
         }
 
-        var arguments = $"-y -i \"{inputPath}\" -c copy -movflags +faststart \"{outputPath}\"";
-
         try
         {
-            using var process = new Process
+            var startInfo = new ProcessStartInfo
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = ffmpegExe,
-                    Arguments = arguments,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
+                FileName = ffmpegExe,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
             };
+            startInfo.ArgumentList.Add("-nostdin");
+            startInfo.ArgumentList.Add("-y");
+            startInfo.ArgumentList.Add("-protocol_whitelist");
+            startInfo.ArgumentList.Add("file");
+            startInfo.ArgumentList.Add("-i");
+            startInfo.ArgumentList.Add(inputPath);
+            startInfo.ArgumentList.Add("-c");
+            startInfo.ArgumentList.Add("copy");
+            startInfo.ArgumentList.Add("-movflags");
+            startInfo.ArgumentList.Add("+faststart");
+            startInfo.ArgumentList.Add(outputPath);
+
+            using var process = new Process { StartInfo = startInfo };
+            process.OutputDataReceived += (_, _) => { };
+            process.ErrorDataReceived += (_, _) => { };
 
             process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
             using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-            await process.WaitForExitAsync(linkedCts.Token);
+            try
+            {
+                await process.WaitForExitAsync(linkedCts.Token);
+            }
+            catch
+            {
+                try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+                throw;
+            }
 
             if (process.ExitCode == 0 && File.Exists(outputPath))
             {

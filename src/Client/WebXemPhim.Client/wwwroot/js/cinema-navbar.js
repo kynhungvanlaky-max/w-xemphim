@@ -82,6 +82,18 @@
         initNavbar();
     }
 
+    // Delegated image fallback (replaces CSP-blocked inline onerror attributes)
+    document.addEventListener('error', function (event) {
+        const target = event.target;
+        if (target && target.tagName === 'IMG' && target.dataset && target.dataset.fallbackSrc) {
+            const fallback = target.dataset.fallbackSrc;
+            target.removeAttribute('data-fallback-src');
+            if (target.src !== fallback) {
+                target.src = fallback;
+            }
+        }
+    }, true);
+
     // Reset when Blazor navigates
     window.addEventListener('popstate', function () {
         const navbar = document.querySelector('.cinema-navbar');
