@@ -12,6 +12,7 @@ namespace WebXemPhim.Server.Hubs;
 [Authorize]
 public class CinemaHub : Hub
 {
+    private const string ClientIpItemKey = "CinemaFlow.VerifiedClientIp";
     private readonly IStreamSessionService? _streamSessionService;
     private readonly IAuthService? _authService;
     private readonly ILogger<CinemaHub>? _logger;
@@ -51,6 +52,22 @@ public class CinemaHub : Hub
 
     public override async Task OnConnectedAsync()
     {
+        try
+        {
+            var httpContext = Context.GetHttpContext();
+            if (httpContext != null)
+            {
+                // Lưu IP đã xác thực ngay thời điểm handshake kết nối WebSocket (khi dấu thời gian
+                // chữ ký HMAC nội bộ còn hợp lệ trong cửa sổ 60s), tránh bị hết hạn skew khi người dùng
+                // chuyển tập phim sau nhiều phút trên cùng kết nối SignalR.
+                Context.Items[ClientIpItemKey] = ApiRateLimits.GetClientIpAddress(httpContext);
+            }
+        }
+        catch
+        {
+            // Fallback when HttpContext feature is not present
+        }
+
         var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (!string.IsNullOrEmpty(userId))
         {
@@ -117,20 +134,30 @@ public class CinemaHub : Hub
         }
 
         string ipAddress = "127.0.0.1";
-        try
+        if (Context.Items.TryGetValue(ClientIpItemKey, out var cachedIpObj)
+            && cachedIpObj is string cachedIp
+            && !string.IsNullOrWhiteSpace(cachedIp))
         {
-            var httpContext = Context.GetHttpContext();
-            if (httpContext != null)
-            {
-                // Use the address resolved by the forwarded-headers middleware (which only
-                // trusts configured proxies). Never read raw X-Forwarded-For/X-Client-IP
-                // headers here: a client can forge both.
-                ipAddress = ApiRateLimits.GetClientIpAddress(httpContext);
-            }
+            ipAddress = cachedIp;
         }
-        catch
+        else
         {
-            // Fallback when HttpContext feature is not present
+            try
+            {
+                var httpContext = Context.GetHttpContext();
+                if (httpContext != null)
+                {
+                    // Use the address resolved by the forwarded-headers middleware (which only
+                    // trusts configured proxies). Never read raw X-Forwarded-For/X-Client-IP
+                    // headers here: a client can forge both.
+                    ipAddress = ApiRateLimits.GetClientIpAddress(httpContext);
+                    Context.Items[ClientIpItemKey] = ipAddress;
+                }
+            }
+            catch
+            {
+                // Fallback when HttpContext feature is not present
+            }
         }
 
         return await _streamSessionService.AcquireLeaseAsync(

@@ -33,6 +33,7 @@ builder.Logging.AddConsole();
 builder.Services.AddSiteDataProtection(builder.Configuration, "WebXemPhim.Client");
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICircuitClientIpProvider, CircuitClientIpProvider>();
+builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler, ClientIpCircuitHandler>();
 builder.Services.AddTransient<ForwardedClientIpHandler>();
 
 // Add services to the container.
@@ -169,9 +170,21 @@ builder.Services.AddReverseProxy()
         ])
     .AddTransforms(builderContext =>
     {
+        // Tắt default forwarders của YARP để không gửi X-Forwarded-Host của w-phim-client
+        // sang w-phim-api (không nằm trong AllowedHosts của API làm hủy xử lý ForwardedHeaders)
+        // và đảm bảo header IP/HMAC đi qua YARP khớp 100% với HttpClient của Blazor.
+        builderContext.UseDefaultForwarders = false;
         var proxySecret = SignedClientIpHeader.ResolveSecret(builder.Configuration);
         builderContext.AddRequestTransform(transformContext =>
         {
+            transformContext.ProxyRequest.Headers.Remove("X-Forwarded-Host");
+            transformContext.ProxyRequest.Headers.Remove("X-Forwarded-Proto");
+            transformContext.ProxyRequest.Headers.Remove("X-Forwarded-Prefix");
+            transformContext.ProxyRequest.Headers.Remove("X-Real-IP");
+            transformContext.ProxyRequest.Headers.Remove("CF-Connecting-IP");
+            transformContext.ProxyRequest.Headers.Remove("True-Client-IP");
+            transformContext.ProxyRequest.Headers.Remove("Forwarded");
+
             var remoteIp = transformContext.HttpContext.Connection.RemoteIpAddress;
             if (remoteIp is not null)
             {

@@ -772,6 +772,7 @@
             }
 
             if (!streamUrl) {
+                videoEl._loadedStreamUrl = '';
                 videoEl._isSwitchingSource = false;
                 clearSwitchOverlay(containerEl);
                 videoEl.pause();
@@ -779,6 +780,8 @@
                 videoEl.load();
                 return;
             }
+
+            videoEl._loadedStreamUrl = streamUrl;
 
             // Đánh dấu thời điểm bắt đầu tải để đo startup time.
             if (typeof containerEl._cinemaResetLoadMetrics === 'function') {
@@ -1067,7 +1070,7 @@
         },
         switchSource: function (containerEl, videoEl, streamUrl, autoPlay, resumeSeconds) {
             if (!containerEl || !videoEl || !streamUrl) return;
-            const currentSrc = videoEl.getAttribute('data-active-src') || videoEl.currentSrc || videoEl.src || '';
+            const currentSrc = videoEl._loadedStreamUrl || videoEl.getAttribute('src') || '';
             if (currentSrc === streamUrl) return;
 
             // Ưu tiên tuyệt đối mốc thời gian thực của thẻ <video> trước khi đổi nguồn

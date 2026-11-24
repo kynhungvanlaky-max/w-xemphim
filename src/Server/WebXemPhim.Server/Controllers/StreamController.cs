@@ -17,6 +17,7 @@ using WebXemPhim.Shared.Enums;
 using WebXemPhim.Shared.Models;
 using WebXemPhim.Shared.Requests;
 using WebXemPhim.Shared.Responses;
+using WebXemPhim.Shared.Security;
 
 namespace WebXemPhim.Server.Controllers;
 
@@ -152,7 +153,15 @@ public class StreamController(
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(lease.IpAddress) && lease.IpAddress != "127.0.0.1" && lease.IpAddress != "::1")
+            var isLoopbackOrUnknown = string.IsNullOrWhiteSpace(clientIp)
+                || clientIp == "127.0.0.1"
+                || clientIp == "::1"
+                || string.Equals(clientIp, "unknown", StringComparison.OrdinalIgnoreCase);
+
+            if (isLoopbackOrUnknown
+                && !string.IsNullOrWhiteSpace(lease.IpAddress)
+                && lease.IpAddress != "127.0.0.1"
+                && lease.IpAddress != "::1")
             {
                 clientIp = lease.IpAddress;
             }
@@ -365,6 +374,13 @@ public class StreamController(
 
         if (!validation.IsValid)
         {
+            logger.LogWarning(
+                "PlayStream rejected ({Status}) for episode={EpisodeId} pos={Pos} hasSid={HasSid} hasSignedProxyHeader={HasSignedProxyHeader}",
+                validation.Status,
+                episodeId,
+                pos,
+                !string.IsNullOrWhiteSpace(sid),
+                Request.Headers.ContainsKey(SignedClientIpHeader.SignatureHeaderName));
             return StatusCode(StatusCodes.Status403Forbidden,
                 ApiResponse<string>.Fail(validation.ErrorMessage ?? "Chữ ký bảo vệ luồng không hợp lệ."));
         }

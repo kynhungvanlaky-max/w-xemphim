@@ -277,4 +277,29 @@ public sealed class ChallengerM4AbrPlayerAdversarialTests
         var actual = WebXemPhim.Client.Services.WatchApiClient.NormalizeStreamUrl(input);
         Assert.Equal(expected, actual);
     }
+
+    [Fact]
+    public async Task CircuitClientIpProvider_AndCircuitHandler_CaptureNormalizedViewerIpIntoCircuitScope()
+    {
+        var httpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("::ffff:203.0.113.42");
+        var accessor = new Microsoft.AspNetCore.Http.HttpContextAccessor { HttpContext = httpContext };
+
+        // 1. Constructor captures normalized IPv4 immediately when created inside /_blazor circuit scope
+        var provider = new WebXemPhim.Client.Services.CircuitClientIpProvider(accessor);
+        Assert.Equal("203.0.113.42", provider.ClientIp);
+
+        // 2. Subsequent background events after HttpContext becomes null still retain cached circuit IP
+        accessor.HttpContext = null;
+        Assert.Equal("203.0.113.42", provider.ClientIp);
+
+        // 3. Reconnect via CircuitHandler updates cached IP when viewer switches networks
+        var reconnectContext = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        reconnectContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("198.51.100.88");
+        accessor.HttpContext = reconnectContext;
+
+        var handler = new WebXemPhim.Client.Services.ClientIpCircuitHandler(provider, accessor);
+        await handler.OnConnectionUpAsync(null!, CancellationToken.None);
+        Assert.Equal("198.51.100.88", provider.ClientIp);
+    }
 }

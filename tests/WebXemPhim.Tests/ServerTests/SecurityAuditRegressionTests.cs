@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -514,5 +515,99 @@ public sealed class SecurityAuditRegressionTests(TestApiFactory factory) : IClas
 
         var objResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, objResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task SignStream_PrefersFreshVerifiedViewerIpOverStaleLeaseIp()
+    {
+        const string secret = "super-strong-internal-proxy-secret-key-2026-sign";
+        ApiRateLimits.SetInternalProxySecret(secret);
+        try
+        {
+            var dbOptions = new DbContextOptionsBuilder<AppDbContext>()
+                .UseInMemoryDatabase($"sign-fresh-ip-{Guid.NewGuid():N}")
+                .Options;
+            var userId = Guid.NewGuid();
+
+            await using (var seedDb = new AppDbContext(dbOptions))
+            {
+                seedDb.Users.Add(new UserEntity
+                {
+                    Id = userId,
+                    Email = "vip-ip@cinema.test",
+                    NormalizedEmail = "VIP-IP@CINEMA.TEST",
+                    FullName = "VIP Viewer",
+                    Membership = MembershipTier.Vip,
+                    VipExpiresAtUtc = DateTime.UtcNow.AddDays(30)
+                });
+                seedDb.StreamSources.Add(new StreamSourceEntity
+                {
+                    EpisodeId = 888,
+                    Position = 1,
+                    ServerName = "VIP 1 (Hà Nội)",
+                    ServerType = StreamServerType.VipFastServer,
+                    Quality = "1080p FHD",
+                    StreamUrl = "https://cdn.example.com/vip.mp4"
+                });
+                await seedDb.SaveChangesAsync();
+            }
+
+            var signer = new StreamUrlSigner();
+            var sessions = new Mock<IStreamSessionService>();
+            sessions
+                .Setup(s => s.GetActiveLeaseAsync("stale-lease-sess", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ActiveStreamDto
+                {
+                    SessionId = "stale-lease-sess",
+                    EpisodeId = 888,
+                    UserId = userId,
+                    IpAddress = "74.220.52.132",
+                    IsActive = true
+                });
+
+            var controller = new StreamController(
+                new TestContextFactory(dbOptions),
+                signer,
+                new PublicUrlResolver(new ConfigurationBuilder().Build()),
+                new Mock<IHttpClientFactory>().Object,
+                NullLogger<StreamController>.Instance,
+                sessions.Object);
+
+            var http = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity(
+                [
+                    new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+                    new Claim("membership", "Vip")
+                ], "Bearer"))
+            };
+            http.Connection.RemoteIpAddress = IPAddress.Parse("74.220.52.132");
+            var reqHeaders = new HttpRequestMessage().Headers;
+            SignedClientIpHeader.AttachSignedHeaders(reqHeaders, "203.0.113.55", secret, DateTimeOffset.UtcNow);
+            foreach (var h in reqHeaders)
+            {
+                http.Request.Headers[h.Key] = h.Value.ToArray();
+            }
+            controller.ControllerContext = new ControllerContext { HttpContext = http };
+
+            var response = await controller.SignStream(new WebXemPhim.Shared.Requests.SignStreamRequest
+            {
+                EpisodeId = 888,
+                Position = 1,
+                SessionId = "stale-lease-sess"
+            });
+
+            var ok = Assert.IsType<OkObjectResult>(response.Result);
+            var payload = Assert.IsType<ApiResponse<SignedStreamDto>>(ok.Value);
+            Assert.True(payload.Success);
+            Assert.NotNull(payload.Data);
+
+            var query = System.Web.HttpUtility.ParseQueryString(new Uri(payload.Data!.StreamUrl).Query);
+            Assert.Equal(signer.ComputeIpHash("203.0.113.55"), query["ip"]);
+        }
+        finally
+        {
+            ApiRateLimits.SetInternalProxySecret(null);
+        }
     }
 }
