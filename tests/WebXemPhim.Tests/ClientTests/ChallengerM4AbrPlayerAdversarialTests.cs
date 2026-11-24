@@ -265,4 +265,16 @@ public sealed class ChallengerM4AbrPlayerAdversarialTests
         var fullContent = File.ReadAllText(hlsPath);
         Assert.Contains("Hls", fullContent);
     }
+
+    [Theory]
+    [InlineData("https://w-phim-api.onrender.com/api/stream/play?episodeId=4502&pos=1&sig=abc", "/api/stream/play?episodeId=4502&pos=1&sig=abc")]
+    [InlineData("https://w-phim-api.onrender.com/api/stream/manifest/tok123?sid=s1", "/api/stream/manifest/tok123?sid=s1")]
+    [InlineData("http://localhost:5085/api/stream/play?episodeId=1&pos=1", "/api/stream/play?episodeId=1&pos=1")]
+    [InlineData("/api/stream/play?episodeId=4502&pos=1", "/api/stream/play?episodeId=4502&pos=1")]
+    [InlineData("https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4", "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4")]
+    public void WatchApiClient_NormalizeStreamUrl_RoutesApiStreamsSameOriginThroughYarp(string input, string expected)
+    {
+        var actual = WebXemPhim.Client.Services.WatchApiClient.NormalizeStreamUrl(input);
+        Assert.Equal(expected, actual);
+    }
 }

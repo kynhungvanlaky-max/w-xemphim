@@ -33,7 +33,11 @@ public sealed class WatchApiClient(
         if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
         {
             var host = uri.Host.ToLowerInvariant();
-            if (host is "localhost" or "127.0.0.1" or "::1" or "server")
+            // Mọi liên kết ký từ API (/api/stream/...) phải đi qua YARP cùng origin (/api/stream/...)
+            // để địa chỉ IP lúc ký (SignStream từ Blazor Client) và lúc phát (PlayStream qua YARP)
+            // luôn khớp 100%, đồng thời bật cookie phiên SameSite=Lax và canvas không dính CORS.
+            if (host is "localhost" or "127.0.0.1" or "::1" or "server"
+                || uri.AbsolutePath.StartsWith("/api/stream/", StringComparison.OrdinalIgnoreCase))
             {
                 return uri.PathAndQuery;
             }
